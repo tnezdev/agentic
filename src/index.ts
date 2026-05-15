@@ -110,6 +110,18 @@ export { KvSource } from "./sources/kv.js"
 
 export { match as matchDispatch } from "./dispatch/match.js"
 
+export type {
+  CapabilityValidationError,
+  CapabilityValidationResult,
+} from "./capability/helpers.js"
+export {
+  validateCapability,
+  capabilityAllowsEffect,
+  capabilityAllowsTool,
+  capabilityMatchesDispatch,
+  capabilityRequiresApprovalFor,
+} from "./capability/helpers.js"
+
 export { fireHook } from "./hooks/fire.js"
 
 export type { ArtifactAdapter, CreateArtifactInput, WriteArtifactInput } from "./artifact/adapter.js"
