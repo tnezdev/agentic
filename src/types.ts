@@ -579,6 +579,158 @@ export type WorkflowRunTransitionedOutput = {
 }
 
 // ---------------------------------------------------------------------------
+// Capability types
+//
+// A capability declaration is the host-facing execution contract around a
+// skill or procedure. It names effects, connection requirements, approval
+// policy, dispatch constraints, artifact reads/writes, and structured policy
+// error vocabulary — without assuming a particular host runtime, provider,
+// storage engine, or approval UI.
+//
+// See docs/capability-contracts.md for the design rationale and neutral
+// examples. See tnezdev/spores#68–#75 for the implementation milestone.
+// ---------------------------------------------------------------------------
+
+/**
+ * Portable names for side-effect classes produced by a capability.
+ * Hosts may define narrower internal effects; portable declarations
+ * should prefer these generic names.
+ */
+export type CapabilityEffect =
+  | "memory.read"
+  | "memory.write"
+  | "artifact.read"
+  | "artifact.write"
+  | "external.read"
+  | "external.write"
+  | "approval.request"
+  | "dispatch.send"
+  | "user.notify"
+  | "compute.privileged"
+
+/** Readonly array of all defined capability effects. Useful for validation. */
+export const CAPABILITY_EFFECTS: readonly CapabilityEffect[] = [
+  "memory.read",
+  "memory.write",
+  "artifact.read",
+  "artifact.write",
+  "external.read",
+  "external.write",
+  "approval.request",
+  "dispatch.send",
+  "user.notify",
+  "compute.privileged",
+] as const
+
+/**
+ * Structured policy failure names returned by host runtimes.
+ * The portable layer defines the vocabulary; hosts decide detection,
+ * logging, display, and recovery.
+ */
+export type PolicyError =
+  | "policy_denied"
+  | "dispatch_not_allowed"
+  | "tool_not_allowed"
+  | "effect_not_allowed"
+  | "missing_connection"
+  | "approval_required"
+  | "approval_rejected"
+  | "provider_unauthorized"
+  | "provider_unavailable"
+  | "capability_misconfigured"
+
+/** Readonly array of all defined policy error names. Useful for validation. */
+export const POLICY_ERRORS: readonly PolicyError[] = [
+  "policy_denied",
+  "dispatch_not_allowed",
+  "tool_not_allowed",
+  "effect_not_allowed",
+  "missing_connection",
+  "approval_required",
+  "approval_rejected",
+  "provider_unauthorized",
+  "provider_unavailable",
+  "capability_misconfigured",
+] as const
+
+/**
+ * Declares that a capability needs access to a user-owned or host-owned
+ * external account. Does not define where credentials live or how
+ * authorization happens — those are host responsibilities.
+ */
+export type ConnectionRequirement = {
+  /** The provider kind, e.g. `"issue_tracker"`, `"calendar"`. */
+  provider: string
+  /** The scopes or permission strings the connection must carry. */
+  capabilities: string[]
+}
+
+/** When human approval must be collected relative to the effect. */
+export type ApprovalMode = "before_effect" | "after_effect"
+
+/**
+ * Declares which effects require human approval and when approval
+ * must be collected. The host owns the approval store, notification
+ * surface, and continuation behavior.
+ */
+export type ApprovalPolicy = {
+  required_for: CapabilityEffect[]
+  mode: ApprovalMode
+}
+
+/**
+ * Execution policy for a capability: dispatch constraints, tool allowlist,
+ * expected effects, and approval requirements. All fields are optional;
+ * an absent field places no constraint on that dimension.
+ */
+export type CapabilityPolicy = {
+  /**
+   * Constrains which inbound dispatch contexts may invoke this capability.
+   * Reuses `DispatchFilter` so the same vocabulary covers web, chat, voice,
+   * scheduled jobs, agent-to-agent messages, and future host-defined sources.
+   */
+  dispatch?: DispatchFilter | undefined
+  /** Tool names the host runtime may invoke on behalf of this capability. */
+  tools?: string[] | undefined
+  /** Side-effect classes this capability may produce. */
+  effects?: CapabilityEffect[] | undefined
+  /** Approval requirements for specific effects. */
+  approval?: ApprovalPolicy | undefined
+}
+
+/**
+ * Artifact read/write references for a capability. Values are artifact
+ * kind names (strings matching `NodeArtifactDef.type` conventions).
+ * The host owns storage layout, rendering, and revision history.
+ */
+export type CapabilityArtifacts = {
+  reads?: string[] | undefined
+  writes?: string[] | undefined
+}
+
+/**
+ * A portable capability declaration — the host-facing execution contract
+ * around a skill or procedure. This is not an executor; it is input to a
+ * host runtime that enforces the policy, resolves connections, and manages
+ * approvals.
+ *
+ * `name` uses dot-separated namespacing by convention: `<domain>.<verb>`,
+ * e.g. `issue_tracker.create_issue`. `skill` optionally names a matching
+ * SKILL.md in the host's skill catalog.
+ */
+export type CapabilityDef = {
+  name: string
+  description?: string | undefined
+  /** Optional reference to a skill by name (e.g. `"issue-triage"`). */
+  skill?: string | undefined
+  requires?: {
+    connections?: ConnectionRequirement[] | undefined
+  } | undefined
+  policy?: CapabilityPolicy | undefined
+  artifacts?: CapabilityArtifacts | undefined
+}
+
+// ---------------------------------------------------------------------------
 // Wake types
 // ---------------------------------------------------------------------------
 
