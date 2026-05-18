@@ -221,4 +221,67 @@ Body.
       expect(refs.map((r) => r.name)).toEqual(["ok"])
     })
   })
+
+  describe("capability references", () => {
+    it("parses a single capability reference as a one-element array", async () => {
+      const source = new InMemorySource({
+        triage: `---\nname: triage\ndescription: Triage issues\ncapabilities: issue_tracker.list_issues\n---\nBody.\n`,
+      })
+      const skill = await loadSkillFromSource("triage", source)
+      expect(skill).not.toBeUndefined()
+      expect(skill!.capabilities).toEqual(["issue_tracker.list_issues"])
+    })
+
+    it("parses multiple capability references from array syntax", async () => {
+      const source = new InMemorySource({
+        call: `---\nname: call\ndescription: Place a call\ncapabilities: [communication.place_call, user.notify]\n---\nBody.\n`,
+      })
+      const skill = await loadSkillFromSource("call", source)
+      expect(skill).not.toBeUndefined()
+      expect(skill!.capabilities).toEqual(["communication.place_call", "user.notify"])
+    })
+
+    it("does not set capabilities when the frontmatter field is absent", async () => {
+      const source = new InMemorySource({
+        plain: `---\nname: plain\ndescription: No caps\n---\nBody.\n`,
+      })
+      const skill = await loadSkillFromSource("plain", source)
+      expect(skill).not.toBeUndefined()
+      expect(skill!.capabilities).toBeUndefined()
+    })
+
+    it("exposes capabilities on SkillRef from listSkillsFromSource", async () => {
+      const source = new InMemorySource({
+        search: `---\nname: search\ndescription: Web search\ncapabilities: [web.search]\n---\n`,
+      })
+      const refs = await listSkillsFromSource(source)
+      expect(refs).toHaveLength(1)
+      expect(refs[0]!.capabilities).toEqual(["web.search"])
+    })
+
+    it("backward compat: existing skills without capabilities load unchanged", async () => {
+      const source = new InMemorySource({
+        old: `---\nname: old\ndescription: Old skill\ntags: [legacy]\n---\nOld body.\n`,
+      })
+      const skill = await loadSkillFromSource("old", source)
+      expect(skill).not.toBeUndefined()
+      expect(skill!.name).toBe("old")
+      expect(skill!.tags).toEqual(["legacy"])
+      expect(skill!.capabilities).toBeUndefined()
+    })
+
+    it("filesystem: capabilities round-trip through writeSkill and loadSkill", async () => {
+      await writeSkill(
+        tmpDir,
+        "cap-skill",
+        `---\nname: cap-skill\ndescription: Has caps\ncapabilities: [issue_tracker.create_issue, communication.place_call]\n---\nBody.\n`,
+      )
+      const skill = await loadSkill("cap-skill", tmpDir)
+      expect(skill).not.toBeUndefined()
+      expect(skill!.capabilities).toEqual([
+        "issue_tracker.create_issue",
+        "communication.place_call",
+      ])
+    })
+  })
 })
