@@ -55,13 +55,13 @@ describe("CLI", () => {
   })
 
   describe("init", () => {
-    it("scaffolds .spores/ directory", async () => {
+    it("scaffolds .agentic/ directory", async () => {
       const result = (await runJson(...base, "init")) as {
         initialized: boolean
         path: string
       }
       expect(result.initialized).toBe(true)
-      expect(result.path).toContain(".spores")
+      expect(result.path).toContain(".agentic")
     })
 
     it("is idempotent", async () => {

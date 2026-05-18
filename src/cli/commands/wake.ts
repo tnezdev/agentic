@@ -10,7 +10,7 @@ import { formatWake } from "../format.js"
 import type { Command } from "../main.js"
 import { output } from "../main.js"
 
-const DEFAULT_TEMPLATE = `(no wake template configured — set [wake] template in .spores/config.toml)
+const DEFAULT_TEMPLATE = `(no wake template configured — set [wake] template in .agentic/config.toml)
 
 ---
 

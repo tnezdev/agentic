@@ -41,7 +41,7 @@ describe("loadConfig", () => {
     expect(config.memory.dreamDepth).toBe(DEFAULTS.memory.dreamDepth)
   })
 
-  it("project config overrides defaults", async () => {
+  it("project .spores config overrides defaults (legacy fallback)", async () => {
     await mkdir(join(tmpDir, ".spores"), { recursive: true })
     await writeFile(
       join(tmpDir, ".spores", "config.toml"),
@@ -50,5 +50,30 @@ describe("loadConfig", () => {
     const config = await loadConfig(tmpDir)
     expect(config.memory.dreamDepth).toBe(5)
     expect(config.adapter).toBe(DEFAULTS.adapter)
+  })
+
+  it("project .agentic config overrides defaults", async () => {
+    await mkdir(join(tmpDir, ".agentic"), { recursive: true })
+    await writeFile(
+      join(tmpDir, ".agentic", "config.toml"),
+      '[memory]\ndream_depth = "7"',
+    )
+    const config = await loadConfig(tmpDir)
+    expect(config.memory.dreamDepth).toBe(7)
+  })
+
+  it(".agentic config wins over .spores config when both exist", async () => {
+    await mkdir(join(tmpDir, ".agentic"), { recursive: true })
+    await writeFile(
+      join(tmpDir, ".agentic", "config.toml"),
+      '[memory]\ndream_depth = "9"',
+    )
+    await mkdir(join(tmpDir, ".spores"), { recursive: true })
+    await writeFile(
+      join(tmpDir, ".spores", "config.toml"),
+      '[memory]\ndream_depth = "3"',
+    )
+    const config = await loadConfig(tmpDir)
+    expect(config.memory.dreamDepth).toBe(9)
   })
 })

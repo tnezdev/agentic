@@ -3,37 +3,37 @@ import { join } from "node:path"
 import type { Command } from "../main.js"
 import { output } from "../main.js"
 
-const DEFAULT_CONFIG = `# SPORES configuration
+const DEFAULT_CONFIG = `# Agentic configuration
 # See: https://github.com/tnezdev/spores
 
 adapter = "filesystem"
 
 [memory]
-dir = ".spores/memory"
+dir = ".agentic/memory"
 default_tier = "L1"
 dream_depth = "3"
 
 [workflow]
-graphs_dir = ".spores/workflows"
-runs_dir = ".spores/runs"
+graphs_dir = ".agentic/workflows"
+runs_dir = ".agentic/runs"
 `
 
 export const initCommand: Command = async (ctx, _args, _flags) => {
-  const sporesDir = join(ctx.baseDir, ".spores")
-  const memoryDir = join(sporesDir, "memory")
-  const configPath = join(sporesDir, "config.toml")
+  const agenticDir = join(ctx.baseDir, ".agentic")
+  const memoryDir = join(agenticDir, "memory")
+  const configPath = join(agenticDir, "config.toml")
 
   let alreadyExists = false
   try {
-    await access(sporesDir)
+    await access(agenticDir)
     alreadyExists = true
   } catch {
     // doesn't exist, we'll create it
   }
 
   await mkdir(memoryDir, { recursive: true })
-  await mkdir(join(sporesDir, "workflows"), { recursive: true })
-  await mkdir(join(sporesDir, "runs"), { recursive: true })
+  await mkdir(join(agenticDir, "workflows"), { recursive: true })
+  await mkdir(join(agenticDir, "runs"), { recursive: true })
 
   if (!alreadyExists) {
     await writeFile(configPath, DEFAULT_CONFIG)
@@ -41,10 +41,10 @@ export const initCommand: Command = async (ctx, _args, _flags) => {
 
   output(
     ctx,
-    { initialized: true, path: sporesDir, alreadyExists },
+    { initialized: true, path: agenticDir, alreadyExists },
     (d) =>
       d.alreadyExists
         ? `Already initialized at ${d.path}`
-        : `Initialized SPORES at ${d.path}`,
+        : `Initialized at ${d.path}`,
   )
 }

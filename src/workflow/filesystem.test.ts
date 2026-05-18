@@ -285,7 +285,7 @@ describe("FilesystemWorkflowAdapter — YAML graphs", () => {
   })
 
   it("loadGraph reads a .yaml file placed directly in the graphs dir", async () => {
-    const graphsDir = join(tmpDir, ".spores", "workflows")
+    const graphsDir = join(tmpDir, ".agentic", "workflows")
     await mkdir(graphsDir, { recursive: true })
     await writeFile(join(graphsDir, "yaml-graph.yaml"), YAML_GRAPH, "utf-8")
 
@@ -299,7 +299,7 @@ describe("FilesystemWorkflowAdapter — YAML graphs", () => {
   })
 
   it("loadGraph reads a .yml file", async () => {
-    const graphsDir = join(tmpDir, ".spores", "workflows")
+    const graphsDir = join(tmpDir, ".agentic", "workflows")
     await mkdir(graphsDir, { recursive: true })
     await writeFile(join(graphsDir, "yaml-graph.yml"), YAML_GRAPH, "utf-8")
 
@@ -309,7 +309,7 @@ describe("FilesystemWorkflowAdapter — YAML graphs", () => {
   })
 
   it("loadGraph prefers .json over .yaml when both exist", async () => {
-    const graphsDir = join(tmpDir, ".spores", "workflows")
+    const graphsDir = join(tmpDir, ".agentic", "workflows")
     await mkdir(graphsDir, { recursive: true })
     const jsonGraph = makeGraph("yaml-graph")
     jsonGraph.name = "JSON version"
@@ -328,7 +328,7 @@ describe("FilesystemWorkflowAdapter — YAML graphs", () => {
     const graph = makeGraph("json-graph")
     await store.saveGraph(graph)
 
-    const graphsDir = join(tmpDir, ".spores", "workflows")
+    const graphsDir = join(tmpDir, ".agentic", "workflows")
     await writeFile(join(graphsDir, "yaml-graph.yaml"), YAML_GRAPH, "utf-8")
 
     const graphs = await store.listGraphs()
@@ -338,7 +338,7 @@ describe("FilesystemWorkflowAdapter — YAML graphs", () => {
   })
 
   it("listGraphs excludes .source.yaml files", async () => {
-    const graphsDir = join(tmpDir, ".spores", "workflows")
+    const graphsDir = join(tmpDir, ".agentic", "workflows")
     await mkdir(graphsDir, { recursive: true })
     await writeFile(join(graphsDir, "yaml-graph.yaml"), YAML_GRAPH, "utf-8")
     await writeFile(

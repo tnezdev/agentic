@@ -1,5 +1,5 @@
 import { join } from "node:path"
-import { homedir } from "node:os"
+import { resolveProjectDir, resolveGlobalDir } from "../resolve-dir.js"
 import type {
   PersonaFile,
   PersonaRef,
@@ -11,12 +11,6 @@ import type { Source } from "../sources/source.js"
 import { FlatFileSource } from "../sources/flat-file.js"
 import { LayeredSource } from "../sources/layered.js"
 import type { PersonaAdapter } from "./adapter.js"
-
-function userHome(): string {
-  // Prefer HOME env var so tests can override it. Falls back to os.homedir()
-  // which reads the system password database on Unix.
-  return process.env["HOME"] ?? homedir()
-}
 
 // ---------------------------------------------------------------------------
 // Frontmatter parser
@@ -210,11 +204,11 @@ export async function loadPersonaFromSource(
 // ---------------------------------------------------------------------------
 
 function globalPersonasDir(): string {
-  return join(userHome(), ".spores", "personas")
+  return resolveGlobalDir("personas")
 }
 
 function projectPersonasDir(baseDir: string): string {
-  return join(baseDir, ".spores", "personas")
+  return resolveProjectDir(baseDir, "personas")
 }
 
 function defaultFilesystemSource(baseDir: string): Source {

@@ -1,23 +1,29 @@
 import { existsSync, statSync } from "node:fs"
-import { homedir } from "node:os"
 import { join } from "node:path"
 import type { HookInvocation } from "../types.js"
+import { resolveProjectDir, resolveGlobalDir } from "../resolve-dir.js"
 
 /**
- * Fire a spores primitive event. Events are named `<primitive>.<verb>`
+ * Fire an agentic primitive event. Events are named `<primitive>.<verb>`
  * (e.g. `persona.activated`, `task.done`). Event firing is synchronous,
  * in-process, and happens *after* the primary verb's effect has been
  * written — the hook cannot prevent or alter the verb's outcome.
  *
  * Hook lookup (first match wins):
- *   1. `$SPORES_HOOKS_DIR/<event>` — test override; if set, nothing else is consulted
- *   2. `<baseDir>/.spores/hooks/<event>` — project-level
- *   3. `~/.spores/hooks/<event>` — user-level
+ *   1. `$AGENTIC_HOOKS_DIR` or `$SPORES_HOOKS_DIR` — test/CI override
+ *   2. `<baseDir>/.agentic/hooks/<event>` (falls back to `.spores/hooks/` for legacy)
+ *   3. `~/.agentic/hooks/<event>` (falls back to `~/.spores/hooks/` for legacy)
  *
  * A hook is considered present only if the file exists AND has at least
  * one executable bit set (owner/group/other). Presence without the exec
  * bit is treated as "not a hook" — avoids accidentally running editor
  * scratch files or templates.
+ *
+ * Environment variables injected into hook processes:
+ *   - `AGENTIC_EVENT` / `SPORES_EVENT` (compatibility) — the event name
+ *   - `AGENTIC_BIN` / `SPORES_BIN` (compatibility) — path to the CLI binary
+ *   - For every caller-provided `SPORES_*` key, an `AGENTIC_*` equivalent is
+ *     also injected automatically (e.g. `SPORES_PERSONA_NAME` → `AGENTIC_PERSONA_NAME`).
  *
  * Design rationale + event catalog: tnezdev/spores#26
  * Minimum experiment (this verb only): tnezdev/spores#27
@@ -25,16 +31,12 @@ import type { HookInvocation } from "../types.js"
 
 const TIMEOUT_MS = 5000
 
-function userHome(): string {
-  return process.env["HOME"] ?? homedir()
-}
-
 function hookDirs(baseDir: string): string[] {
-  const override = process.env["SPORES_HOOKS_DIR"]
+  const override = process.env["AGENTIC_HOOKS_DIR"] ?? process.env["SPORES_HOOKS_DIR"]
   if (override !== undefined && override !== "") return [override]
   return [
-    join(baseDir, ".spores", "hooks"),
-    join(userHome(), ".spores", "hooks"),
+    resolveProjectDir(baseDir, "hooks"),
+    resolveGlobalDir("hooks"),
   ]
 }
 
@@ -57,10 +59,32 @@ function resolveHook(event: string, baseDir: string): string | undefined {
 }
 
 /**
+ * Build a compatibility env bridge: for every key starting with `SPORES_`,
+ * add the corresponding `AGENTIC_` key if not already present, and vice
+ * versa. This lets hook scripts use either naming convention without
+ * requiring callers to duplicate every key.
+ */
+function bridgeEnvNames(env: Record<string, string>): Record<string, string> {
+  const result: Record<string, string> = { ...env }
+  for (const [key, value] of Object.entries(env)) {
+    if (key.startsWith("SPORES_")) {
+      const agenticKey = "AGENTIC_" + key.slice("SPORES_".length)
+      if (result[agenticKey] === undefined) result[agenticKey] = value
+    } else if (key.startsWith("AGENTIC_")) {
+      const sporesKey = "SPORES_" + key.slice("AGENTIC_".length)
+      if (result[sporesKey] === undefined) result[sporesKey] = value
+    }
+  }
+  return result
+}
+
+/**
  * Fire the named event. If no hook is present, returns a quiet no-op result
  * (`ran: false`). If a hook is present, it is executed with the provided env
- * vars merged into the current process env, plus an injected `SPORES_EVENT`
- * and (if not already set) a `SPORES_BIN` pointing at the current CLI entry.
+ * vars merged into the current process env, plus injected `AGENTIC_EVENT` /
+ * `SPORES_EVENT` and (if not already set) `AGENTIC_BIN` / `SPORES_BIN`
+ * pointing at the current CLI entry. Caller-provided `SPORES_*` vars
+ * automatically receive `AGENTIC_*` mirrors, and vice versa.
  *
  * Hooks run with a 5-second timeout. Timeouts and non-zero exits are surfaced
  * via the `error` / `exit_code` fields on the result — they are not thrown.
@@ -82,15 +106,16 @@ export async function fireHook(
     }
   }
 
-  const fullEnv: Record<string, string> = {
+  const fullEnv: Record<string, string> = bridgeEnvNames({
     ...(process.env as Record<string, string>),
     ...env,
+    AGENTIC_EVENT: event,
     SPORES_EVENT: event,
-  }
+  })
 
-  if (fullEnv["SPORES_BIN"] === undefined || fullEnv["SPORES_BIN"] === "") {
-    fullEnv["SPORES_BIN"] = process.argv[1] ?? "spores"
-  }
+  const binPath = process.argv[1] ?? "agentic"
+  if (!fullEnv["AGENTIC_BIN"]) fullEnv["AGENTIC_BIN"] = binPath
+  if (!fullEnv["SPORES_BIN"]) fullEnv["SPORES_BIN"] = binPath
 
   try {
     const proc = Bun.spawn([script], {
@@ -109,8 +134,8 @@ export async function fireHook(
     //
     // CRITICAL: capture the timer handle and clearTimeout on the winning
     // path. An un-cleared pending timer keeps Bun's event loop alive and
-    // prevents the caller's process from exiting — manifests as "spores
-    // command hangs" when spores is itself spawned as a subprocess
+    // prevents the caller's process from exiting — manifests as "agentic
+    // command hangs" when agentic is itself spawned as a subprocess
     // (terminals mask it via tty/exec semantics; Bun.spawn exposes it).
     const TIMEOUT_SENTINEL: unique symbol = Symbol("hook-timeout") as never
     type Winner = number | typeof TIMEOUT_SENTINEL

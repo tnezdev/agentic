@@ -52,9 +52,9 @@ describe("FilesystemTaskAdapter", () => {
       expect(new Set(ids).size).toBe(ids.length)
     })
 
-    it("creates .spores/tasks dir on first write", async () => {
+    it("creates .agentic/tasks dir on first write", async () => {
       await adapter.createTask(taskInput())
-      const files = await readdir(join(tmpDir, ".spores", "tasks"))
+      const files = await readdir(join(tmpDir, ".agentic", "tasks"))
       expect(files.length).toBe(1)
     })
   })
@@ -125,7 +125,7 @@ describe("FilesystemTaskAdapter", () => {
 
     it("skips malformed json files with a warning", async () => {
       await adapter.createTask(taskInput({ description: "ok" }))
-      await writeFile(join(tmpDir, ".spores", "tasks", "BOGUS.json"), "{not json")
+      await writeFile(join(tmpDir, ".agentic", "tasks", "BOGUS.json"), "{not json")
       const list = await adapter.listTasks({})
       expect(list.length).toBe(1)
       expect(list[0]!.description).toBe("ok")

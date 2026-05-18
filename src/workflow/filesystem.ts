@@ -1,6 +1,7 @@
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { randomUUID } from "node:crypto"
+import { resolveProjectDir } from "../resolve-dir.js"
 import type { GraphDef, Run, Transition } from "../types.js"
 import type { Source } from "../sources/source.js"
 import type { WorkflowAdapter } from "./adapter.js"
@@ -28,8 +29,8 @@ export class FilesystemWorkflowAdapter implements WorkflowAdapter {
   private runsDir: string
 
   constructor(baseDir: string) {
-    this.graphsDir = join(baseDir, ".spores", "workflows")
-    this.runsDir = join(baseDir, ".spores", "runs")
+    this.graphsDir = resolveProjectDir(baseDir, "workflows")
+    this.runsDir = resolveProjectDir(baseDir, "runs")
   }
 
   // ---- Graphs --------------------------------------------------------------

@@ -6,13 +6,13 @@ import type { MemoryTier, SporesConfig } from "./types.js"
 const DEFAULTS: SporesConfig = {
   adapter: "filesystem",
   memory: {
-    dir: ".spores/memory",
+    dir: ".agentic/memory",
     defaultTier: "L1",
     dreamDepth: 3,
   },
   workflow: {
-    graphsDir: ".spores/workflows",
-    runsDir: ".spores/runs",
+    graphsDir: ".agentic/workflows",
+    runsDir: ".agentic/runs",
   },
   wake: {},
 }
@@ -101,16 +101,18 @@ async function tryReadToml(path: string): Promise<TomlDoc | undefined> {
 export async function loadConfig(baseDir: string): Promise<SporesConfig> {
   let config = { ...DEFAULTS, memory: { ...DEFAULTS.memory }, workflow: { ...DEFAULTS.workflow }, wake: { ...DEFAULTS.wake } }
 
-  const globalToml = await tryReadToml(
-    join(homedir(), ".spores", "config.toml"),
-  )
+  // Global config: prefer ~/.agentic/config.toml, fall back to ~/.spores/config.toml
+  const globalToml =
+    (await tryReadToml(join(homedir(), ".agentic", "config.toml"))) ??
+    (await tryReadToml(join(homedir(), ".spores", "config.toml")))
   if (globalToml !== undefined) {
     config = applyToml(config, globalToml)
   }
 
-  const projectToml = await tryReadToml(
-    join(baseDir, ".spores", "config.toml"),
-  )
+  // Project config: prefer .agentic/config.toml, fall back to .spores/config.toml
+  const projectToml =
+    (await tryReadToml(join(baseDir, ".agentic", "config.toml"))) ??
+    (await tryReadToml(join(baseDir, ".spores", "config.toml")))
   if (projectToml !== undefined) {
     config = applyToml(config, projectToml)
   }

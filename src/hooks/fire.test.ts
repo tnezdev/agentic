@@ -111,6 +111,73 @@ describe("hooks/fireHook", () => {
     expect(result.stdout).not.toContain("bin=unset")
   })
 
+  it("injects AGENTIC_EVENT and AGENTIC_BIN alongside SPORES_* equivalents", async () => {
+    await writeHook(
+      hookDir,
+      "persona.activated",
+      '#!/usr/bin/env bash\necho "ae=$AGENTIC_EVENT"\necho "ab=${AGENTIC_BIN:-unset}"\n',
+    )
+
+    const result = await fireHook("persona.activated", {}, tmpDir)
+
+    expect(result.ran).toBe(true)
+    expect(result.stdout).toContain("ae=persona.activated")
+    expect(result.stdout).toMatch(/ab=.+/)
+    expect(result.stdout).not.toContain("ab=unset")
+  })
+
+  it("bridges SPORES_* caller vars to AGENTIC_* equivalents", async () => {
+    await writeHook(
+      hookDir,
+      "persona.activated",
+      '#!/usr/bin/env bash\necho "aname=$AGENTIC_PERSONA_NAME"\n',
+    )
+
+    const result = await fireHook(
+      "persona.activated",
+      { SPORES_PERSONA_NAME: "spores-maintainer" },
+      tmpDir,
+    )
+
+    expect(result.ran).toBe(true)
+    expect(result.stdout).toContain("aname=spores-maintainer")
+  })
+
+  it("bridges AGENTIC_* caller vars to SPORES_* equivalents", async () => {
+    await writeHook(
+      hookDir,
+      "persona.activated",
+      '#!/usr/bin/env bash\necho "sname=$SPORES_PERSONA_NAME"\n',
+    )
+
+    const result = await fireHook(
+      "persona.activated",
+      { AGENTIC_PERSONA_NAME: "agentic-maintainer" },
+      tmpDir,
+    )
+
+    expect(result.ran).toBe(true)
+    expect(result.stdout).toContain("sname=agentic-maintainer")
+  })
+
+  it("honours AGENTIC_HOOKS_DIR override", async () => {
+    const altDir = join(tmpDir, "alt-hooks")
+    await writeHook(altDir, "persona.activated", "#!/usr/bin/env bash\necho from-alt\n")
+
+    // Temporarily point to alt dir via AGENTIC_HOOKS_DIR instead of SPORES_HOOKS_DIR.
+    delete process.env["SPORES_HOOKS_DIR"]
+    process.env["AGENTIC_HOOKS_DIR"] = altDir
+
+    try {
+      const result = await fireHook("persona.activated", {}, tmpDir)
+      expect(result.ran).toBe(true)
+      expect(result.stdout).toContain("from-alt")
+    } finally {
+      delete process.env["AGENTIC_HOOKS_DIR"]
+      process.env["SPORES_HOOKS_DIR"] = hookDir
+    }
+  })
+
   it("surfaces non-zero exit codes without throwing", async () => {
     await writeHook(
       hookDir,
@@ -144,9 +211,9 @@ describe("hooks/fireHook", () => {
     // rooted under tmpDir.
     delete process.env["SPORES_HOOKS_DIR"]
 
-    const projectHookDir = join(tmpDir, "project", ".spores", "hooks")
+    const projectHookDir = join(tmpDir, "project", ".agentic", "hooks")
     const userHome = join(tmpDir, "home")
-    const userHookDir = join(userHome, ".spores", "hooks")
+    const userHookDir = join(userHome, ".agentic", "hooks")
     const prevHome = process.env["HOME"]
     process.env["HOME"] = userHome
 
@@ -182,7 +249,7 @@ describe("hooks/fireHook", () => {
     delete process.env["SPORES_HOOKS_DIR"]
 
     const userHome = join(tmpDir, "home")
-    const userHookDir = join(userHome, ".spores", "hooks")
+    const userHookDir = join(userHome, ".agentic", "hooks")
     const prevHome = process.env["HOME"]
     process.env["HOME"] = userHome
 
@@ -204,6 +271,29 @@ describe("hooks/fireHook", () => {
     } finally {
       if (prevHome === undefined) delete process.env["HOME"]
       else process.env["HOME"] = prevHome
+      process.env["SPORES_HOOKS_DIR"] = hookDir
+    }
+  })
+
+  it("falls back to .spores/hooks when .agentic/hooks does not exist (legacy)", async () => {
+    delete process.env["SPORES_HOOKS_DIR"]
+
+    const projectDir = join(tmpDir, "legacy-project")
+    const legacyHookDir = join(projectDir, ".spores", "hooks")
+    // Note: no .agentic/hooks directory created
+
+    try {
+      await writeHook(
+        legacyHookDir,
+        "persona.activated",
+        "#!/usr/bin/env bash\necho from-spores-legacy\n",
+      )
+
+      const result = await fireHook("persona.activated", {}, projectDir)
+
+      expect(result.ran).toBe(true)
+      expect(result.stdout).toContain("from-spores-legacy")
+    } finally {
       process.env["SPORES_HOOKS_DIR"] = hookDir
     }
   })

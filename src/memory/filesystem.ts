@@ -2,6 +2,7 @@ import { readdir, readFile, writeFile, unlink, mkdir } from "node:fs/promises"
 import { join } from "node:path"
 import type { Memory, RecallQuery, RecallResult } from "../types.js"
 import type { AdapterCapabilities, MemoryAdapter } from "./adapter.js"
+import { resolveProjectDir } from "../resolve-dir.js"
 
 interface NodeError extends Error {
   code?: string | undefined
@@ -15,7 +16,7 @@ export class FilesystemAdapter implements MemoryAdapter {
   private dir: string
 
   constructor(baseDir: string) {
-    this.dir = join(baseDir, ".spores", "memory")
+    this.dir = resolveProjectDir(baseDir, "memory")
   }
 
   capabilities(): AdapterCapabilities {
