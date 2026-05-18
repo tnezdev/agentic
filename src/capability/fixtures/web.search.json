@@ -1,0 +1,7 @@
+{
+  "name": "web.search",
+  "description": "Use when the user asks to search the web for current information.",
+  "policy": {
+    "effects": ["external.read"]
+  }
+}

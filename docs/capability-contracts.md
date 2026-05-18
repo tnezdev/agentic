@@ -201,6 +201,113 @@ The host runtime owns:
 
 The portable package should not assume a particular host architecture.
 
+## How a Host Consumes Declarations
+
+The portable layer provides helpers that let a host make enforcement decisions from a loaded declaration. No host logic needs to parse effects strings or duplicate dispatch-matching rules.
+
+### 1. Validate on load
+
+After reading a declaration from any source (file, API, registry), pass it through
+`validateCapability` before using it:
+
+```typescript
+import { validateCapability } from "@tnezdev/spores"
+
+const result = validateCapability(raw)
+if (!result.valid) {
+  // result.errors is a non-empty array of { field, message } objects.
+  // Return a structured error to the caller — do not proceed.
+  return { error: "capability_misconfigured", details: result.errors }
+}
+```
+
+Validation confirms that required fields are present, all effect names are known, approval
+configuration is internally consistent, and connection entries are structurally sound. It does not
+make network calls, resolve credentials, or check whether a provider is reachable.
+
+### 2. Gate on dispatch context
+
+Before running any capability, check whether the inbound context is permitted:
+
+```typescript
+import { capabilityMatchesDispatch } from "@tnezdev/spores"
+
+if (!capabilityMatchesDispatch(def, inboundDispatch)) {
+  return { error: "dispatch_not_allowed" }
+}
+```
+
+`capabilityMatchesDispatch` returns `true` when `policy.dispatch` is absent (no constraint) and
+applies inclusion checks when the field is present. The host provides the dispatch value from its
+own session or request context.
+
+### 3. Check required connections
+
+If `def.requires.connections` is non-empty, the host must ensure each connection is available
+before continuing:
+
+```typescript
+for (const conn of def.requires.connections ?? []) {
+  const resolved = await host.resolveConnection(conn.provider, conn.capabilities)
+  if (!resolved) {
+    return { error: "missing_connection", provider: conn.provider }
+  }
+}
+```
+
+The declaration names the provider and required capability scopes. The host owns credential
+storage, token refresh, account selection, and secret handling. These details never appear in the
+portable declaration.
+
+### 4. Gate individual tool calls on declared effects
+
+Before allowing a tool execution, verify the capability declares the corresponding effect:
+
+```typescript
+import { capabilityAllowsEffect, capabilityAllowsTool } from "@tnezdev/spores"
+
+if (!capabilityAllowsTool(def, toolName)) {
+  return { error: "tool_not_allowed" }
+}
+if (!capabilityAllowsEffect(def, requiredEffect)) {
+  return { error: "effect_not_allowed" }
+}
+```
+
+### 5. Require approval before sensitive effects
+
+Check whether human approval is required before permitting an effect to execute:
+
+```typescript
+import { capabilityRequiresApprovalFor } from "@tnezdev/spores"
+
+if (capabilityRequiresApprovalFor(def, "external.write")) {
+  const approved = await host.requestApproval(def, turn)
+  if (!approved) {
+    return { error: "approval_rejected" }
+  }
+}
+```
+
+`mode: "before_effect"` means the host must gate execution on approval. `mode: "after_effect"`
+means approval is a post-execution confirmation. The declaration names the requirement; the host
+owns the approval store, notification surface, approve/reject flow, idempotency, and continuation
+behavior.
+
+### What the portable layer does not provide
+
+The portable declaration layer defines vocabulary and structural helpers. It does not provide:
+
+- A credential store or token manager
+- An approval UI, inbox, or notification surface
+- A provider client or API adapter
+- An artifact storage backend
+- Session management or turn state
+- Deployment or materialization logic
+
+A host that needs any of those things builds or selects its own implementation and drives it using
+the declaration fields as input.
+
 ## Non-Goals
 
 This design does not introduce a hosted runtime. It does not define provider APIs, credential storage, approval UI, artifact storage, deployment infrastructure, or session management.
@@ -209,12 +316,107 @@ Those are host bindings. The portable layer defines the shared vocabulary that l
 
 ## Neutral Example Set
 
-The following examples are useful fixtures for validating the vocabulary without binding it to a specific host:
+The following examples are useful fixtures for validating the vocabulary without binding it to a specific host. Each is stored as a JSON file under `src/capability/fixtures/` and validated in tests using `validateCapability`.
 
-- `issue_tracker.list_issues`: external read through a required issue-tracker connection
-- `issue_tracker.create_issue`: external write with approval before effect
-- `communication.place_call`: user notification / external write constrained by dispatch context
-- `web.search`: external read with no user-owned connection
-- `document.create_slide_deck`: artifact write from model-provided structured content
+### `issue_tracker.list_issues`
+
+External read through a required issue-tracker connection. No approval is needed because no write
+effect is declared.
+
+```json
+{
+  "name": "issue_tracker.list_issues",
+  "description": "Use when the user asks to list issues from an external issue tracker.",
+  "skill": "issue-triage",
+  "requires": {
+    "connections": [
+      { "provider": "issue_tracker", "capabilities": ["issues.read"] }
+    ]
+  },
+  "policy": {
+    "effects": ["external.read"]
+  }
+}
+```
+
+### `issue_tracker.create_issue`
+
+External write with approval required before the effect executes. Dispatch is constrained to web
+and chat surfaces. The capability writes an `issue_reference` artifact.
+
+```json
+{
+  "name": "issue_tracker.create_issue",
+  "description": "Use when the user asks to create an issue in an external issue tracker.",
+  "skill": "issue-triage",
+  "requires": {
+    "connections": [
+      { "provider": "issue_tracker", "capabilities": ["issues.write"] }
+    ]
+  },
+  "policy": {
+    "dispatch": { "from": ["surface:web", "surface:chat"] },
+    "tools": ["integration.invoke", "approval.request"],
+    "effects": ["external.write", "approval.request"],
+    "approval": { "required_for": ["external.write"], "mode": "before_effect" }
+  },
+  "artifacts": {
+    "writes": ["issue_reference"]
+  }
+}
+```
+
+### `communication.place_call`
+
+External write and user notification constrained to chat and voice surfaces. Approval is required
+before the call is placed. No connection requirement is declared because call routing is a host
+concern.
+
+```json
+{
+  "name": "communication.place_call",
+  "description": "Use when the user asks to place an outbound call to another person.",
+  "policy": {
+    "dispatch": { "from": ["surface:chat", "surface:voice"] },
+    "effects": ["external.write", "user.notify", "approval.request"],
+    "approval": { "required_for": ["external.write"], "mode": "before_effect" }
+  }
+}
+```
+
+### `web.search`
+
+External read with no user-owned connection. No approval is needed. This is the minimal
+declaration shape — only `name`, `description`, and a single declared effect.
+
+```json
+{
+  "name": "web.search",
+  "description": "Use when the user asks to search the web for current information.",
+  "policy": {
+    "effects": ["external.read"]
+  }
+}
+```
+
+### `document.create_slide_deck`
+
+Artifact write from model-provided structured content. No external connection or approval is
+required. The capability declares the kind of artifact it produces.
+
+```json
+{
+  "name": "document.create_slide_deck",
+  "description": "Use when the user asks to create a slide deck from structured content.",
+  "policy": {
+    "effects": ["artifact.write"]
+  },
+  "artifacts": {
+    "writes": ["slide_deck"]
+  }
+}
+```
+
+---
 
 If these examples cannot be represented cleanly, the declaration vocabulary is probably missing a concept.

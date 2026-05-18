@@ -1,0 +1,14 @@
+{
+  "name": "communication.place_call",
+  "description": "Use when the user asks to place an outbound call to another person.",
+  "policy": {
+    "dispatch": {
+      "from": ["surface:chat", "surface:voice"]
+    },
+    "effects": ["external.write", "user.notify", "approval.request"],
+    "approval": {
+      "required_for": ["external.write"],
+      "mode": "before_effect"
+    }
+  }
+}

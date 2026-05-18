@@ -1,0 +1,16 @@
+{
+  "name": "issue_tracker.list_issues",
+  "description": "Use when the user asks to list issues from an external issue tracker.",
+  "skill": "issue-triage",
+  "requires": {
+    "connections": [
+      {
+        "provider": "issue_tracker",
+        "capabilities": ["issues.read"]
+      }
+    ]
+  },
+  "policy": {
+    "effects": ["external.read"]
+  }
+}
