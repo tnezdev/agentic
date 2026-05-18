@@ -104,6 +104,14 @@ export function validateCapability(def: unknown): CapabilityValidationResult {
               }
             }
           }
+          // mode — required, must be a known ApprovalMode
+          const APPROVAL_MODES = ["before_effect", "after_effect"]
+          if (!APPROVAL_MODES.includes(approval["mode"] as string)) {
+            errors.push({
+              field: "policy.approval.mode",
+              message: `mode must be "before_effect" or "after_effect"`,
+            })
+          }
         }
       }
     }
@@ -140,6 +148,22 @@ export function validateCapability(def: unknown): CapabilityValidationResult {
                   field: `requires.connections[${i}].provider`,
                   message: "provider must be a non-empty string",
                 })
+              }
+              // capabilities — required string[]
+              if (!Array.isArray(c["capabilities"])) {
+                errors.push({
+                  field: `requires.connections[${i}].capabilities`,
+                  message: "capabilities must be an array of strings",
+                })
+              } else {
+                for (let j = 0; j < c["capabilities"].length; j++) {
+                  if (typeof c["capabilities"][j] !== "string") {
+                    errors.push({
+                      field: `requires.connections[${i}].capabilities[${j}]`,
+                      message: "each capability must be a string",
+                    })
+                  }
+                }
               }
             }
           }

@@ -196,6 +196,106 @@ describe("validateCapability", () => {
     }
   })
 
+  test("rejects connection missing capabilities", () => {
+    const result = validateCapability({
+      name: "x",
+      requires: { connections: [{ provider: "github" }] },
+    })
+    expect(result.valid).toBe(false)
+    if (!result.valid) {
+      expect(
+        result.errors.some((e) => e.field === "requires.connections[0].capabilities"),
+      ).toBe(true)
+    }
+  })
+
+  test("rejects connection with non-array capabilities", () => {
+    const result = validateCapability({
+      name: "x",
+      requires: { connections: [{ provider: "github", capabilities: "issues.read" }] },
+    })
+    expect(result.valid).toBe(false)
+    if (!result.valid) {
+      expect(
+        result.errors.some((e) => e.field === "requires.connections[0].capabilities"),
+      ).toBe(true)
+    }
+  })
+
+  test("rejects connection with non-string item in capabilities array", () => {
+    const result = validateCapability({
+      name: "x",
+      requires: { connections: [{ provider: "github", capabilities: [42] }] },
+    })
+    expect(result.valid).toBe(false)
+    if (!result.valid) {
+      expect(
+        result.errors.some((e) => e.field === "requires.connections[0].capabilities[0]"),
+      ).toBe(true)
+    }
+  })
+
+  test("accepts connection with valid provider and capabilities", () => {
+    expect(
+      validateCapability({
+        name: "x",
+        requires: { connections: [{ provider: "github", capabilities: ["issues.write"] }] },
+      }),
+    ).toEqual({ valid: true })
+  })
+
+  test("rejects approval with missing mode", () => {
+    const result = validateCapability({
+      name: "x",
+      policy: {
+        effects: ["external.write"],
+        approval: { required_for: ["external.write"] },
+      },
+    })
+    expect(result.valid).toBe(false)
+    if (!result.valid) {
+      expect(result.errors.some((e) => e.field === "policy.approval.mode")).toBe(true)
+    }
+  })
+
+  test("rejects approval with invalid mode value", () => {
+    const result = validateCapability({
+      name: "x",
+      policy: {
+        effects: ["external.write"],
+        approval: { required_for: ["external.write"], mode: "later" },
+      },
+    })
+    expect(result.valid).toBe(false)
+    if (!result.valid) {
+      expect(result.errors.some((e) => e.field === "policy.approval.mode")).toBe(true)
+    }
+  })
+
+  test("accepts approval with mode before_effect", () => {
+    expect(
+      validateCapability({
+        name: "x",
+        policy: {
+          effects: ["external.write"],
+          approval: { required_for: ["external.write"], mode: "before_effect" },
+        },
+      }),
+    ).toEqual({ valid: true })
+  })
+
+  test("accepts approval with mode after_effect", () => {
+    expect(
+      validateCapability({
+        name: "x",
+        policy: {
+          effects: ["external.write"],
+          approval: { required_for: ["external.write"], mode: "after_effect" },
+        },
+      }),
+    ).toEqual({ valid: true })
+  })
+
   test("returns all errors when multiple fields are invalid", () => {
     const result = validateCapability({
       name: "",
