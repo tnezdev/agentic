@@ -22,6 +22,7 @@
     }
   },
   "bin": {
+    "agentic": "./src/cli/main.ts",
     "spores": "./src/cli/main.ts"
   },
   "files": [

@@ -44,6 +44,9 @@ export type SporesConfig = {
   }
 }
 
+/** Preferred alias for {@link SporesConfig}. Use `AgenticConfig` in new code. */
+export type AgenticConfig = SporesConfig
+
 // ---------------------------------------------------------------------------
 // Workflow types (digraph runtime)
 // ---------------------------------------------------------------------------
@@ -151,8 +154,16 @@ export type Run = {
  * The `spores://` scheme is reserved for SPORES runtime compute, referenced
  * from within skill bodies and dispatched by the host runtime (e.g. Beacon).
  * Example: `spores://dream`, `spores://reflect`
+ * @deprecated Use {@link AgenticUri} with the `agentic://` scheme in new code.
  */
 export type SporesUri = `spores://${string}`
+
+/**
+ * Preferred URI type for Agentic-owned resources.
+ * The `agentic://` scheme is used for runtime compute references in skill bodies.
+ * Example: `agentic://dream`, `agentic://reflect`
+ */
+export type AgenticUri = `agentic://${string}`
 
 /** Lightweight skill reference — metadata without body content. */
 export type SkillRef = {
