@@ -1,14 +1,14 @@
-# .spores/ — dogfood example
+# .agentic/ — dogfood example
 
-This directory is the **v0.1 release-gate smoke test** (#10). If we can't use spores to build spores, v0.1 isn't ready to ship.
+This directory is the **v0.1 release-gate smoke test** (#10). If we can't use agentic to build agentic, v0.1 isn't ready to ship.
 
-Every file here is exercised by the spores CLI itself. Think of it as both the self-use and the working example that ships with the repo.
+Every file here is exercised by the agentic CLI itself. Think of it as both the self-use and the working example that ships with the repo.
 
 ## Contents
 
 | Path | Primitive | What's in it |
 |---|---|---|
-| `config.toml` | (all) | Spores config — `adapter = "filesystem"`, dirs for each primitive |
+| `config.toml` | (all) | Agentic config — `adapter = "filesystem"`, dirs for each primitive |
 | `personas/spores-maintainer.md` | persona | The hat to wear when working on this codebase. Real principles, real activation triggers, real situational tokens |
 | `skills/release-check/skill.md` | skill | The pre-release checklist. Piped into the agent before cutting a new version |
 | `workflows/spores-release.json` | workflow | 9-node release graph: verify-clean → run-tests → typecheck → dep-audit → pack-dry-run → version-bump → tag-push → publish → verify-published |
@@ -43,7 +43,7 @@ bun src/cli/main.ts workflow run spores-release --name "0.1.0-cut"
 bun src/cli/main.ts memory recall "runtime scope"
 ```
 
-(After `npm install -g @tnezdev/spores`, replace `bun src/cli/main.ts` with `spores`.)
+(After `npm install -g @tnezdev/agentic`, replace `bun src/cli/main.ts` with `agentic`.)
 
 ## Why this shape
 
@@ -57,10 +57,10 @@ bun src/cli/main.ts memory recall "runtime scope"
 
 - All four primitives (memory/workflow/skills/tasks) + persona compose cleanly in one directory layout
 - `persona activate` template substitution works against live situational facts
-- Adapter-layered project/global resolution is transparent (nothing in `~/.spores/` interferes)
+- Adapter-layered project/global resolution is transparent (nothing in `~/.agentic/` interferes)
 - `task next` returns the highest-ULID (most recent) ready task — caller is responsible for narrowing with `task_filter` if they want a different ordering (descoped per #8 addendum, caller wires persona bindings manually)
 - Zero production dependencies held throughout
 
 ## Runs are ephemeral
 
-`.spores/runs/` is gitignored because each `workflow run` produces a new run record and committing those would add churn without meaning. If you want to reproduce a run, re-run the workflow — the graph is the durable artifact, the run is the execution.
+`.agentic/runs/` is gitignored because each `workflow run` produces a new run record and committing those would add churn without meaning. If you want to reproduce a run, re-run the workflow — the graph is the durable artifact, the run is the execution.

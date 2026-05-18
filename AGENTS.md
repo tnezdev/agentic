@@ -13,7 +13,7 @@ This repo dogfoods its own toolbelt. Before touching code, run the three-command
 A TypeScript library + CLI for agent in-loop primitives:
 
 1. **Memory** — remember/recall/dream with L1/L2/L3 tiers
-2. **Skills** — load and run skill.md files from `.spores/skills/`
+2. **Skills** — load and run skill.md files from `.agentic/skills/`
 3. **Workflow** — digraph runtime (GraphDef → Run → Transitions, state derived from history)
 4. **Tasks** — typed adapter interface (ULID IDs, Taskwarrior-shaped)
 5. **Persona** — activate a hat at the start of a turn: metadata (memory_tags, skills, task_filter, workflow, routing hints) + a rendered body with live situational facts. Declarative attention, not enforced scope.
@@ -213,9 +213,9 @@ agentic artifact lock 01JXYZ...
 | `artifact.written` | `artifact write`, `artifact edit` |
 | `artifact.locked` | `artifact lock` |
 
-Hook env vars: `SPORES_ARTIFACT_ID`, `SPORES_ARTIFACT_TYPE`, `SPORES_ARTIFACT_TITLE`, `SPORES_ARTIFACT_TAGS` (create); `SPORES_ARTIFACT_ID`, `SPORES_ARTIFACT_VERSION`, `SPORES_ARTIFACT_MODE` (written); `SPORES_ARTIFACT_ID`, `SPORES_ARTIFACT_FINAL_VERSION` (locked).
+Hook env vars: `AGENTIC_ARTIFACT_ID`, `AGENTIC_ARTIFACT_TYPE`, `AGENTIC_ARTIFACT_TITLE`, `AGENTIC_ARTIFACT_TAGS` (create); `AGENTIC_ARTIFACT_ID`, `AGENTIC_ARTIFACT_VERSION`, `AGENTIC_ARTIFACT_MODE` (written); `AGENTIC_ARTIFACT_ID`, `AGENTIC_ARTIFACT_FINAL_VERSION` (locked). Legacy `SPORES_*` mirrors are set alongside for compatibility.
 
-**Dogfood hook:** `.spores/hooks/artifact.written` — indexes the artifact reference into memory after every write so it's searchable via `spores memory recall`.
+**Dogfood hook:** `.agentic/hooks/artifact.written` — indexes the artifact reference into memory after every write so it's searchable via `agentic memory recall`.
 
 **Workflow → artifact worked example:**
 
@@ -234,12 +234,12 @@ After the workflow run completes and the node produces its output, the caller pe
 
 ```bash
 # Node output lands in the transition; caller writes it as a named artifact
-BODY=$(spores workflow status "$RUN_ID" --json | jq -r '.nodes[-1].artifact.content')
-ARTIFACT_ID=$(spores artifact create brief "$BODY" --title "Q2 Brief" --tags "briefing,q2" --json | jq -r '.artifact.id')
+BODY=$(agentic workflow status "$RUN_ID" --json | jq -r '.nodes[-1].artifact.content')
+ARTIFACT_ID=$(agentic artifact create brief "$BODY" --title "Q2 Brief" --tags "briefing,q2" --json | jq -r '.artifact.id')
 
 # artifact.written hook fires automatically → reference indexed into memory
 # Later retrieval
-spores memory recall "Q2 Brief"
+agentic memory recall "Q2 Brief"
 ```
 
 The dogfood hook wires the last step without any special-cased plumbing in spores itself.
