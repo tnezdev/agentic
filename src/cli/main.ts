@@ -135,7 +135,7 @@ const USAGE = `Usage: agentic <command> [args] [flags]
        spores  <command> [args] [flags]    (compatibility alias)
 
 Commands:
-  init                                Scaffold .agentic/ directory
+  init                                Scaffold .spores/ directory
 
   memory remember <content>           Store a new memory
   memory recall [query]               Query memories
