@@ -1,6 +1,8 @@
 node_modules/
 dist/
 
-# .spores/ is dogfooded in this repo (see #10). Track everything except
-# ephemeral per-run state.
+# Both .agentic/ and .spores/ are dogfooded in this repo (see #10, #65).
+# .agentic/ is now the preferred primary directory; .spores/ remains during
+# the compatibility window. Track everything except ephemeral per-run state.
+.agentic/runs/
 .spores/runs/

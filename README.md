@@ -1,4 +1,6 @@
-# @tnezdev/spores
+# @tnezdev/spores → becoming `@tnezdev/agentic`
+
+> **Rename in progress.** The package is migrating from `spores` to `agentic`. During the compatibility window both names work. New code should use `agentic`, `.agentic/`, and `AGENTIC_*`.
 
 Executable toolbelt for agent self-improvement. Five in-loop primitives — memory, skills, workflow, tasks, and persona — with zero production dependencies, built for Bun.
 
@@ -12,23 +14,24 @@ npm install @tnezdev/spores
 ## Quick start
 
 ```bash
-# Scaffold .spores/ directory in your project
-spores init
+# Scaffold .agentic/ directory in your project
+agentic init          # preferred
+spores init           # compatibility alias
 
 # Store a memory
-spores memory remember "always emit types from the public API" --tags style,api
+agentic memory remember "always emit types from the public API" --tags style,api
 
 # Load a skill
-spores skill list
-spores skill run release-check | llm
+agentic skill list
+agentic skill run release-check | llm
 
 # Track a task
-spores task add "update CHANGELOG before tagging"
-spores task next
+agentic task add "update CHANGELOG before tagging"
+agentic task next
 
 # Activate a persona (pipe into your LLM as system prompt)
-spores persona list
-spores persona activate spores-maintainer | llm --system -
+agentic persona list
+agentic persona activate spores-maintainer | llm --system -
 ```
 
 ## Primitives
@@ -41,7 +44,7 @@ spores persona activate spores-maintainer | llm --system -
 | **Tasks** | ULID-keyed task queue with status transitions and annotations |
 | **Persona** | Activate a "hat" at the start of a turn: memory tags, skills, task filter, workflow, and a rendered body with live situational facts |
 
-All five primitives read from `.spores/` in your project root, with optional global overrides from `~/.spores/`.
+All five primitives read from `.agentic/` in your project root, with optional global overrides from `~/.agentic/`. Legacy `.spores/` and `~/.spores/` paths are honoured during the compatibility window when `.agentic/` is absent.
 
 ## Flags
 
@@ -53,7 +56,7 @@ All five primitives read from `.spores/` in your project root, with optional glo
 
 ## Working example
 
-The `.spores/` directory in this repo is the v0.1 dogfood — a persona, a skill, a workflow, tasks, and memories that are used to build spores itself. Read [`.spores/README.md`](.spores/README.md) for a tour.
+The `.agentic/` directory in this repo is the dogfood — a persona, a skill, a workflow, tasks, and memories that are used to build this package itself. Read [`.agentic/ONRAMP.md`](.agentic/ONRAMP.md) for a tour.
 
 ## Architecture
 

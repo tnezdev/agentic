@@ -2,6 +2,34 @@
 
 All notable changes to `@tnezdev/spores`. Format follows [Keep a Changelog](https://keepachangelog.com/). Versioning follows [semver](https://semver.org/).
 
+## Unreleased — Rename to Agentic (migration window)
+
+The package is migrating from `spores` → `agentic`. This section tracks the compatibility changes landing before the final rename release. All changes are backward-compatible — existing `.spores/`, `spores` CLI, `SporesConfig`, and `SPORES_*` env vars continue to work throughout the migration window.
+
+### Added
+
+- **`agentic` CLI alias.** `agentic <command>` is now the preferred entry point; `spores <command>` remains as a compatibility alias. Both dispatch through identical code.
+- **`AgenticConfig` type** — preferred alias for `SporesConfig`. `SporesConfig` is still exported and valid. (#63)
+- **`AgenticUri` type** — `agentic://${string}` scheme for Agentic-owned compute URIs. `SporesUri` (`spores://`) is preserved but marked deprecated. (#63)
+- **`.agentic/` config directory precedence.** All filesystem adapters (memory, workflow, tasks, artifact, personas, skills, hooks) now resolve `.agentic/<subdir>` before `.spores/<subdir>`. If `.agentic/` is absent but `.spores/` is present, `.spores/` is used automatically — no migration required. (#60)
+- **`src/resolve-dir.ts`.** `resolveProjectDir(baseDir, ...segments)` and `resolveGlobalDir(...segments)` — shared helpers for the `.agentic/` → `.spores/` fallback logic.
+- **`AGENTIC_*` hook environment variables.** `AGENTIC_EVENT` and `AGENTIC_BIN` are injected alongside `SPORES_EVENT` and `SPORES_BIN`. Every caller-provided `SPORES_*` key receives an `AGENTIC_*` mirror automatically, and vice versa — existing hook scripts work without edits. (#64)
+- **`AGENTIC_HOOKS_DIR` override** — accepted alongside `SPORES_HOOKS_DIR`. (#64)
+- **`.agentic/` dogfood directory** — the repo now dogfoods `.agentic/` as its primary project directory; `.spores/` is preserved during the compatibility window. (#65)
+
+### Migration notes
+
+| Old | New (preferred) |
+|-----|----------------|
+| `spores <cmd>` | `agentic <cmd>` |
+| `.spores/config.toml` | `.agentic/config.toml` |
+| `SporesConfig` | `AgenticConfig` |
+| `SporesUri` / `spores://` | `AgenticUri` / `agentic://` |
+| `SPORES_EVENT`, `SPORES_BIN` | `AGENTIC_EVENT`, `AGENTIC_BIN` (both injected) |
+| `~/.spores/` | `~/.agentic/` |
+
+Run `agentic init` in any new project to scaffold `.agentic/` directly.
+
 ## 0.4.1 — 2026-04-27
 
 The Workers/Node release. Lifts the Bun-only constraint and ships three new `Source` implementations covering the storage backends Cloudflare Workers consumers need.
