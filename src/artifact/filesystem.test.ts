@@ -60,7 +60,7 @@ describe("FilesystemArtifactAdapter", () => {
         title: "Test",
         body: "hello",
       })
-      const entries = await readdir(join(tmpDir, ".spores", "artifacts", record.id))
+      const entries = await readdir(join(tmpDir, ".agentic", "artifacts", record.id))
       expect(entries).toContain("meta.json")
       expect(entries).toContain("v1.md")
     })

@@ -6,6 +6,7 @@ import {
   stat,
 } from "node:fs/promises"
 import { join } from "node:path"
+import { resolveProjectDir } from "../resolve-dir.js"
 import type {
   ArtifactId,
   ArtifactMetadata,
@@ -114,7 +115,7 @@ export class FilesystemArtifactAdapter implements ArtifactAdapter {
   private ulid: () => string
 
   constructor(baseDir: string) {
-    this.dir = join(baseDir, ".spores", "artifacts")
+    this.dir = resolveProjectDir(baseDir, "artifacts")
     this.ulid = createUlidFactory()
   }
 

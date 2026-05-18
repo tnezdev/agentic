@@ -1,5 +1,6 @@
 import { readdir, readFile, writeFile, unlink, mkdir } from "node:fs/promises"
 import { join } from "node:path"
+import { resolveProjectDir } from "../resolve-dir.js"
 import type {
   Task,
   TaskStatus,
@@ -88,7 +89,7 @@ export class FilesystemTaskAdapter implements TaskAdapter {
   private ulid: () => string
 
   constructor(baseDir: string) {
-    this.dir = join(baseDir, ".spores", "tasks")
+    this.dir = resolveProjectDir(baseDir, "tasks")
     this.ulid = createUlidFactory()
   }
 

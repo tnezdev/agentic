@@ -1,5 +1,5 @@
-import { homedir } from "node:os"
 import { join } from "node:path"
+import { resolveProjectDir, resolveGlobalDir } from "../resolve-dir.js"
 import type { Skill, SkillRef } from "../types.js"
 import type { Source } from "../sources/source.js"
 import { LayeredSource } from "../sources/layered.js"
@@ -122,18 +122,12 @@ export async function loadSkillFromSource(
 // Convenience API — filesystem layering of project + global skills
 // ---------------------------------------------------------------------------
 
-function userHome(): string {
-  // Prefer HOME env var so tests can override it. Falls back to os.homedir()
-  // which reads the system password database on Unix.
-  return process.env["HOME"] ?? homedir()
-}
-
 function globalSkillsDir(): string {
-  return join(userHome(), ".spores", "skills")
+  return resolveGlobalDir("skills")
 }
 
 function projectSkillsDir(baseDir: string): string {
-  return join(baseDir, ".spores", "skills")
+  return resolveProjectDir(baseDir, "skills")
 }
 
 function defaultFilesystemSource(baseDir: string): Source {
