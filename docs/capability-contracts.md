@@ -34,6 +34,34 @@ Example:
 
 The skill body can explain when to use the procedure, what information to gather, and how to phrase outputs. It should not be the only source of truth for executable permissions.
 
+## Skill Capability References
+
+A skill file may declare which capabilities it is associated with using the `capabilities` frontmatter field. This is metadata only — `skill run` still outputs model-readable skill content and does not enforce capability policy or execute capability behavior.
+
+A single capability name:
+
+```text
+---
+name: issue-triage
+description: Triage and route inbound issues.
+capabilities: issue_tracker.list_issues
+---
+```
+
+Multiple capability names use array syntax:
+
+```text
+---
+name: issue-triage
+description: Triage and route inbound issues.
+capabilities: [issue_tracker.list_issues, issue_tracker.create_issue]
+---
+```
+
+Capability names use dot-separated namespacing by convention: `<domain>.<verb>`, e.g. `issue_tracker.create_issue`.
+
+Hosts may use the `capabilities` list on `SkillRef` and `Skill` to bind model-readable skill instructions to the matching executable policy contracts. Skill files without a `capabilities` field load unchanged; the field is absent (`undefined`) rather than an empty array.
+
 ## Capabilities
 
 A capability is the host-facing execution contract around a skill or procedure.

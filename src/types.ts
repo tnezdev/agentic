@@ -170,6 +170,15 @@ export type SkillRef = {
   name: string
   description: string
   tags: string[]
+  /**
+   * Optional list of capability names this skill is associated with.
+   * A capability name uses dot-separated namespacing by convention:
+   * `<domain>.<verb>`, e.g. `"issue_tracker.create_issue"`.
+   * Hosts may use this list to bind model-readable skill instructions
+   * to executable capability policy contracts.
+   * Absent when the skill file does not declare a `capabilities` field.
+   */
+  capabilities?: string[] | undefined
   path: string // absolute path to skill.md
 }
 

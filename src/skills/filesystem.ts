@@ -14,6 +14,7 @@ type Frontmatter = {
   name?: string | undefined
   description?: string | undefined
   tags?: string[] | undefined
+  capabilities?: string[] | undefined
 }
 
 function parseFrontmatter(text: string): { meta: Frontmatter; body: string } {
@@ -50,11 +51,14 @@ function parseFrontmatter(text: string): { meta: Frontmatter; body: string } {
 
       if (key === "tags") {
         meta.tags = items
+      } else if (key === "capabilities") {
+        meta.capabilities = items
       }
     } else {
       const value = rest.replace(/^["']|["']$/g, "")
       if (key === "name") meta.name = value
       if (key === "description") meta.description = value
+      if (key === "capabilities") meta.capabilities = [value]
     }
   }
 
@@ -67,6 +71,9 @@ function metaToRef(meta: Frontmatter, locator: string): SkillRef | undefined {
     name: meta.name,
     description: meta.description,
     tags: meta.tags ?? [],
+    ...(meta.capabilities !== undefined
+      ? { capabilities: meta.capabilities }
+      : {}),
     path: locator,
   }
 }
