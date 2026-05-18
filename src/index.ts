@@ -48,7 +48,16 @@ export type {
   ArtifactEditedOutput,
   ArtifactLockedOutput,
   ArtifactInspectedOutput,
+  CapabilityEffect,
+  PolicyError,
+  ConnectionRequirement,
+  ApprovalMode,
+  ApprovalPolicy,
+  CapabilityPolicy,
+  CapabilityArtifacts,
+  CapabilityDef,
 } from "./types.js"
+export { CAPABILITY_EFFECTS, POLICY_ERRORS } from "./types.js"
 
 export type { MemoryAdapter, AdapterCapabilities } from "./memory/adapter.js"
 export { FilesystemAdapter } from "./memory/filesystem.js"
