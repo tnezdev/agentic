@@ -272,6 +272,20 @@ describe("validateCapability", () => {
     }
   })
 
+  test("rejects approval with missing required_for", () => {
+    const result = validateCapability({
+      name: "x",
+      policy: {
+        effects: ["external.write"],
+        approval: { mode: "before_effect" },
+      },
+    })
+    expect(result.valid).toBe(false)
+    if (!result.valid) {
+      expect(result.errors.some((e) => e.field === "policy.approval.required_for")).toBe(true)
+    }
+  })
+
   test("accepts approval with mode before_effect", () => {
     expect(
       validateCapability({

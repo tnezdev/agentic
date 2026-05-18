@@ -81,26 +81,30 @@ export function validateCapability(def: unknown): CapabilityValidationResult {
           errors.push({ field: "policy.approval", message: "approval must be an object" })
         } else {
           const approval = policy["approval"] as Record<string, unknown>
-          if (approval["required_for"] !== undefined) {
-            if (!Array.isArray(approval["required_for"])) {
-              errors.push({
-                field: "policy.approval.required_for",
-                message: "required_for must be an array",
-              })
-            } else {
-              for (let i = 0; i < approval["required_for"].length; i++) {
-                const e = approval["required_for"][i]
-                if (!CAPABILITY_EFFECTS.includes(e as CapabilityEffect)) {
-                  errors.push({
-                    field: `policy.approval.required_for[${i}]`,
-                    message: `unknown effect: "${String(e)}"`,
-                  })
-                } else if (!declaredEffects.includes(e as CapabilityEffect)) {
-                  errors.push({
-                    field: `policy.approval.required_for[${i}]`,
-                    message: `effect "${String(e)}" is not declared in policy.effects`,
-                  })
-                }
+          // required_for — required field
+          if (approval["required_for"] === undefined) {
+            errors.push({
+              field: "policy.approval.required_for",
+              message: "required_for is required",
+            })
+          } else if (!Array.isArray(approval["required_for"])) {
+            errors.push({
+              field: "policy.approval.required_for",
+              message: "required_for must be an array",
+            })
+          } else {
+            for (let i = 0; i < approval["required_for"].length; i++) {
+              const e = approval["required_for"][i]
+              if (!CAPABILITY_EFFECTS.includes(e as CapabilityEffect)) {
+                errors.push({
+                  field: `policy.approval.required_for[${i}]`,
+                  message: `unknown effect: "${String(e)}"`,
+                })
+              } else if (!declaredEffects.includes(e as CapabilityEffect)) {
+                errors.push({
+                  field: `policy.approval.required_for[${i}]`,
+                  message: `effect "${String(e)}" is not declared in policy.effects`,
+                })
               }
             }
           }
