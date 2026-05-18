@@ -1,11 +1,18 @@
 /**
- * Type-level fixtures for the capability declaration vocabulary (issue #69).
+ * Fixtures for the capability declaration vocabulary.
  *
- * These are not runtime tests — there is no executable logic to test in a
- * pure-type issue. Instead, each fixture is a valid `CapabilityDef` literal
- * that the TypeScript compiler checks at compile time. If a fixture fails to
- * typecheck, the declaration vocabulary is missing a concept or is too
- * narrow.
+ * Two layers of coverage:
+ *
+ * 1. Type-level assignment checks (issue #69) — compile-time only. Each
+ *    fixture is a valid `CapabilityDef` literal checked by the TypeScript
+ *    compiler. If a fixture fails to typecheck, the declaration vocabulary is
+ *    missing a concept or is too narrow.
+ *
+ * 2. Runtime fixture validation (issue #74) — each neutral example is stored
+ *    as a JSON file under src/capability/fixtures/ and loaded at test time as
+ *    `unknown`. Passing the result through `validateCapability()` proves that
+ *    the validator accepts the canonical declaration shapes and that the JSON
+ *    files have not drifted from the type vocabulary.
  *
  * Neutral examples from docs/capability-contracts.md:
  *   - issue_tracker.list_issues
@@ -15,9 +22,12 @@
  *   - document.create_slide_deck
  */
 
-import { describe, it } from "bun:test"
+import { readFileSync } from "node:fs"
+import { join } from "node:path"
+import { describe, expect, it } from "bun:test"
 import type { CapabilityDef } from "../types.js"
 import { CAPABILITY_EFFECTS, POLICY_ERRORS } from "../types.js"
+import { validateCapability } from "./helpers.js"
 
 // ---------------------------------------------------------------------------
 // Type-level assignment check — each fixture must satisfy CapabilityDef
@@ -159,6 +169,61 @@ describe("POLICY_ERRORS", () => {
       if (!POLICY_ERRORS.includes(name)) {
         throw new Error(`Missing policy error: ${name}`)
       }
+    }
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Runtime fixture validation — neutral JSON examples (issue #74)
+//
+// Each fixture file under src/capability/fixtures/ is loaded as unknown text
+// and validated through validateCapability(). This proves:
+//   (a) the JSON files are well-formed and match the declaration vocabulary
+//   (b) validateCapability() accepts all canonical neutral examples
+//   (c) the files have not drifted as the vocabulary evolves
+// ---------------------------------------------------------------------------
+
+const FIXTURES_DIR = join(import.meta.dir, "fixtures")
+
+function loadFixtureJson(filename: string): unknown {
+  const text = readFileSync(join(FIXTURES_DIR, filename), "utf-8")
+  return JSON.parse(text)
+}
+
+const NEUTRAL_FIXTURES = [
+  "issue_tracker.list_issues.json",
+  "issue_tracker.create_issue.json",
+  "communication.place_call.json",
+  "web.search.json",
+  "document.create_slide_deck.json",
+] as const
+
+describe("neutral fixture files", () => {
+  for (const filename of NEUTRAL_FIXTURES) {
+    const capabilityName = filename.replace(/\.json$/, "")
+    it(`${capabilityName} passes validateCapability`, () => {
+      const raw = loadFixtureJson(filename)
+      const result = validateCapability(raw)
+      if (!result.valid) {
+        throw new Error(
+          `Fixture ${filename} failed validation:\n${JSON.stringify(result.errors, null, 2)}`,
+        )
+      }
+    })
+  }
+
+  it("all five neutral examples are present in the fixtures directory", () => {
+    const expected = [
+      "issue_tracker.list_issues.json",
+      "issue_tracker.create_issue.json",
+      "communication.place_call.json",
+      "web.search.json",
+      "document.create_slide_deck.json",
+    ]
+    for (const filename of expected) {
+      // loadFixtureJson throws if the file is missing — that surfaces a clear
+      // failure message rather than a confusing undefined
+      expect(() => loadFixtureJson(filename)).not.toThrow()
     }
   })
 })

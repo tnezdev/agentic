@@ -1,0 +1,10 @@
+{
+  "name": "document.create_slide_deck",
+  "description": "Use when the user asks to create a slide deck from structured content.",
+  "policy": {
+    "effects": ["artifact.write"]
+  },
+  "artifacts": {
+    "writes": ["slide_deck"]
+  }
+}

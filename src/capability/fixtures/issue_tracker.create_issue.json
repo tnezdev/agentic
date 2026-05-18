@@ -1,0 +1,27 @@
+{
+  "name": "issue_tracker.create_issue",
+  "description": "Use when the user asks to create an issue in an external issue tracker.",
+  "skill": "issue-triage",
+  "requires": {
+    "connections": [
+      {
+        "provider": "issue_tracker",
+        "capabilities": ["issues.write"]
+      }
+    ]
+  },
+  "policy": {
+    "dispatch": {
+      "from": ["surface:web", "surface:chat"]
+    },
+    "tools": ["integration.invoke", "approval.request"],
+    "effects": ["external.write", "approval.request"],
+    "approval": {
+      "required_for": ["external.write"],
+      "mode": "before_effect"
+    }
+  },
+  "artifacts": {
+    "writes": ["issue_reference"]
+  }
+}
