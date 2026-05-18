@@ -1,0 +1,44 @@
+{
+  "id": "spores-release",
+  "name": "Spores release cut",
+  "description": "CI-gated release flow for @tnezdev/spores — land version bump on main, push tag, let publish.yml ship via OIDC trusted publishing",
+  "version": "2.0",
+  "nodes": [
+    {
+      "id": "version-bump-pr",
+      "label": "Open release PR",
+      "description": "Bump package.json version per semver, append CHANGELOG entry, open 'chore: release vX.Y.Z' PR — merge only when CI is green",
+      "artifact_type": "pull-request"
+    },
+    {
+      "id": "sync-main",
+      "label": "Sync main and confirm release commit",
+      "description": "git checkout main && git pull; git log -1 must show the merged release commit",
+      "artifact_type": "git-ref"
+    },
+    {
+      "id": "tag-push",
+      "label": "Tag and push",
+      "description": "git tag -a vX.Y.Z -m 'vX.Y.Z' && git push origin vX.Y.Z — this is the trigger for publish.yml",
+      "artifact_type": "git-tag"
+    },
+    {
+      "id": "watch-publish-ci",
+      "label": "Watch publish.yml run",
+      "description": "gh run watch --exit-status — publish.yml runs typecheck+test, bootstraps npm 11 via tarball, publishes with OIDC + provenance. No local publish.",
+      "artifact_type": "ci-run"
+    },
+    {
+      "id": "verify-registry",
+      "label": "Verify registry + provenance",
+      "description": "npm view @tnezdev/spores version matches tag; run 'bash scripts/post-publish-check.sh <version>' to verify consumer install from registry; check npmjs.com page for 'Built and signed on GitHub Actions' provenance badge",
+      "artifact_type": "registry-check"
+    }
+  ],
+  "edges": [
+    { "from": "version-bump-pr", "to": "sync-main" },
+    { "from": "sync-main", "to": "tag-push" },
+    { "from": "tag-push", "to": "watch-publish-ci" },
+    { "from": "watch-publish-ci", "to": "verify-registry" }
+  ]
+}

@@ -1,10 +1,12 @@
-# AGENTS.md — SPORES
+# AGENTS.md — Agentic (formerly SPORES)
 
 Orientation for agent sessions. Concise. Read before touching code.
 
+> **Rename in progress:** The package is migrating from `spores` / `.spores/` to `agentic` / `.agentic/`. Both names work during the compatibility window. Prefer `agentic` in new code and docs.
+
 ## Start here
 
-This repo dogfoods its own toolbelt. Before touching code, run the three-command on-ramp in [`.spores/ONRAMP.md`](.spores/ONRAMP.md) — it activates the `spores-maintainer` persona, pulls the top ready task, and points you at the release skill. The rest of this file is reference; ONRAMP.md is the path.
+This repo dogfoods its own toolbelt. Before touching code, run the three-command on-ramp in [`.agentic/ONRAMP.md`](.agentic/ONRAMP.md) — it activates the `spores-maintainer` persona, pulls the top ready task, and points you at the release skill. The rest of this file is reference; ONRAMP.md is the path.
 
 ## What is SPORES?
 
@@ -78,24 +80,26 @@ Data primitives (Memory, Artifacts, Tasks) have query semantics and live behind 
 ### CLI: two-word dispatch
 
 ```
-spores <noun> <verb> [args]
+agentic <noun> <verb> [args]    # preferred
+spores  <noun> <verb> [args]    # compatibility alias
 ```
 
 Commands in `src/cli/commands/<noun>.ts`. Each command is a `Command` function exported as `<noun><Verb>Command`. The dispatch table is in `src/cli/main.ts`.
 
 Current command surface:
-- `spores init` — scaffold `.spores/` config
-- `spores memory remember/recall/forget/dream/reinforce`
-- `spores skill list/show/run`
-- `spores workflow list/show/run/status`
-- `spores persona list/view/activate`
-- `spores artifact create/read/write/edit/inspect/list/lock`
+- `agentic init` — scaffold `.agentic/` config
+- `agentic memory remember/recall/forget/dream/reinforce`
+- `agentic skill list/show/run`
+- `agentic workflow list/show/run/status`
+- `agentic persona list/view/activate`
+- `agentic artifact create/read/write/edit/inspect/list/lock`
 
 ### Skills on disk
 
 ```
-~/.spores/skills/<name>/skill.md     # global (user-level)
-.spores/skills/<name>/skill.md       # project-level (wins on name conflict)
+~/.agentic/skills/<name>/skill.md    # global (user-level)
+.agentic/skills/<name>/skill.md      # project-level (wins on name conflict)
+# Legacy: ~/.spores/ and .spores/ are honoured when .agentic/ is absent
 ```
 
 Frontmatter: `name`, `description`, `tags: [a, b, c]`
@@ -104,8 +108,9 @@ Body: the skill content returned by `skill run` (pipe to an LLM).
 ### Personas on disk
 
 ```
-~/.spores/personas/<name>.md         # global (user-level)
-.spores/personas/<name>.md           # project-level (wins on name conflict)
+~/.agentic/personas/<name>.md        # global (user-level)
+.agentic/personas/<name>.md          # project-level (wins on name conflict)
+# Legacy: ~/.spores/ and .spores/ are honoured when .agentic/ is absent
 ```
 
 Flat-file layout (unlike skills which use a directory per skill). Frontmatter: `name`, `description`, `memory_tags: [...]`, `skills: [...]`, optional `task_filter: { tags: [...], status: ready }` (nested, one level deep), optional `workflow: <graph-id>`. Body is markdown with `{{cwd}}`, `{{timestamp}}`, `{{hostname}}`, `{{git_branch}}` tokens that get substituted at `persona activate` time.
@@ -114,11 +119,11 @@ Flat-file layout (unlike skills which use a directory per skill). Frontmatter: `
 
 **One hat at a time.** Personas don't compose, stack, or inherit. To pivot, deactivate one and activate another. Runtime integration for applying persona bindings (using `memory_tags` as a recall filter, etc.) is **the caller's responsibility** — spores ships the metadata, the caller wires it. Descoped from v0.1 intentionally; expected to land after we have more signal from actual use.
 
-### Config resolution (three-tier)
+### Config resolution (four-tier)
 
 1. Hardcoded defaults in `config.ts`
-2. `~/.spores/config.toml` — user-level overrides
-3. `.spores/config.toml` — project-level overrides (wins)
+2. `~/.agentic/config.toml` — global user overrides (preferred); falls back to `~/.spores/config.toml`
+3. `.agentic/config.toml` — project overrides, wins over global (preferred); falls back to `.spores/config.toml`
 
 ### Workflow runtime
 
@@ -135,9 +140,11 @@ Runtimes own send/handle/cancel verbs, the actual transport, scheduling, and han
 
 See `PROJECTS/spores/DESIGN-runtime-description.md` for the full design conversation.
 
-### SporesUri
+### URI schemes
 
-`spores://` is a reserved URI scheme for SPORES-owned compute. Branded type `SporesUri = \`spores://\${string}\`` in `types.ts`. Referenced from skill bodies, dispatched by the host runtime (e.g. Beacon).
+`agentic://` is the preferred URI scheme for Agentic-owned compute. Branded type `AgenticUri = \`agentic://\${string}\`` in `types.ts`. Referenced from skill bodies, dispatched by the host runtime.
+
+`spores://` is the legacy scheme; `SporesUri` is preserved but deprecated. Use `AgenticUri` in new code.
 
 ## Conventions
 
@@ -152,15 +159,16 @@ See `PROJECTS/spores/DESIGN-runtime-description.md` for the full design conversa
 
 Artifacts are versioned markdown blobs — the agent's durable output store for a project.
 
-**On-disk layout** (inside `.spores/artifacts/`):
+**On-disk layout** (inside `.agentic/artifacts/`):
 
 ```
-.spores/artifacts/<ulid>/meta.json    — ArtifactRecord (type, title, version, locked, tags, …)
-.spores/artifacts/<ulid>/v1.md        — body at version 1
-.spores/artifacts/<ulid>/v2.md        — body at version 2 (iterate write)
+.agentic/artifacts/<ulid>/meta.json    — ArtifactRecord (type, title, version, locked, tags, …)
+.agentic/artifacts/<ulid>/v1.md        — body at version 1
+.agentic/artifacts/<ulid>/v2.md        — body at version 2 (iterate write)
 ```
 
-`body_ref` in `meta.json` is relative to `.spores/artifacts/` — e.g. `"<id>/v2.md"`.
+`body_ref` in `meta.json` is relative to `.agentic/artifacts/` — e.g. `"<id>/v2.md"`.
+Legacy: `.spores/artifacts/` is used when `.agentic/artifacts/` does not exist.
 
 **Write modes:**
 
@@ -176,25 +184,25 @@ Artifacts are versioned markdown blobs — the agent's durable output store for 
 
 ```bash
 # Create
-spores artifact create brief "## Q2 Launch\n\nTBD." --title "Q2 Brief" --tags "q2,launch"
+agentic artifact create brief "## Q2 Launch\n\nTBD." --title "Q2 Brief" --tags "q2,launch"
 
 # Read (pipe-friendly — raw body to stdout in human mode, JSON with --json)
-spores artifact read 01JXYZ... | pbcopy
+agentic artifact read 01JXYZ... | pbcopy
 
 # Iterate
-spores artifact write 01JXYZ... "## Q2 Launch\n\nUpdated content." --mode iterate
+agentic artifact write 01JXYZ... "## Q2 Launch\n\nUpdated content." --mode iterate
 
 # Targeted edit
-spores artifact edit 01JXYZ... --old "TBD." --new "Final copy."
+agentic artifact edit 01JXYZ... --old "TBD." --new "Final copy."
 
 # Inspect metadata
-spores artifact inspect 01JXYZ... --json
+agentic artifact inspect 01JXYZ... --json
 
 # List with filter
-spores artifact list --type brief --json
+agentic artifact list --type brief --json
 
 # Lock the final version
-spores artifact lock 01JXYZ...
+agentic artifact lock 01JXYZ...
 ```
 
 **Hook events:**
