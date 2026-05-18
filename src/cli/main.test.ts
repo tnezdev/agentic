@@ -39,13 +39,13 @@ describe("CLI", () => {
   it("shows usage with no args", async () => {
     const { stdout, exitCode } = await run()
     expect(exitCode).toBe(0)
-    expect(stdout).toContain("Usage: spores")
+    expect(stdout).toContain("Usage: agentic")
   })
 
   it("shows usage with --help", async () => {
     const { stdout, exitCode } = await run("--help")
     expect(exitCode).toBe(0)
-    expect(stdout).toContain("Usage: spores")
+    expect(stdout).toContain("Usage: agentic")
   })
 
   it("exits 1 on unknown command", async () => {

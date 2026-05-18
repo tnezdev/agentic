@@ -131,7 +131,8 @@ const commands: Record<string, Command> = {
   wake: wakeCommand,
 }
 
-const USAGE = `Usage: spores <command> [args] [flags]
+const USAGE = `Usage: agentic <command> [args] [flags]
+       spores  <command> [args] [flags]    (compatibility alias)
 
 Commands:
   init                                Scaffold .spores/ directory
