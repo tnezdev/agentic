@@ -35,6 +35,7 @@ import type {
   ArtifactEditedOutput,
   ArtifactLockedOutput,
   ArtifactInspectedOutput,
+  CapabilityDef,
 } from "../types.js"
 
 
@@ -529,4 +530,84 @@ export function formatArtifactList(refs: ArtifactRef[]): string {
       r.locked ? "yes" : "no",
     ]),
   )
+}
+
+// ---------------------------------------------------------------------------
+// Capability formatters
+// ---------------------------------------------------------------------------
+
+/**
+ * Structured result from `capability validate`. Defined here (not in
+ * capability.ts) to avoid a circular import: the formatter must reference
+ * this type and capability.ts imports from format.ts.
+ */
+export type CapabilityValidateResult =
+  | { subject: string; valid: true; capability: CapabilityDef }
+  | { subject: string; valid: false; errors: { field: string; message: string }[] }
+
+/** Human formatter for `capability list`. */
+export function formatCapabilityDefs(defs: CapabilityDef[], wide = false): string {
+  if (defs.length === 0) return "No capabilities found."
+  return table(
+    ["NAME", "DESCRIPTION", "EFFECTS"],
+    defs.map((d) => {
+      const effects = d.policy?.effects?.join(", ") ?? ""
+      const desc = d.description ?? ""
+      return [d.name, wide ? desc : trunc(desc), effects]
+    }),
+  )
+}
+
+/** Human formatter for `capability show`. */
+export function formatCapabilityDef(def: CapabilityDef): string {
+  const lines: string[] = []
+  lines.push(def.name)
+  if (def.description !== undefined) lines.push(`  ${def.description}`)
+  if (def.skill !== undefined) lines.push(`  skill: ${def.skill}`)
+  const conns = def.requires?.connections
+  if (conns !== undefined && conns.length > 0) {
+    lines.push("  requires:")
+    lines.push("    connections:")
+    for (const c of conns) {
+      lines.push(`      - provider: ${c.provider}  capabilities: ${c.capabilities.join(", ")}`)
+    }
+  }
+  const policy = def.policy
+  if (policy !== undefined) {
+    lines.push("  policy:")
+    if (policy.effects !== undefined && policy.effects.length > 0) {
+      lines.push(`    effects: ${policy.effects.join(", ")}`)
+    }
+    if (policy.tools !== undefined && policy.tools.length > 0) {
+      lines.push(`    tools: ${policy.tools.join(", ")}`)
+    }
+    if (policy.approval !== undefined) {
+      lines.push(`    approval:`)
+      lines.push(`      mode: ${policy.approval.mode}`)
+      lines.push(`      required_for: ${policy.approval.required_for.join(", ")}`)
+    }
+    if (policy.dispatch !== undefined) {
+      lines.push(`    dispatch: ${JSON.stringify(policy.dispatch)}`)
+    }
+  }
+  const artifacts = def.artifacts
+  if (artifacts !== undefined) {
+    lines.push("  artifacts:")
+    if (artifacts.reads !== undefined && artifacts.reads.length > 0) {
+      lines.push(`    reads: ${artifacts.reads.join(", ")}`)
+    }
+    if (artifacts.writes !== undefined && artifacts.writes.length > 0) {
+      lines.push(`    writes: ${artifacts.writes.join(", ")}`)
+    }
+  }
+  return lines.join("\n")
+}
+
+/** Human formatter for `capability validate`. */
+export function formatCapabilityValidate(result: CapabilityValidateResult): string {
+  if (result.valid) {
+    return `${result.subject}: valid`
+  }
+  const errorLines = result.errors.map((e) => `  ${e.field}: ${e.message}`)
+  return [`${result.subject}: invalid`, ...errorLines].join("\n")
 }
