@@ -123,6 +123,12 @@ export {
   capabilityMatchesDispatch,
   capabilityRequiresApprovalFor,
 } from "./capability/helpers.js"
+export {
+  listCapabilitiesFromSource,
+  loadCapabilityFromSource,
+  listCapabilities,
+  loadCapability,
+} from "./capability/filesystem.js"
 
 export { fireHook } from "./hooks/fire.js"
 
