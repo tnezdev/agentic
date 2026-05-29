@@ -54,6 +54,11 @@ import {
   artifactListCommand,
   artifactLockCommand,
 } from "./commands/artifact.js"
+import {
+  capabilityListCommand,
+  capabilityShowCommand,
+  capabilityValidateCommand,
+} from "./commands/capability.js"
 
 type Parsed = {
   positional: string[]
@@ -128,6 +133,9 @@ const commands: Record<string, Command> = {
   "artifact inspect": artifactInspectCommand,
   "artifact list": artifactListCommand,
   "artifact lock": artifactLockCommand,
+  "capability list": capabilityListCommand,
+  "capability show": capabilityShowCommand,
+  "capability validate": capabilityValidateCommand,
   wake: wakeCommand,
 }
 
@@ -177,6 +185,10 @@ Commands:
   artifact inspect <id>               Show artifact metadata
   artifact list                       List artifacts (filter with flags)
   artifact lock <id>                  Lock an artifact (append-only)
+
+  capability list                     List available capabilities
+  capability show <name>              Show capability declaration details
+  capability validate <name-or-file>  Validate a capability by name or file path
 
   wake                                Session bootstrap — identity, environment, personas
 
