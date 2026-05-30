@@ -146,7 +146,7 @@ describe("catalog: declarations validate", () => {
 
   it("malformed JSON from source is skipped by listCapabilitiesFromSource", async () => {
     const source = new InMemorySource({
-      "good_cap": FIXTURES["web.search"],
+      "good_cap": FIXTURES["web.search"]!,
       "bad_json": "{ not valid json",
     })
     const caps = await listCapabilitiesFromSource(source)
