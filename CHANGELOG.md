@@ -1,10 +1,10 @@
 # Changelog
 
-All notable changes to `@tnezdev/spores`. Format follows [Keep a Changelog](https://keepachangelog.com/). Versioning follows [semver](https://semver.org/).
+All notable changes to `@tnezdev/agentic` (formerly `@tnezdev/spores`). Format follows [Keep a Changelog](https://keepachangelog.com/). Versioning follows [semver](https://semver.org/).
 
-## Unreleased — Rename to Agentic (migration window)
+## Unreleased — Agentic package identity
 
-The package is migrating from `spores` → `agentic`. This section tracks the compatibility changes landing before the final rename release. All changes are backward-compatible — existing `.spores/`, `spores` CLI, `SporesConfig`, and `SPORES_*` env vars continue to work throughout the migration window.
+The package identity is moving from `@tnezdev/spores` to `@tnezdev/agentic`. All compatibility behavior remains: existing `.spores/`, `spores` CLI, `SporesConfig`, and `SPORES_*` env vars continue to work throughout the migration window.
 
 ### Added
 
@@ -16,6 +16,7 @@ The package is migrating from `spores` → `agentic`. This section tracks the co
 - **`AGENTIC_*` hook environment variables.** `AGENTIC_EVENT` and `AGENTIC_BIN` are injected alongside `SPORES_EVENT` and `SPORES_BIN`. Every caller-provided `SPORES_*` key receives an `AGENTIC_*` mirror automatically, and vice versa — existing hook scripts work without edits. (#64)
 - **`AGENTIC_HOOKS_DIR` override** — accepted alongside `SPORES_HOOKS_DIR`. (#64)
 - **`.agentic/` dogfood directory** — the repo now dogfoods `.agentic/` as its primary project directory; `.spores/` is preserved during the compatibility window. (#65)
+- **`@tnezdev/agentic` package identity** — `package.json`, registry checks, and install/import examples now use the Agentic package name. (#62)
 
 ### Migration notes
 
@@ -27,6 +28,7 @@ The package is migrating from `spores` → `agentic`. This section tracks the co
 | `SporesUri` / `spores://` | `AgenticUri` / `agentic://` |
 | `SPORES_EVENT`, `SPORES_BIN` | `AGENTIC_EVENT`, `AGENTIC_BIN` (both injected) |
 | `~/.spores/` | `~/.agentic/` |
+| `@tnezdev/spores` | `@tnezdev/agentic` |
 
 Run `agentic init` in any new project to scaffold `.agentic/` directly.
 

@@ -2,7 +2,7 @@
 
 **Read this first. Then do the three things.**
 
-This repo dogfoods its own toolbelt. When you work on `@tnezdev/spores`, you use spores. Not because it's clever — because if the tool isn't good enough for us to use on its own source, it isn't good enough to ship.
+This repo dogfoods its own toolbelt. When you work on `@tnezdev/agentic`, you use spores. Not because it's clever — because if the tool isn't good enough for us to use on its own source, it isn't good enough to ship.
 
 ## The three-command on-ramp
 

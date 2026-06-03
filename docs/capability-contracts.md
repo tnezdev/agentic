@@ -239,7 +239,7 @@ After reading a declaration from any source (file, API, registry), pass it throu
 `validateCapability` before using it:
 
 ```typescript
-import { validateCapability } from "@tnezdev/spores"
+import { validateCapability } from "@tnezdev/agentic"
 
 const result = validateCapability(raw)
 if (!result.valid) {
@@ -258,7 +258,7 @@ make network calls, resolve credentials, or check whether a provider is reachabl
 Before running any capability, check whether the inbound context is permitted:
 
 ```typescript
-import { capabilityMatchesDispatch } from "@tnezdev/spores"
+import { capabilityMatchesDispatch } from "@tnezdev/agentic"
 
 if (!capabilityMatchesDispatch(def, inboundDispatch)) {
   return { error: "dispatch_not_allowed" }
@@ -292,7 +292,7 @@ portable declaration.
 Before allowing a tool execution, verify the capability declares the corresponding effect:
 
 ```typescript
-import { capabilityAllowsEffect, capabilityAllowsTool } from "@tnezdev/spores"
+import { capabilityAllowsEffect, capabilityAllowsTool } from "@tnezdev/agentic"
 
 if (!capabilityAllowsTool(def, toolName)) {
   return { error: "tool_not_allowed" }
@@ -307,7 +307,7 @@ if (!capabilityAllowsEffect(def, requiredEffect)) {
 Check whether human approval is required before permitting an effect to execute:
 
 ```typescript
-import { capabilityRequiresApprovalFor } from "@tnezdev/spores"
+import { capabilityRequiresApprovalFor } from "@tnezdev/agentic"
 
 if (capabilityRequiresApprovalFor(def, "external.write")) {
   const approved = await host.requestApproval(def, turn)

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Pre-publish smoke test for @tnezdev/spores
+# Pre-publish smoke test for @tnezdev/agentic
 #
 # Validates that the npm-packed tarball is consumable by Bun:
 #   1. npm pack → tarball

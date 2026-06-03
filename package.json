@@ -1,12 +1,12 @@
 {
-  "name": "@tnezdev/spores",
+  "name": "@tnezdev/agentic",
   "version": "0.4.1",
   "description": "Executable toolbelt for agent self-improvement",
   "license": "MIT",
   "type": "module",
   "repository": {
     "type": "git",
-    "url": "https://github.com/tnezdev/spores"
+    "url": "https://github.com/tnezdev/agentic"
   },
   "author": "Travis Nesland",
   "publishConfig": {

@@ -1,7 +1,7 @@
 {
   "id": "spores-release",
-  "name": "Spores release cut",
-  "description": "CI-gated release flow for @tnezdev/spores — land version bump on main, push tag, let publish.yml ship via OIDC trusted publishing",
+  "name": "Agentic release cut",
+  "description": "CI-gated release flow for @tnezdev/agentic — land version bump on main, push tag, let publish.yml ship via OIDC trusted publishing",
   "version": "2.0",
   "nodes": [
     {
@@ -31,7 +31,7 @@
     {
       "id": "verify-registry",
       "label": "Verify registry + provenance",
-      "description": "npm view @tnezdev/spores version matches tag; run 'bash scripts/post-publish-check.sh <version>' to verify consumer install from registry; check npmjs.com page for 'Built and signed on GitHub Actions' provenance badge",
+      "description": "npm view @tnezdev/agentic version matches tag; run 'bash scripts/post-publish-check.sh <version>' to verify consumer install from registry; check npmjs.com page for 'Built and signed on GitHub Actions' provenance badge",
       "artifact_type": "registry-check"
     }
   ],

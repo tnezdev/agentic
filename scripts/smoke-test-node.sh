@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Node smoke test for @tnezdev/spores
+# Node smoke test for @tnezdev/agentic
 #
 # Validates that the npm-packed tarball is consumable by Node.js (the
 # Bun-only constraint we lifted in #32). Mirrors smoke-test.sh but runs

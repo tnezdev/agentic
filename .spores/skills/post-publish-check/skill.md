@@ -6,7 +6,7 @@ tags: [spores, release, npm, testing]
 
 # Post-publish check
 
-Validates that `@tnezdev/spores` is consumable when installed from the npm registry. This is the safety net that catches registry-specific issues (missing files, bad `exports` map, propagation problems) that the pre-publish smoke test can't.
+Validates that `@tnezdev/agentic` is consumable when installed from the npm registry. This is the safety net that catches registry-specific issues (missing files, bad `exports` map, propagation problems) that the pre-publish smoke test can't.
 
 ## Run it
 
@@ -20,7 +20,7 @@ bash scripts/post-publish-check.sh [version]
 ## What it does
 
 1. Creates a temp consumer project
-2. Installs `@tnezdev/spores@<version>` from the npm registry via `bun add`
+2. Installs `@tnezdev/agentic@<version>` from the npm registry via `bun add`
 3. Prints the installed version
 4. Runs `scripts/smoke-consumer.ts` — the same export checks used by the pre-publish smoke test
 

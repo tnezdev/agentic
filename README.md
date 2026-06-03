@@ -1,14 +1,14 @@
-# @tnezdev/spores → becoming `@tnezdev/agentic`
+# @tnezdev/agentic
 
-> **Rename in progress.** The package is migrating from `spores` to `agentic`. During the compatibility window both names work. New code should use `agentic`, `.agentic/`, and `AGENTIC_*`.
+> **Compatibility window.** This package was formerly `@tnezdev/spores`. New code should use `@tnezdev/agentic`, `agentic`, `.agentic/`, and `AGENTIC_*`. The `spores` CLI alias, `.spores/`, and `SPORES_*` remain supported during migration.
 
 Executable toolbelt for agent self-improvement. Five in-loop primitives — memory, skills, workflow, tasks, and persona — with zero production dependencies, built for Bun.
 
 ## Install
 
 ```bash
-npm install @tnezdev/spores
-# or: bun add @tnezdev/spores
+npm install @tnezdev/agentic
+# or: bun add @tnezdev/agentic
 ```
 
 ## Quick start

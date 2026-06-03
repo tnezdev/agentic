@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Post-publish validation for @tnezdev/spores
+# Post-publish validation for @tnezdev/agentic
 #
 # Installs the package from the npm registry (not a local tarball) and
 # verifies it loads under Bun. Use this after a release to confirm the
@@ -16,7 +16,7 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 VERSION="${1:-latest}"
-PKG="@tnezdev/spores@${VERSION}"
+PKG="@tnezdev/agentic@${VERSION}"
 
 TMPDIR_BASE="$(mktemp -d)"
 trap 'rm -rf "$TMPDIR_BASE"' EXIT
@@ -30,7 +30,7 @@ PKG_JSON
 echo "==> Installing ${PKG} from registry..."
 (cd "$CONSUMER" && bun add "$PKG" 2>&1)
 
-INSTALLED=$(cd "$CONSUMER" && bun -e "const p = require('./node_modules/@tnezdev/spores/package.json'); console.log(p.version)")
+INSTALLED=$(cd "$CONSUMER" && bun -e "const p = require('./node_modules/@tnezdev/agentic/package.json'); console.log(p.version)")
 echo "    Installed version: ${INSTALLED}"
 
 echo "==> Running consumer script under Bun..."

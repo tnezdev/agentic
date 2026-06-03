@@ -6,7 +6,7 @@ tags: [spores, release, npm, testing]
 
 # Pre-publish smoke test
 
-Validates that `@tnezdev/spores` is consumable from an `npm pack` tarball under Bun. This catches packaging issues (missing files, broken imports, wrong entry point) before a release tag is pushed.
+Validates that `@tnezdev/agentic` is consumable from an `npm pack` tarball under Bun. This catches packaging issues (missing files, broken imports, wrong entry point) before a release tag is pushed.
 
 ## Run it
 

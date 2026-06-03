@@ -1,14 +1,16 @@
 ---
 name: release-check
-description: Activate when cutting a new @tnezdev/spores release — the CI-gated checklist for landing a version bump and triggering the tag publish
+description: Activate when cutting a new @tnezdev/agentic release — the CI-gated checklist for landing a version bump and triggering the tag publish
 tags: [spores, release, npm, ci]
 ---
 
-# Release check — @tnezdev/spores
+# Release check — @tnezdev/agentic
 
 Releases are **CI-gated**. You don't run `npm publish`; you push a `vX.Y.Z` tag and `.github/workflows/publish.yml` does the rest via npm Trusted Publishing (OIDC). Your job is to land a clean version bump on `main` and hand the tag to CI.
 
 **The gate is CI. Do not publish locally.** There is no `NPM_TOKEN`; there is no path for a local `npm publish` to succeed. If you find yourself typing it, stop.
+
+**First Agentic publish gate:** before the first `@tnezdev/agentic` release, verify npm Trusted Publishing is configured for `@tnezdev/agentic` against this repo and `.github/workflows/publish.yml`. The old `@tnezdev/spores` trusted publisher registration does not automatically cover the new package name.
 
 ## 1. Land the version bump on main
 
@@ -57,12 +59,12 @@ If the workflow fails:
 
 - **Do not delete the tag as a first move.** Investigate in the logs; most failures (flaky install, transient registry) are retryable via `gh run rerun`.
 - If the failure is real (bad code landed, version bump wrong), fix forward on `main` with a new patch version — `vX.Y.(Z+1)` — and a new tag. A published version is immutable; don't chase the old number.
-- Only delete-and-retag if the tag was pushed to the wrong commit *and nothing published*. Confirm with `npm view @tnezdev/spores versions` before retagging.
+- Only delete-and-retag if the tag was pushed to the wrong commit *and nothing published*. Confirm with `npm view @tnezdev/agentic versions` before retagging.
 
 ## 5. Verify the registry
 
 ```bash
-npm view @tnezdev/spores version
+npm view @tnezdev/agentic version
 bash scripts/post-publish-check.sh X.Y.Z
 ```
 
@@ -70,7 +72,7 @@ bash scripts/post-publish-check.sh X.Y.Z
 
 Then run the post-publish check — it installs the package from the registry in a temp dir and verifies all public API exports load under Bun. Pass the explicit version since `latest` may not have propagated yet.
 
-Also spot-check provenance on https://www.npmjs.com/package/@tnezdev/spores — the published version should show a "Built and signed on GitHub Actions" badge linking back to the workflow run. That badge is the whole point of OIDC; its absence means provenance attestation didn't attach and is worth investigating.
+Also spot-check provenance on https://www.npmjs.com/package/@tnezdev/agentic — the published version should show a "Built and signed on GitHub Actions" badge linking back to the workflow run. That badge is the whole point of OIDC; its absence means provenance attestation didn't attach and is worth investigating.
 
 ## On failure — general rule
 

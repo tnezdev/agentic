@@ -4,7 +4,7 @@ import type { Command } from "../main.js"
 import { output } from "../main.js"
 
 const DEFAULT_CONFIG = `# Agentic configuration
-# See: https://github.com/tnezdev/spores
+# See: https://github.com/tnezdev/agentic
 
 adapter = "filesystem"
 

@@ -1,6 +1,6 @@
 {
   "key": "repo-identity",
-  "content": "This repo publishes to npm as @tnezdev/spores. Zero production dependencies is a hard rule.",
+  "content": "This repo publishes to npm as @tnezdev/agentic. The former @tnezdev/spores identity is legacy compatibility. Zero production dependencies is a hard rule.",
   "weight": 0.9,
   "confidence": 1,
   "tier": "L1",

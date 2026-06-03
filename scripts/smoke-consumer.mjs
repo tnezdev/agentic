@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Plain-JS smoke consumer — validates `@tnezdev/spores` is importable and
+ * Plain-JS smoke consumer — validates `@tnezdev/agentic` is importable and
  * its public-API value exports are real functions/constructors. Same checks
  * as smoke-consumer.ts, but compiled-free so it runs identically under
  * Bun and Node.
@@ -17,7 +17,7 @@ if (!consumerDir) {
 }
 
 const require = createRequire(`${consumerDir}/`)
-const pkgName = "@tnezdev/spores"
+const pkgName = "@tnezdev/agentic"
 const mod = await import(require.resolve(pkgName))
 
 const errors = []

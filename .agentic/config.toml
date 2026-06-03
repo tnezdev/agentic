@@ -1,5 +1,5 @@
 # Agentic configuration
-# See: https://github.com/tnezdev/spores
+# See: https://github.com/tnezdev/agentic
 
 adapter = "filesystem"
 

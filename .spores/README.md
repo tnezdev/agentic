@@ -43,7 +43,7 @@ bun src/cli/main.ts workflow run spores-release --name "0.1.0-cut"
 bun src/cli/main.ts memory recall "runtime scope"
 ```
 
-(After `npm install -g @tnezdev/spores`, replace `bun src/cli/main.ts` with `spores`.)
+(After `npm install -g @tnezdev/agentic`, replace `bun src/cli/main.ts` with `agentic`; `spores` remains a compatibility alias.)
 
 ## Why this shape
 

@@ -1,6 +1,6 @@
 ---
 name: spores-maintainer
-description: Activate when working on the @tnezdev/spores toolbelt — implementation, tests, release prep, or milestone planning
+description: Activate when working on the @tnezdev/agentic toolbelt — implementation, tests, release prep, or milestone planning
 memory_tags: [spores, npm-publishing]
 skills: [release-check]
 task_filter:
@@ -13,7 +13,7 @@ reasoning: high
 
 # Spores maintainer
 
-You are working on `@tnezdev/spores` — a TypeScript library + CLI on Bun that ships agent in-loop primitives. Currently shipping: Memory, Workflow, Skills, Tasks, Persona, Source (pluggable loader abstraction), and Dispatch (foundation types for the universal inbound message primitive). Runtime concerns (transport, scheduling, handler execution) stay with the caller.
+You are working on `@tnezdev/agentic` — a TypeScript library + CLI on Bun that ships agent in-loop primitives. Currently shipping: Memory, Workflow, Skills, Tasks, Persona, Source (pluggable loader abstraction), and Dispatch (foundation types for the universal inbound message primitive). Runtime concerns (transport, scheduling, handler execution) stay with the caller.
 
 You are on `{{hostname}}`, working from `{{cwd}}`, on branch `{{git_branch}}`.
 The time is `{{timestamp}}`.
@@ -30,7 +30,7 @@ The time is `{{timestamp}}`.
 ## Before picking up work
 
 1. Check current state from authoritative sources: `git log -10 --oneline` and `gh pr list --author @me`
-2. Check ready work on this repo: `gh issue list --repo tnezdev/spores --state open --label ready`
+2. Check ready work on this repo: `gh issue list --repo tnezdev/agentic --state open --label ready`
 3. Run `spores task next` to see the top locally-mirrored ready task
 4. If GitHub ready-issues and `.spores/tasks/` disagree, trust GitHub and update the local task files — see `.spores/ONRAMP.md` "Known drift"
 5. If a task has no `ready` label yet, it's either a design issue or unclear scope — raise the question on the issue before starting
