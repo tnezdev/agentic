@@ -10,7 +10,7 @@ Releases are **CI-gated**. You don't run `npm publish`; you push a `vX.Y.Z` tag 
 
 **The gate is CI. Do not publish locally.** There is no `NPM_TOKEN`; there is no path for a local `npm publish` to succeed. If you find yourself typing it, stop.
 
-**First Agentic publish gate:** before the first `@tnezdev/agentic` release, verify npm Trusted Publishing is configured for `@tnezdev/agentic` against this repo and `.github/workflows/publish.yml`. The old `@tnezdev/spores` trusted publisher registration does not automatically cover the new package name.
+**First Agentic publish gate:** before the first CI-published `@tnezdev/agentic` release, verify npm Trusted Publishing is configured for `@tnezdev/agentic` against this repo and `.github/workflows/publish.yml`. The old `@tnezdev/spores` trusted publisher registration does not automatically cover the new package name. If npm requires a one-time local bootstrap publish before Trusted Publishing can be configured, publish without provenance; CI adds provenance explicitly after the trusted publisher exists.
 
 ## 1. Land the version bump on main
 

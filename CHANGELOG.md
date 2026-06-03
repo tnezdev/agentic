@@ -17,6 +17,7 @@ The package identity is moving from `@tnezdev/spores` to `@tnezdev/agentic`. All
 - **`AGENTIC_HOOKS_DIR` override** — accepted alongside `SPORES_HOOKS_DIR`. (#64)
 - **`.agentic/` dogfood directory** — the repo now dogfoods `.agentic/` as its primary project directory; `.spores/` is preserved during the compatibility window. (#65)
 - **`@tnezdev/agentic` package identity** — `package.json`, registry checks, and install/import examples now use the Agentic package name. (#62)
+- **Compiled CLI bins.** The `agentic` and `spores` package binaries now point at built JavaScript in `dist/cli/main.js` instead of TypeScript source, so npm keeps the bin entries during publish. (#62)
 
 ### Migration notes
 
@@ -51,7 +52,7 @@ The Workers/Node release. Lifts the Bun-only constraint and ships three new `Sou
 
 ### Notes
 
-- The CLI bin entry (`bin: ./src/cli/main.ts`) remains Bun-only. CLI changes are out of scope; library consumption is the priority.
+- At this point in the migration history, the CLI bin entry still pointed at TypeScript source and remained Bun-only. Later migration work moved package bins to built JavaScript.
 - `fireHook` and `wake/resolve` internally use `Bun.spawn`. The modules import cleanly on Node, but invoking these specific functions on Node fails at runtime. Migration to `node:child_process` is deferred — Workers can't run child processes regardless of API choice.
 - Compass on Workers: `FlatFileSource` and `NestedFileSource` (which use `node:fs`) won't work; use `R2BucketSource` / `KvSource` / `HttpSource` instead. Pure pieces (`InMemorySource`, `LayeredSource`, `matchDispatch`, `activatePersona`, parsers, all types) port cleanly.
 

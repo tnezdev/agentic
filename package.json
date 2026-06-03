@@ -6,12 +6,11 @@
   "type": "module",
   "repository": {
     "type": "git",
-    "url": "https://github.com/tnezdev/agentic"
+    "url": "git+https://github.com/tnezdev/agentic.git"
   },
   "author": "Travis Nesland",
   "publishConfig": {
-    "access": "public",
-    "provenance": true
+    "access": "public"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -22,20 +21,18 @@
     }
   },
   "bin": {
-    "agentic": "./src/cli/main.ts",
-    "spores": "./src/cli/main.ts"
+    "agentic": "dist/cli/main.js",
+    "spores": "dist/cli/main.js"
   },
   "files": [
     "dist/**/*.js",
     "dist/**/*.d.ts",
     "dist/**/*.map",
-    "src/cli/**/*.ts",
-    "!src/cli/**/*.test.ts",
     "AGENTS.md",
     "CHANGELOG.md"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc -p tsconfig.build.json && chmod 755 dist/cli/main.js",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
     "prepack": "bun run build"
