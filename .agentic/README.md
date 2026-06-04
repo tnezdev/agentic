@@ -1,6 +1,6 @@
 # .agentic/ — dogfood example
 
-This directory is the **v0.1 release-gate smoke test** (#10). If we can't use agentic to build agentic, v0.1 isn't ready to ship.
+This directory is the project dogfood workspace. If we can't use Agentic to build Agentic, the primitive shape needs work.
 
 Every file here is exercised by the agentic CLI itself. Think of it as both the self-use and the working example that ships with the repo.
 
@@ -11,9 +11,9 @@ Every file here is exercised by the agentic CLI itself. Think of it as both the 
 | `config.toml` | (all) | Agentic config — `adapter = "filesystem"`, dirs for each primitive |
 | `personas/spores-maintainer.md` | persona | The hat to wear when working on this codebase. Real principles, real activation triggers, real situational tokens |
 | `skills/release-check/skill.md` | skill | The pre-release checklist. Piped into the agent before cutting a new version |
-| `workflows/spores-release.json` | workflow | 9-node release graph: verify-clean → run-tests → typecheck → dep-audit → pack-dry-run → version-bump → tag-push → publish → verify-published |
+| `workflows/agentic-release.json` | workflow | CI-gated release graph: release PR → sync main → push tag → watch publish.yml → verify registry/provenance |
 | `memory/*.json` | memory | Durable facts about this repo (npm package name, zero-deps rule, v0.1 runtime-scoping decision) |
-| `tasks/*.json` | task | Real v0.1 tasks — dogfood verification, release cut, v0.2 composition design |
+| `tasks/*.json` | task | Real mirrored tasks — dogfood verification, release cut, v0.2 composition design |
 | `runs/` | workflow | Ephemeral per-run state. **gitignored.** |
 
 ## How to use
@@ -37,7 +37,7 @@ bun src/cli/main.ts skill run release-check
 bun src/cli/main.ts task next
 
 # Kick off a release run
-bun src/cli/main.ts workflow run spores-release --name "0.1.0-cut"
+bun src/cli/main.ts workflow run agentic-release --name "0.5.0-cut"
 
 # Query memories when you need the "why"
 bun src/cli/main.ts memory recall "runtime scope"
@@ -50,7 +50,7 @@ bun src/cli/main.ts memory recall "runtime scope"
 - **The persona reads like something a human would actually write for themselves.** Not a label, not a role — a set of non-negotiables and a "before you start" checklist. If it feels forced, the primitive isn't pulling its weight.
 - **Skills are agent-facing work product.** `release-check` is not documentation *about* releasing — it's the actual pipeline an agent follows, with verification commands inline.
 - **Memories are non-obvious durable facts**, not restatements of what `git log` already tells you. "Zero production dependencies is a hard rule" is worth remembering because the code alone doesn't say why.
-- **Tasks are the real backlog**, not fake examples. The three seeded here are the literal next moves on the v0.1 milestone.
+- **Tasks are the real backlog**, not fake examples. Keep them in sync with GitHub ready issues when dogfooding exposes drift.
 - **The workflow is a real process**, not a toy DAG. Every node corresponds to a command someone actually runs at release time.
 
 ## What this dogfood validated

@@ -2,7 +2,7 @@
 /**
  * Plain-JS smoke consumer — validates `@tnezdev/agentic` is importable and
  * its public-API value exports are real functions/constructors. Same checks
- * as smoke-consumer.ts, but compiled-free so it runs identically under
+ * as the old TypeScript smoke consumer, but compiled-free so it runs identically under
  * Bun and Node.
  *
  * Usage: node scripts/smoke-consumer.mjs <consumer-dir>

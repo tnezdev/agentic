@@ -42,7 +42,7 @@ The CI-gated release checklist. Your job is to land a `chore: release vX.Y.Z` PR
 | Current task you're working | `.agentic/tasks/*.json` (manually mirrored from GH) | Exercised by `agentic task next` as part of the dogfood |
 | Durable non-obvious facts | `.agentic/memory/*.json` | "Why" that isn't in the code |
 | Values and in-turn orientation | `.agentic/personas/spores-maintainer.md` | What you prioritize while wearing the hat |
-| Release procedure | `.agentic/skills/release-check/skill.md` + `.agentic/workflows/spores-release.json` | CI-gated via `.github/workflows/publish.yml` (OIDC) |
+| Release procedure | `.agentic/skills/release-check/skill.md` + `.agentic/workflows/agentic-release.json` | CI-gated via `.github/workflows/publish.yml` (OIDC) |
 
 When two sources disagree, trust git and GitHub. Update the dogfood to match — that's the "dogfood as operational workspace, not curated fixture" stance.
 
@@ -54,7 +54,7 @@ This section is a living punch list. If you fix something, delete the bullet.
 
 - **`tasks/` sync with GitHub issues is manual.** When you add a ready issue, seed a matching task file. When you close a GH issue, mark the task done. This is a bandaid — the real fix is a TaskAdapter that reads from GitHub issues directly (filed as a v0.2+ issue). Until then, keep them in hand-sync.
 
-- **The persona's task filter is not applied by any CLI verb.** This is the known v0.2 composition-object seam from tnezdev/spores#16. `task next` returns the highest-ULID ready task regardless of the maintainer persona's `task_filter: { tags: [spores] }`. It's the exact design signal #16 was filed to track. Don't work around it in CLI code.
+- **The persona's task filter is not applied by any CLI verb.** This is the known v0.2 composition-object seam from tnezdev/agentic#16. `task next` returns the highest-ULID ready task regardless of the maintainer persona's `task_filter: { tags: [spores] }`. It's the exact design signal #16 was filed to track. Don't work around it in CLI code.
 
 ## How to treat this doc
 
