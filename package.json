@@ -1,6 +1,6 @@
 {
   "name": "@tnezdev/agentic",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "description": "Executable toolbelt for agent self-improvement",
   "license": "MIT",
   "type": "module",

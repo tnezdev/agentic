@@ -2,7 +2,7 @@
 
 All notable changes to `@tnezdev/agentic` (formerly `@tnezdev/spores`). Format follows [Keep a Changelog](https://keepachangelog.com/). Versioning follows [semver](https://semver.org/).
 
-## Unreleased — Agentic package identity
+## 0.5.0 — 2026-06-04
 
 The package identity is moving from `@tnezdev/spores` to `@tnezdev/agentic`. All compatibility behavior remains: existing `.spores/`, `spores` CLI, `SporesConfig`, and `SPORES_*` env vars continue to work throughout the migration window.
 
@@ -18,6 +18,24 @@ The package identity is moving from `@tnezdev/spores` to `@tnezdev/agentic`. All
 - **`.agentic/` dogfood directory** — the repo now dogfoods `.agentic/` as its primary project directory; `.spores/` is preserved during the compatibility window. (#65)
 - **`@tnezdev/agentic` package identity** — `package.json`, registry checks, and install/import examples now use the Agentic package name. (#62)
 - **Compiled CLI bins.** The `agentic` and `spores` package binaries now point at built JavaScript in `dist/cli/main.js` instead of TypeScript source, so npm keeps the bin entries during publish. (#62)
+- **Artifact primitive.** `ArtifactAdapter` and `FilesystemArtifactAdapter` provide versioned markdown artifacts with create/read/write/edit/list/inspect/finalize CLI commands. Artifacts are the durable place for briefs, reports, plans, and other agent work product. (#52, #55)
+- **Workflow artifact contracts.** Workflow nodes can declare structured artifact output requirements instead of a flat `artifact_type` string. (#50)
+- **YAML workflow graph definitions.** Workflow graphs can now be parsed from YAML as well as JSON. (#47)
+- **Workflow graph version pinning.** New runs pin to the graph version current at creation time, so later graph edits do not change the meaning of in-flight runs. Legacy runs without `graph_version` continue to resolve against the current graph. (#49)
+- **Portable capability contracts.** Agentic now has public capability declaration types, pure validation and policy helpers, Source-backed capability loading, neutral fixtures, host guidance, and `capability list/show/validate` CLI commands. (#58, #69, #70, #71, #72, #73, #74, #75)
+- **Lifecycle event vocabulary.** Primitive operations now have exported semantic event constants/types separate from local hook execution and host dispatch behavior. (#89)
+
+### Changed
+
+- **Artifact finalization terminology.** Artifact read-only state now uses `finalize/finalized` instead of `lock/locked`, including CLI command, persisted record field, hook event name, docs, and tests. (#91)
+- **README positioning.** The README now frames Agentic as a primitive layer for agent in-loop work rather than an app/runtime. (#87)
+- **Release dogfood.** The preferred release workflow is now `.agentic/workflows/agentic-release.json`; release checks cover both Bun and Node smoke tests plus npm provenance verification. (#95)
+
+### Fixed
+
+- `post-publish-check.sh` now uses `scripts/smoke-consumer.mjs` after the consumer script rename. (#46)
+- Package metadata supports the manual Agentic publish bootstrap path needed before Trusted Publishing can take over. (#67)
+- Tightened capability fixture tests under `noUncheckedIndexedAccess`. (#86)
 
 ### Migration notes
 
