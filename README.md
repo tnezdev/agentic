@@ -2,7 +2,25 @@
 
 > **Compatibility window.** This package was formerly `@tnezdev/spores`. New code should use `@tnezdev/agentic`, `agentic`, `.agentic/`, and `AGENTIC_*`. The `spores` CLI alias, `.spores/`, and `SPORES_*` remain supported during migration.
 
-Executable toolbelt for agent self-improvement. Five in-loop primitives — memory, skills, workflow, tasks, and persona — with zero production dependencies, built for Bun.
+**In-loop primitives for agents that run more than once.**
+
+Most agent tooling optimizes for the single prompt. Agentic optimizes for the agent that wakes up tomorrow — with memory, skills, workflows, tasks, and a persona that shape what it does next. It's the toolbelt inside the turn, not the runtime around it.
+
+Agentic is a primitive layer, not a host runtime. It gives your agent building blocks — store and recall memories, load skills, advance workflows, track tasks, activate personas — without owning scheduling, auth, transport, or execution. That's your daemon's job. Agentic just makes it easier to build.
+
+Zero production dependencies. Runs on Bun. Works from the CLI.
+
+## Why this exists
+
+Agents that run in production need more than a prompt and a model call. They need:
+
+- **Memory** that persists across sessions — not just a growing context window.
+- **Skills** that are loaded on demand, not baked into a system prompt.
+- **Workflows** that define multi-step processes with real state machines, not ad-hoc prompt chains.
+- **Tasks** that track commitments inside the loop, not just on an external board.
+- **Personas** that activate a coherent hat — memory tags, skill set, task filter, and rendered instructions — in one declaration.
+
+Agentic ships all five as filesystem-backed primitives your agent can reach for inside any turn. No hosting, no webhooks, no session layer required.
 
 ## Install
 
@@ -15,8 +33,7 @@ npm install @tnezdev/agentic
 
 ```bash
 # Scaffold .agentic/ directory in your project
-agentic init          # preferred
-spores init           # compatibility alias
+agentic init
 
 # Store a memory
 agentic memory remember "always emit types from the public API" --tags style,api
@@ -45,6 +62,18 @@ agentic persona activate spores-maintainer | llm --system -
 | **Persona** | Activate a "hat" at the start of a turn: memory tags, skills, task filter, workflow, and a rendered body with live situational facts |
 
 All five primitives read from `.agentic/` in your project root, with optional global overrides from `~/.agentic/`. Legacy `.spores/` and `~/.spores/` paths are honoured during the compatibility window when `.agentic/` is absent.
+
+## What Agentic is not
+
+Agentic is intentionally scoped. It does not ship:
+
+- Hosted sessions or transcript storage
+- Webhook receivers or background schedulers
+- Provider clients or credential management
+- Approval inboxes or auth flows
+- Platform-specific task adapters in core
+
+Those are host-runtime responsibilities. Agentic provides the vocabulary and primitives that make hosts easier to build, test, and reason about. See [`docs/framework-boundaries.md`](docs/framework-boundaries.md) for the full boundary design.
 
 ## Flags
 
