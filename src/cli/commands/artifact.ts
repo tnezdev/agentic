@@ -2,7 +2,7 @@ import type {
   ArtifactCreatedOutput,
   ArtifactWrittenOutput,
   ArtifactEditedOutput,
-  ArtifactLockedOutput,
+  ArtifactFinalizedOutput,
   ArtifactInspectedOutput,
   ArtifactRef,
   HookInvocation,
@@ -15,7 +15,7 @@ import {
   formatArtifactCreated,
   formatArtifactWritten,
   formatArtifactEdited,
-  formatArtifactLocked,
+  formatArtifactFinalized,
   formatArtifactInspected,
   formatArtifactList,
 } from "../format.js"
@@ -238,31 +238,35 @@ export const artifactListCommand: Command = async (ctx, _args, flags) => {
     typeof flags["tags"] === "string"
       ? flags["tags"].split(",").map((s) => s.trim())
       : undefined
-  const lockedFlag = flags["locked"]
-  const locked =
-    lockedFlag === true ? true : lockedFlag === "false" ? false : undefined
+  const finalizedFlag = flags["finalized"]
+  const finalized =
+    finalizedFlag === true
+      ? true
+      : finalizedFlag === "false"
+        ? false
+        : undefined
 
   const adapter = new FilesystemArtifactAdapter(ctx.baseDir)
-  const refs: ArtifactRef[] = await adapter.list({ type, tags, locked })
+  const refs: ArtifactRef[] = await adapter.list({ type, tags, finalized })
 
   output(ctx, refs, formatArtifactList)
 }
 
 // ---------------------------------------------------------------------------
-// artifact lock
+// artifact finalize
 // ---------------------------------------------------------------------------
 
-export const artifactLockCommand: Command = async (ctx, args, _flags) => {
+export const artifactFinalizeCommand: Command = async (ctx, args, _flags) => {
   const id = args[0]
   if (id === undefined) {
-    throw new Error("Usage: spores artifact lock <id>")
+    throw new Error("Usage: spores artifact finalize <id>")
   }
 
   const adapter = new FilesystemArtifactAdapter(ctx.baseDir)
-  const record = await adapter.lock(id)
+  const record = await adapter.finalize(id)
 
   const hook = await fireHook(
-    "artifact.locked",
+    "artifact.finalized",
     {
       SPORES_ARTIFACT_ID: record.id,
       SPORES_ARTIFACT_FINAL_VERSION: String(record.version),
@@ -270,10 +274,10 @@ export const artifactLockCommand: Command = async (ctx, args, _flags) => {
     ctx.baseDir,
   )
 
-  const result: ArtifactLockedOutput = {
+  const result: ArtifactFinalizedOutput = {
     artifact: record,
     hook: hook.ran ? hook : undefined,
   }
-  output(ctx, result, formatArtifactLocked)
-  emitHookWarning("artifact.locked", hook)
+  output(ctx, result, formatArtifactFinalized)
+  emitHookWarning("artifact.finalized", hook)
 }

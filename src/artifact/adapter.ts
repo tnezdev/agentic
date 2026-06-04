@@ -24,14 +24,14 @@ export interface WriteArtifactInput {
  * Adapter interface for durable artifact storage.
  *
  * An artifact is a named, versioned piece of content — addressable by ULID,
- * persistable across turns, lockable for append-only history.
+ * persistable across turns, finalizable into read-only history.
  *
  * Storage implementations (filesystem, blob) are separate from this interface.
  * The filesystem adapter (`FilesystemArtifactAdapter`) is the default.
  */
 export interface ArtifactAdapter {
   /**
-   * Create a new artifact. `id`, `version`, `locked`, `created_at`, and
+   * Create a new artifact. `id`, `version`, `finalized`, `created_at`, and
    * `updated_at` are set by the adapter.
    */
   create(input: CreateArtifactInput): Promise<ArtifactRecord>
@@ -48,7 +48,7 @@ export interface ArtifactAdapter {
    * - `replace` — overwrite current version in place
    * - `create` — fail if the artifact already exists
    *
-   * Fails if the artifact is locked.
+   * Fails if the artifact is finalized.
    */
   write(id: ArtifactId, input: WriteArtifactInput): Promise<ArtifactRecord>
 
@@ -56,7 +56,7 @@ export interface ArtifactAdapter {
    * Edit artifact body by replacing `oldStr` with `newStr`.
    * Semantically equivalent to a `write` with mode `iterate`.
    * Throws if `oldStr` is not found in the current body.
-   * Fails if the artifact is locked.
+   * Fails if the artifact is finalized.
    */
   edit(id: ArtifactId, oldStr: string, newStr: string): Promise<ArtifactRecord>
 
@@ -73,9 +73,9 @@ export interface ArtifactAdapter {
   list(query?: ArtifactQuery): Promise<ArtifactRef[]>
 
   /**
-   * Lock an artifact — transitions it to append-only.
-   * `write` and `edit` will fail on locked artifacts.
-   * Idempotent: locking an already-locked artifact is a no-op.
+   * Finalize an artifact — transitions it to read-only.
+   * `write` and `edit` will fail on finalized artifacts.
+   * Idempotent: finalizing an already-finalized artifact is a no-op.
    */
-  lock(id: ArtifactId): Promise<ArtifactRecord>
+  finalize(id: ArtifactId): Promise<ArtifactRecord>
 }

@@ -33,7 +33,7 @@ import type {
   ArtifactCreatedOutput,
   ArtifactWrittenOutput,
   ArtifactEditedOutput,
-  ArtifactLockedOutput,
+  ArtifactFinalizedOutput,
   ArtifactInspectedOutput,
   CapabilityDef,
 } from "../types.js"
@@ -440,10 +440,10 @@ export function formatWake(result: WakeOutput): string {
 
 export function formatArtifactRecord(r: ArtifactRecord): string {
   const tags = r.tags.length > 0 ? ` [${r.tags.join(", ")}]` : ""
-  const locked = r.locked ? " (locked)" : ""
+  const finalized = r.finalized ? " (finalized)" : ""
   const derived = r.derived_from !== undefined ? `\n  derived_from: ${r.derived_from}` : ""
   return [
-    `${r.id}${locked}`,
+    `${r.id}${finalized}`,
     `  type:    ${r.type}`,
     `  title:   ${r.title}${tags}`,
     `  version: ${r.version}`,
@@ -453,12 +453,12 @@ export function formatArtifactRecord(r: ArtifactRecord): string {
 
 export function formatArtifactMetadata(m: ArtifactMetadata): string {
   const tags = m.tags.length > 0 ? ` [${m.tags.join(", ")}]` : ""
-  const locked = m.locked ? " (locked)" : ""
+  const finalized = m.finalized ? " (finalized)" : ""
   const size =
     m.size_bytes !== undefined ? `\n  size:    ${m.size_bytes} bytes` : ""
   const derived = m.derived_from !== undefined ? `\n  derived_from: ${m.derived_from}` : ""
   return [
-    `${m.id}${locked}`,
+    `${m.id}${finalized}`,
     `  type:     ${m.type}`,
     `  title:    ${m.title}${tags}`,
     `  version:  ${m.version}`,
@@ -501,9 +501,9 @@ export function formatArtifactEdited(result: ArtifactEditedOutput): string {
   return parts.join("\n")
 }
 
-/** Human formatter for `artifact lock`. */
-export function formatArtifactLocked(result: ArtifactLockedOutput): string {
-  const parts = [`Artifact locked:\n${formatArtifactRecord(result.artifact)}`]
+/** Human formatter for `artifact finalize`. */
+export function formatArtifactFinalized(result: ArtifactFinalizedOutput): string {
+  const parts = [`Artifact finalized:\n${formatArtifactRecord(result.artifact)}`]
   const hook = result.hook
   if (hook !== undefined && hook.ran && hook.stdout.trim().length > 0) {
     parts.push("\n---\n")
@@ -521,13 +521,13 @@ export function formatArtifactInspected(result: ArtifactInspectedOutput): string
 export function formatArtifactList(refs: ArtifactRef[]): string {
   if (refs.length === 0) return "No artifacts found."
   return table(
-    ["ID", "TYPE", "TITLE", "VER", "LOCKED"],
+    ["ID", "TYPE", "TITLE", "VER", "FINALIZED"],
     refs.map((r) => [
       r.id,
       r.type,
       r.title,
       String(r.version),
-      r.locked ? "yes" : "no",
+      r.finalized ? "yes" : "no",
     ]),
   )
 }

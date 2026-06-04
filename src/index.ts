@@ -53,7 +53,7 @@ export type {
   ArtifactCreatedOutput,
   ArtifactWrittenOutput,
   ArtifactEditedOutput,
-  ArtifactLockedOutput,
+  ArtifactFinalizedOutput,
   ArtifactInspectedOutput,
   CapabilityEffect,
   PolicyError,

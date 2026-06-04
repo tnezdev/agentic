@@ -26,7 +26,7 @@ Recent production-host usage has validated several reusable concepts without mak
 - Skills need a way to reference executable capability contracts without becoming executors themselves.
 - Capability declarations need portable policy vocabulary for effects, approval requirements, dispatch constraints, artifacts, and connection requirements.
 - Human-in-the-loop approval is a first-class host-runtime requirement, but Agentic's role is to declare where approval is required rather than implement the approval flow.
-- Artifacts are a real primitive: agents produce durable outputs that benefit from versioning, locking, and typed metadata.
+- Artifacts are a real primitive: agents produce durable outputs that benefit from versioning, finalization, and typed metadata.
 - Personas are useful as active hats: they declare memory tags, skills, task filters, workflow hints, and model-facing instructions.
 - Task queues are useful in-loop, but external work trackers are host integrations rather than core package adapters.
 - Lifecycle events are useful integration seams, but event handling belongs to the host or harness.
@@ -41,7 +41,7 @@ Recent production-host usage has validated several reusable concepts without mak
 | Workflow | Graphs, runs, transitions, state derived from history | Scheduling, wakeups, lifecycle ownership, long-running process management |
 | Tasks | Task shape, adapter interface, local queue semantics | External trackers, assignment policy, board stewardship, async workers |
 | Persona | Declarative active-hat metadata and rendered body | Identity, session ownership, authorization, automatic application of defaults |
-| Artifacts | Versioned content blobs, metadata, lock/write semantics | UI rendering, collaboration, inboxes, external delivery, attachment APIs |
+| Artifacts | Versioned content blobs, metadata, finalize/write semantics | UI rendering, collaboration, inboxes, external delivery, attachment APIs |
 | Sources | Read-only loader abstraction and composition | Remote storage, deployment, synchronization, access control |
 | Capabilities | Portable declarations and pure policy helpers | Provider clients, credentials, approval UI, enforcement, audit logs |
 | Dispatch | Message shape, filters, and pure match logic | Webhooks, queues, recurrence, transport, handler execution |
@@ -111,7 +111,7 @@ Agentic should not define a telemetry backend, trace store, dashboard, or progre
 Useful event seams include:
 
 - A workflow transitioned.
-- An artifact was written or locked.
+- An artifact was written or finalized.
 - A capability was requested, allowed, denied, or completed.
 - Approval was requested, granted, rejected, or expired.
 - A memory was written or reinforced.
@@ -188,7 +188,7 @@ Examples of semantic lifecycle events:
 
 - `artifact.created`
 - `artifact.written`
-- `artifact.locked`
+- `artifact.finalized`
 - `persona.activated`
 - `workflow.transitioned`
 - `memory.remembered`
