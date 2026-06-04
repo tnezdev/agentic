@@ -36,7 +36,7 @@ export class Runtime {
   async createRun(graphId: string, name?: string): Promise<Run> {
     const graph = await this.store.loadGraph(graphId)
     if (!graph) throw new Error(`Unknown graph: ${graphId}`)
-    return this.store.createRun(graphId, name)
+    return this.store.createRun(graphId, name, graph.version)
   }
 
   async getRun(runId: string): Promise<Run | undefined> {
@@ -45,6 +45,10 @@ export class Runtime {
 
   async listRuns(graphId?: string): Promise<Run[]> {
     return this.store.listRuns(graphId)
+  }
+
+  async getRunGraph(run: Run): Promise<GraphDef | undefined> {
+    return this.loadGraphForRun(run.graph_id, run)
   }
 
   // ---- Derived state ------------------------------------------------------
@@ -68,10 +72,10 @@ export class Runtime {
   }
 
   async next(graphId: string, runId: string): Promise<string[]> {
-    const graph = await this.store.loadGraph(graphId)
-    if (!graph) throw new Error(`Unknown graph: ${graphId}`)
     const run = await this.store.loadRun(runId)
     if (!run) throw new Error(`Unknown run: ${runId}`)
+    const graph = await this.loadGraphForRun(graphId, run)
+    if (!graph) throw new Error(this.unknownGraphMessage(graphId, run))
 
     const states = this.deriveNodeStates(graph, run)
     const available: string[] = []
@@ -113,10 +117,10 @@ export class Runtime {
       metadata?: Record<string, unknown>
     },
   ): Promise<Transition> {
-    const graph = await this.store.loadGraph(graphId)
-    if (!graph) throw new Error(`Unknown graph: ${graphId}`)
     const run = await this.store.loadRun(runId)
     if (!run) throw new Error(`Unknown run: ${runId}`)
+    const graph = await this.loadGraphForRun(graphId, run)
+    if (!graph) throw new Error(this.unknownGraphMessage(graphId, run))
 
     const nodeDef = graph.nodes.find((n) => n.id === nodeId)
     if (!nodeDef) throw new Error(`Unknown node: ${nodeId}`)
@@ -189,6 +193,22 @@ export class Runtime {
         `Illegal transition for node '${nodeId}': ${from} → ${to}`,
       )
     }
+  }
+
+  private async loadGraphForRun(
+    graphId: string,
+    run: Run,
+  ): Promise<GraphDef | undefined> {
+    if (run.graph_id !== graphId) return undefined
+    return this.store.loadGraph(graphId, run.graph_version)
+  }
+
+  private unknownGraphMessage(graphId: string, run: Run): string {
+    if (run.graph_id !== graphId) return `Unknown graph: ${graphId}`
+    if (run.graph_version !== undefined) {
+      return `Unknown graph: ${graphId}@${run.graph_version}`
+    }
+    return `Unknown graph: ${graphId}`
   }
 
   private validateArtifactType(node: NodeDef, artifactType: string): void {

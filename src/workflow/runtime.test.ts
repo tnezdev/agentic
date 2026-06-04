@@ -9,13 +9,21 @@ import { Runtime } from "./runtime.js"
 
 class MemoryAdapter implements WorkflowAdapter {
   private graphs = new Map<string, GraphDef>()
+  private graphVersions = new Map<string, GraphDef>()
   private runs = new Map<string, Run>()
 
   async saveGraph(graph: GraphDef): Promise<void> {
     this.graphs.set(graph.id, graph)
+    this.graphVersions.set(`${graph.id}@${graph.version}`, graph)
   }
 
-  async loadGraph(graphId: string): Promise<GraphDef | undefined> {
+  async loadGraph(
+    graphId: string,
+    version?: string,
+  ): Promise<GraphDef | undefined> {
+    if (version !== undefined) {
+      return this.graphVersions.get(`${graphId}@${version}`)
+    }
     return this.graphs.get(graphId)
   }
 
@@ -23,10 +31,15 @@ class MemoryAdapter implements WorkflowAdapter {
     return [...this.graphs.values()]
   }
 
-  async createRun(graphId: string, name?: string): Promise<Run> {
+  async createRun(
+    graphId: string,
+    name?: string,
+    graphVersion?: string,
+  ): Promise<Run> {
     const run: Run = {
       run_id: `run-${this.runs.size + 1}`,
       graph_id: graphId,
+      ...(graphVersion !== undefined ? { graph_version: graphVersion } : {}),
       ...(name !== undefined ? { name } : {}),
       created_at: new Date().toISOString(),
       history: [],
@@ -802,12 +815,63 @@ describe("run lifecycle", () => {
     await expect(rt.createRun("nope")).rejects.toThrow(/Unknown graph/)
   })
 
+  it("createRun pins the run to the current graph version", async () => {
+    const g = linearGraph()
+    await rt.registerGraph(g)
+    const run = await rt.createRun(g.id)
+    expect(run.graph_version).toBe("1.0")
+  })
+
   it("next() throws for unknown graph or run", async () => {
     const g = linearGraph()
     await rt.registerGraph(g)
     const run = await rt.createRun(g.id)
     await expect(rt.next("nope", run.run_id)).rejects.toThrow(/Unknown graph/)
     await expect(rt.next(g.id, "nope")).rejects.toThrow(/Unknown run/)
+  })
+
+  it("continues pinned runs against their original graph after the current graph changes", async () => {
+    const v1 = linearGraph()
+    await rt.registerGraph(v1)
+    const run = await rt.createRun(v1.id)
+
+    await rt.transition(v1.id, run.run_id, "A", "in_progress", "agent")
+    await rt.transition(v1.id, run.run_id, "A", "completed", "agent")
+
+    const v2: GraphDef = {
+      ...v1,
+      version: "2.0",
+      nodes: [
+        { id: "A", label: "Step A", artifact_type: "doc" },
+        { id: "renamed", label: "Renamed Step", artifact_type: "doc" },
+      ],
+      edges: [{ from: "A", to: "renamed" }],
+    }
+    await rt.registerGraph(v2)
+
+    expect(await rt.next(v1.id, run.run_id)).toEqual(["B"])
+    await rt.transition(v1.id, run.run_id, "B", "in_progress", "agent")
+    await expect(
+      rt.transition(v1.id, run.run_id, "renamed", "in_progress", "agent"),
+    ).rejects.toThrow(/Unknown node/)
+  })
+
+  it("legacy runs without graph_version use the current graph", async () => {
+    const v1 = linearGraph()
+    await rt.registerGraph(v1)
+    const run = await store.createRun(v1.id)
+
+    const v2: GraphDef = {
+      ...v1,
+      version: "2.0",
+      nodes: [{ id: "A", label: "Step A", artifact_type: "doc" }],
+      edges: [],
+    }
+    await rt.registerGraph(v2)
+
+    const graph = await rt.getRunGraph(run)
+    expect(graph?.version).toBe("2.0")
+    expect(await rt.next(v1.id, run.run_id)).toEqual(["A"])
   })
 })
 

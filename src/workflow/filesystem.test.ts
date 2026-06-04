@@ -65,6 +65,20 @@ describe("FilesystemWorkflowAdapter", () => {
       const loaded = await store.loadGraph("g1")
       expect(loaded?.name).toBe("Updated")
     })
+
+    it("loads a specific saved graph version", async () => {
+      const v1 = makeGraph()
+      const v2 = { ...v1, version: "2.0.0", name: "Version Two" }
+      await store.saveGraph(v1)
+      await store.saveGraph(v2)
+
+      const current = await store.loadGraph("g1")
+      const pinned = await store.loadGraph("g1", "1.0.0")
+
+      expect(current?.version).toBe("2.0.0")
+      expect(pinned?.version).toBe("1.0.0")
+      expect(pinned?.name).toBe("Test Graph")
+    })
   })
 
   describe("loadGraph — missing", () => {
@@ -84,6 +98,15 @@ describe("FilesystemWorkflowAdapter", () => {
       expect(ids).toEqual(["g1", "g2"])
     })
 
+    it("excludes version snapshots from the graph list", async () => {
+      await store.saveGraph(makeGraph("g1"))
+      await store.saveGraph({ ...makeGraph("g1"), version: "2.0.0" })
+      const graphs = await store.listGraphs()
+      expect(graphs).toHaveLength(1)
+      expect(graphs[0]!.id).toBe("g1")
+      expect(graphs[0]!.version).toBe("2.0.0")
+    })
+
     it("returns an empty array when no graphs exist", async () => {
       const graphs = await store.listGraphs()
       expect(graphs).toEqual([])
@@ -92,9 +115,10 @@ describe("FilesystemWorkflowAdapter", () => {
 
   describe("createRun / loadRun", () => {
     it("creates a run with a generated id and empty history", async () => {
-      const run = await store.createRun("g1")
+      const run = await store.createRun("g1", undefined, "1.0.0")
       expect(run.run_id).toBeDefined()
       expect(run.graph_id).toBe("g1")
+      expect(run.graph_version).toBe("1.0.0")
       expect(run.history).toEqual([])
       expect(run.created_at).toBeDefined()
     })
