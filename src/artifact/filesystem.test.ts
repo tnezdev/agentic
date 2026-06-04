@@ -22,7 +22,7 @@ describe("FilesystemArtifactAdapter", () => {
   // -------------------------------------------------------------------------
 
   describe("create", () => {
-    it("returns a record with ULID id, version=1, locked=false", async () => {
+    it("returns a record with ULID id, version=1, finalized=false", async () => {
       const record = await adapter.create({
         type: "brief",
         title: "Q2 Launch Brief",
@@ -32,7 +32,7 @@ describe("FilesystemArtifactAdapter", () => {
       expect(record.type).toBe("brief")
       expect(record.title).toBe("Q2 Launch Brief")
       expect(record.version).toBe(1)
-      expect(record.locked).toBe(false)
+      expect(record.finalized).toBe(false)
       expect(record.tags).toEqual([])
       expect(record.created_at).toBe(record.updated_at)
     })
@@ -163,12 +163,12 @@ describe("FilesystemArtifactAdapter", () => {
       })
     })
 
-    it("throws on locked artifact", async () => {
+    it("throws on finalized artifact", async () => {
       const record = await adapter.create({ type: "doc", title: "T", body: "body" })
-      await adapter.lock(record.id)
+      await adapter.finalize(record.id)
       await expect(
         adapter.write(record.id, { body: "update" }),
-      ).rejects.toThrow(/locked/i)
+      ).rejects.toThrow(/finalized/i)
     })
 
     it("throws on missing id", async () => {
@@ -202,12 +202,12 @@ describe("FilesystemArtifactAdapter", () => {
       ).rejects.toThrow(/not found/i)
     })
 
-    it("throws on locked artifact", async () => {
+    it("throws on finalized artifact", async () => {
       const record = await adapter.create({ type: "doc", title: "T", body: "content" })
-      await adapter.lock(record.id)
+      await adapter.finalize(record.id)
       await expect(
         adapter.edit(record.id, "content", "updated"),
-      ).rejects.toThrow(/locked/i)
+      ).rejects.toThrow(/finalized/i)
     })
   })
 
@@ -273,18 +273,18 @@ describe("FilesystemArtifactAdapter", () => {
       expect(q2orQ1.length).toBe(2)
     })
 
-    it("filters by locked=true", async () => {
+    it("filters by finalized=true", async () => {
       const a = await adapter.create({ type: "doc", title: "A", body: "a" })
       await adapter.create({ type: "doc", title: "B", body: "b" })
-      await adapter.lock(a.id)
+      await adapter.finalize(a.id)
 
-      const locked = await adapter.list({ locked: true })
-      expect(locked.length).toBe(1)
-      expect(locked[0]!.id).toBe(a.id)
+      const finalized = await adapter.list({ finalized: true })
+      expect(finalized.length).toBe(1)
+      expect(finalized[0]!.id).toBe(a.id)
 
-      const unlocked = await adapter.list({ locked: false })
-      expect(unlocked.length).toBe(1)
-      expect(unlocked[0]!.title).toBe("B")
+      const unfinalized = await adapter.list({ finalized: false })
+      expect(unfinalized.length).toBe(1)
+      expect(unfinalized[0]!.title).toBe("B")
     })
 
     it("returns lightweight refs (no body_ref)", async () => {
@@ -296,38 +296,38 @@ describe("FilesystemArtifactAdapter", () => {
       expect(refs[0]!.type).toBeDefined()
       expect(refs[0]!.title).toBeDefined()
       expect(refs[0]!.version).toBeDefined()
-      expect(refs[0]!.locked).toBeDefined()
+      expect(refs[0]!.finalized).toBeDefined()
     })
   })
 
   // -------------------------------------------------------------------------
-  // lock
+  // finalize
   // -------------------------------------------------------------------------
 
-  describe("lock", () => {
-    it("sets locked=true", async () => {
+  describe("finalize", () => {
+    it("sets finalized=true", async () => {
       const record = await adapter.create({ type: "doc", title: "T", body: "body" })
-      const locked = await adapter.lock(record.id)
-      expect(locked.locked).toBe(true)
+      const finalized = await adapter.finalize(record.id)
+      expect(finalized.finalized).toBe(true)
     })
 
-    it("persists the locked state", async () => {
+    it("persists the finalized state", async () => {
       const record = await adapter.create({ type: "doc", title: "T", body: "body" })
-      await adapter.lock(record.id)
+      await adapter.finalize(record.id)
       const meta = await adapter.inspect(record.id)
-      expect(meta.locked).toBe(true)
+      expect(meta.finalized).toBe(true)
     })
 
-    it("is idempotent — locking an already-locked artifact returns current record", async () => {
+    it("is idempotent — finalizing an already-finalized artifact returns current record", async () => {
       const record = await adapter.create({ type: "doc", title: "T", body: "body" })
-      const first = await adapter.lock(record.id)
-      const second = await adapter.lock(record.id)
-      expect(second.locked).toBe(true)
+      const first = await adapter.finalize(record.id)
+      const second = await adapter.finalize(record.id)
+      expect(second.finalized).toBe(true)
       expect(second.version).toBe(first.version)
     })
 
     it("throws on missing id", async () => {
-      await expect(adapter.lock("MISSING")).rejects.toThrow(/not found/i)
+      await expect(adapter.finalize("MISSING")).rejects.toThrow(/not found/i)
     })
   })
 })

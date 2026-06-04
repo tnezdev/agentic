@@ -17,7 +17,7 @@ A TypeScript library + CLI for agent in-loop primitives:
 3. **Workflow** — digraph runtime (GraphDef → Run → Transitions, state derived from history)
 4. **Tasks** — typed adapter interface (ULID IDs, Taskwarrior-shaped)
 5. **Persona** — activate a hat at the start of a turn: metadata (memory_tags, skills, task_filter, workflow, routing hints) + a rendered body with live situational facts. Declarative attention, not enforced scope.
-6. **Artifact** — versioned content blobs with metadata (type, title, tags, lock). The canonical place to store an agent's durable outputs within a project — briefs, memos, reports, plans. See "Artifact primitive" below.
+6. **Artifact** — versioned content blobs with metadata (type, title, tags, finalized). The canonical place to store an agent's durable outputs within a project — briefs, memos, reports, plans. See "Artifact primitive" below.
 7. **Source** — pluggable read-only loader abstraction (`read(name) → text`, `list() → names`). Personas/skills/workflows all load through the same shape. `LayeredSource` composes for seed-then-emerge (e.g. live DB shadows seed filesystem). See "Source abstraction" below.
 8. **Dispatch** — foundation types for the universal inbound message primitive (`Dispatch`, `DispatchFilter`, `matchDispatch`). Spores ships the message shape and pure match logic; runtimes ship transport, scheduling, and handler execution.
 
@@ -92,7 +92,7 @@ Current command surface:
 - `agentic skill list/show/run`
 - `agentic workflow list/show/run/status`
 - `agentic persona list/view/activate`
-- `agentic artifact create/read/write/edit/inspect/list/lock`
+- `agentic artifact create/read/write/edit/inspect/list/finalize`
 
 ### Skills on disk
 
@@ -162,7 +162,7 @@ Artifacts are versioned markdown blobs — the agent's durable output store for 
 **On-disk layout** (inside `.agentic/artifacts/`):
 
 ```
-.agentic/artifacts/<ulid>/meta.json    — ArtifactRecord (type, title, version, locked, tags, …)
+.agentic/artifacts/<ulid>/meta.json    — ArtifactRecord (type, title, version, finalized, tags, …)
 .agentic/artifacts/<ulid>/v1.md        — body at version 1
 .agentic/artifacts/<ulid>/v2.md        — body at version 2 (iterate write)
 ```
@@ -178,7 +178,7 @@ Legacy: `.spores/artifacts/` is used when `.agentic/artifacts/` does not exist.
 | `replace` | Overwrite current `v<n>.md` in place. Version unchanged. |
 | `create` | Fail with "already exists". Used only for first-write semantics. |
 
-**Lock semantics:** `artifact lock <id>` sets `locked=true` in `meta.json`. Locked artifacts reject `write` and `edit`. `lock` is idempotent — locking an already-locked artifact is a no-op.
+**Finalize semantics:** `artifact finalize <id>` sets `finalized=true` in `meta.json`. Finalized artifacts reject `write` and `edit`. `finalize` is idempotent — finalizing an already-finalized artifact is a no-op.
 
 **CLI worked example:**
 
@@ -201,8 +201,8 @@ agentic artifact inspect 01JXYZ... --json
 # List with filter
 agentic artifact list --type brief --json
 
-# Lock the final version
-agentic artifact lock 01JXYZ...
+# Finalize the artifact
+agentic artifact finalize 01JXYZ...
 ```
 
 **Hook events:**
@@ -211,9 +211,9 @@ agentic artifact lock 01JXYZ...
 |-------|---------|
 | `artifact.created` | `artifact create` |
 | `artifact.written` | `artifact write`, `artifact edit` |
-| `artifact.locked` | `artifact lock` |
+| `artifact.finalized` | `artifact finalize` |
 
-Hook env vars: `AGENTIC_ARTIFACT_ID`, `AGENTIC_ARTIFACT_TYPE`, `AGENTIC_ARTIFACT_TITLE`, `AGENTIC_ARTIFACT_TAGS` (create); `AGENTIC_ARTIFACT_ID`, `AGENTIC_ARTIFACT_VERSION`, `AGENTIC_ARTIFACT_MODE` (written); `AGENTIC_ARTIFACT_ID`, `AGENTIC_ARTIFACT_FINAL_VERSION` (locked). Legacy `SPORES_*` mirrors are set alongside for compatibility.
+Hook env vars: `AGENTIC_ARTIFACT_ID`, `AGENTIC_ARTIFACT_TYPE`, `AGENTIC_ARTIFACT_TITLE`, `AGENTIC_ARTIFACT_TAGS` (create); `AGENTIC_ARTIFACT_ID`, `AGENTIC_ARTIFACT_VERSION`, `AGENTIC_ARTIFACT_MODE` (written); `AGENTIC_ARTIFACT_ID`, `AGENTIC_ARTIFACT_FINAL_VERSION` (finalized). Legacy `SPORES_*` mirrors are set alongside for compatibility.
 
 **Dogfood hook:** `.agentic/hooks/artifact.written` — indexes the artifact reference into memory after every write so it's searchable via `agentic memory recall`.
 

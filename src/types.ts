@@ -383,7 +383,7 @@ export type LifecyclePrimitive =
 export type LifecycleEventName =
   | "artifact.created"
   | "artifact.written"
-  | "artifact.locked"
+  | "artifact.finalized"
   | "persona.activated"
   | "workflow.transitioned"
   | "memory.remembered"
@@ -399,7 +399,7 @@ export type LifecycleEventName =
 export const LIFECYCLE_EVENTS: readonly LifecycleEventName[] = [
   "artifact.created",
   "artifact.written",
-  "artifact.locked",
+  "artifact.finalized",
   "persona.activated",
   "workflow.transitioned",
   "memory.remembered",
@@ -416,7 +416,7 @@ export const LIFECYCLE_EVENTS: readonly LifecycleEventName[] = [
 export const LIFECYCLE_EVENT_PRIMITIVES: Readonly<Record<LifecycleEventName, LifecyclePrimitive>> = {
   "artifact.created": "artifact",
   "artifact.written": "artifact",
-  "artifact.locked": "artifact",
+  "artifact.finalized": "artifact",
   "persona.activated": "persona",
   "workflow.transitioned": "workflow",
   "memory.remembered": "memory",
@@ -465,12 +465,12 @@ export type LifecycleEvent<TName extends LifecycleEventName = LifecycleEventName
 // Artifact types
 //
 // An Artifact is a named, versioned piece of content produced by an agent
-// turn — addressable, persistable, lockable, and hookable. It is the
+// turn — addressable, persistable, finalizable, and hookable. It is the
 // standalone primitive that workflow node outputs (Transition.artifact) point
 // at once they have been persisted.
 //
-// Lifecycle: created → written (iterate | replace) → locked (append-only).
-// Deletion is intentionally absent from the MVP; locked artifacts are
+// Lifecycle: created → written (iterate | replace) → finalized (read-only).
+// Deletion is intentionally absent from the MVP; finalized artifacts are
 // append-only history. Archive/drop can come later once use signals it.
 // ---------------------------------------------------------------------------
 
@@ -487,7 +487,7 @@ export type ArtifactRecord = {
   title: string
   body_ref: string           // adapter-defined reference (FS path, blob key, etc.)
   version: number
-  locked: boolean
+  finalized: boolean
   tags: string[]
   created_at: string         // ISO 8601
   updated_at: string         // ISO 8601
@@ -509,7 +509,7 @@ export type ArtifactRef = {
   type: string
   title: string
   version: number
-  locked: boolean
+  finalized: boolean
   tags: string[]
   updated_at: string
 }
@@ -518,7 +518,7 @@ export type ArtifactRef = {
 export type ArtifactQuery = {
   type?: string | undefined
   tags?: string[] | undefined
-  locked?: boolean | undefined
+  finalized?: boolean | undefined
 }
 
 /**
@@ -897,10 +897,10 @@ export type ArtifactEditedOutput = {
 }
 
 /**
- * Output of `artifact lock` — the locked record plus any `artifact.locked`
+ * Output of `artifact finalize` — the finalized record plus any `artifact.finalized`
  * hook that fired.
  */
-export type ArtifactLockedOutput = {
+export type ArtifactFinalizedOutput = {
   artifact: ArtifactRecord
   hook?: HookInvocation | undefined
 }

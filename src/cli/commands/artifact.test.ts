@@ -9,7 +9,7 @@ import {
   artifactEditCommand,
   artifactInspectCommand,
   artifactListCommand,
-  artifactLockCommand,
+  artifactFinalizeCommand,
 } from "./artifact.js"
 import { FilesystemArtifactAdapter } from "../../artifact/filesystem.js"
 import { FilesystemAdapter } from "../../memory/filesystem.js"
@@ -93,7 +93,7 @@ describe("artifact CLI commands", () => {
       expect(record.type).toBe("brief")
       expect(record.title).toBe("Q2 Launch Brief")
       expect(record.version).toBe(1)
-      expect(record.locked).toBe(false)
+      expect(record.finalized).toBe(false)
       expect(record.tags).toEqual(["q2", "launch"])
       expect(record.id).toMatch(/^[0-9A-HJKMNP-TV-Z]{26}$/)
       expect(result.hook).toBeUndefined()
@@ -324,54 +324,54 @@ describe("artifact CLI commands", () => {
   })
 
   // -------------------------------------------------------------------------
-  // artifact lock
+  // artifact finalize
   // -------------------------------------------------------------------------
 
-  describe("artifact lock", () => {
-    it("locks the artifact", async () => {
+  describe("artifact finalize", () => {
+    it("finalizes the artifact", async () => {
       const adapter = new FilesystemArtifactAdapter(tmpDir)
       const record = await adapter.create({ type: "doc", title: "T", body: "body" })
 
       const out = await captureStdout(() =>
-        artifactLockCommand(ctx, [record.id], {}),
+        artifactFinalizeCommand(ctx, [record.id], {}),
       )
       const result = JSON.parse(out)
-      expect(result.artifact.locked).toBe(true)
+      expect(result.artifact.finalized).toBe(true)
     })
 
-    it("persists locked state", async () => {
+    it("persists finalized state", async () => {
       const adapter = new FilesystemArtifactAdapter(tmpDir)
       const record = await adapter.create({ type: "doc", title: "T", body: "body" })
-      await artifactLockCommand(ctx, [record.id], {})
+      await artifactFinalizeCommand(ctx, [record.id], {})
 
       const meta = await adapter.inspect(record.id)
-      expect(meta.locked).toBe(true)
+      expect(meta.finalized).toBe(true)
     })
 
     it("throws on missing id", async () => {
-      await expect(artifactLockCommand(ctx, [], {})).rejects.toThrow(/usage/i)
+      await expect(artifactFinalizeCommand(ctx, [], {})).rejects.toThrow(/usage/i)
     })
 
-    it("fires artifact.locked hook when script exists", async () => {
+    it("fires artifact.finalized hook when script exists", async () => {
       const adapter = new FilesystemArtifactAdapter(tmpDir)
       const record = await adapter.create({ type: "doc", title: "T", body: "body" })
 
       const hooksDir = join(tmpDir, ".spores", "hooks")
       await mkdir(hooksDir, { recursive: true })
-      const hookScript = join(hooksDir, "artifact.locked")
+      const hookScript = join(hooksDir, "artifact.finalized")
       await writeFile(
         hookScript,
-        `#!/usr/bin/env sh\necho "locked: $SPORES_ARTIFACT_ID v$SPORES_ARTIFACT_FINAL_VERSION"`,
+        `#!/usr/bin/env sh\necho "finalized: $SPORES_ARTIFACT_ID v$SPORES_ARTIFACT_FINAL_VERSION"`,
       )
       await chmod(hookScript, 0o755)
 
       const out = await captureStdout(() =>
-        artifactLockCommand(ctx, [record.id], {}),
+        artifactFinalizeCommand(ctx, [record.id], {}),
       )
       const result = JSON.parse(out)
       expect(result.hook).toBeDefined()
       expect(result.hook.ran).toBe(true)
-      expect(result.hook.stdout).toContain("locked:")
+      expect(result.hook.stdout).toContain("finalized:")
     })
   })
 })

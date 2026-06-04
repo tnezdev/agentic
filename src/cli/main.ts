@@ -52,7 +52,7 @@ import {
   artifactEditCommand,
   artifactInspectCommand,
   artifactListCommand,
-  artifactLockCommand,
+  artifactFinalizeCommand,
 } from "./commands/artifact.js"
 import {
   capabilityListCommand,
@@ -132,7 +132,7 @@ const commands: Record<string, Command> = {
   "artifact edit": artifactEditCommand,
   "artifact inspect": artifactInspectCommand,
   "artifact list": artifactListCommand,
-  "artifact lock": artifactLockCommand,
+  "artifact finalize": artifactFinalizeCommand,
   "capability list": capabilityListCommand,
   "capability show": capabilityShowCommand,
   "capability validate": capabilityValidateCommand,
@@ -184,7 +184,7 @@ Commands:
   artifact edit <id>                  Edit artifact body (--old / --new)
   artifact inspect <id>               Show artifact metadata
   artifact list                       List artifacts (filter with flags)
-  artifact lock <id>                  Lock an artifact (append-only)
+  artifact finalize <id>              Finalize an artifact (read-only)
 
   capability list                     List available capabilities
   capability show <name>              Show capability declaration details

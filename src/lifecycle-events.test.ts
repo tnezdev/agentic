@@ -10,7 +10,7 @@ describe("lifecycle event vocabulary", () => {
     const expected: readonly LifecycleEventName[] = [
       "artifact.created",
       "artifact.written",
-      "artifact.locked",
+      "artifact.finalized",
       "persona.activated",
       "workflow.transitioned",
       "memory.remembered",

@@ -135,7 +135,7 @@ export class FilesystemArtifactAdapter implements ArtifactAdapter {
       title: input.title,
       body_ref: bodyRef,
       version: 1,
-      locked: false,
+      finalized: false,
       tags: input.tags ?? [],
       created_at: now,
       updated_at: now,
@@ -186,8 +186,8 @@ export class FilesystemArtifactAdapter implements ArtifactAdapter {
     const record = await this.loadMeta(id)
     const mode = input.mode ?? "iterate"
 
-    if (record.locked && mode !== "create") {
-      throw new Error(`Artifact ${id} is locked and cannot be written`)
+    if (record.finalized && mode !== "create") {
+      throw new Error(`Artifact ${id} is finalized and cannot be written`)
     }
 
     if (mode === "create") {
@@ -231,8 +231,8 @@ export class FilesystemArtifactAdapter implements ArtifactAdapter {
   ): Promise<ArtifactRecord> {
     const record = await this.loadMeta(id)
 
-    if (record.locked) {
-      throw new Error(`Artifact ${id} is locked and cannot be edited`)
+    if (record.finalized) {
+      throw new Error(`Artifact ${id} is finalized and cannot be edited`)
     }
 
     const body = await this.read(id)
@@ -297,7 +297,7 @@ export class FilesystemArtifactAdapter implements ArtifactAdapter {
           type: record.type,
           title: record.title,
           version: record.version,
-          locked: record.locked,
+          finalized: record.finalized,
           tags: record.tags,
           updated_at: record.updated_at,
         })
@@ -318,20 +318,20 @@ export class FilesystemArtifactAdapter implements ArtifactAdapter {
   }
 
   // -------------------------------------------------------------------------
-  // lock
+  // finalize
   // -------------------------------------------------------------------------
 
-  async lock(id: ArtifactId): Promise<ArtifactRecord> {
+  async finalize(id: ArtifactId): Promise<ArtifactRecord> {
     const record = await this.loadMeta(id)
 
-    if (record.locked) {
-      // Idempotent — already locked
+    if (record.finalized) {
+      // Idempotent — already finalized
       return record
     }
 
     const updated: ArtifactRecord = {
       ...record,
-      locked: true,
+      finalized: true,
       updated_at: new Date().toISOString(),
     }
     await this.writeMeta(updated)
@@ -376,7 +376,7 @@ function matchesQuery(
 ): boolean {
   if (query === undefined) return true
   if (query.type !== undefined && record.type !== query.type) return false
-  if (query.locked !== undefined && record.locked !== query.locked) return false
+  if (query.finalized !== undefined && record.finalized !== query.finalized) return false
   if (query.tags !== undefined && query.tags.length > 0) {
     const hasAny = query.tags.some((t) => record.tags.includes(t))
     if (!hasAny) return false
