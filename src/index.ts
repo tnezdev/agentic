@@ -34,6 +34,11 @@ export type {
   Dispatch,
   DispatchFilter,
   DispatchHandlerHooks,
+  LifecyclePrimitive,
+  LifecycleEventName,
+  LifecycleEventRef,
+  LifecycleEventSubject,
+  LifecycleEvent,
   HookInvocation,
   WorkflowRunStartedOutput,
   WorkflowRunTerminatedOutput,
@@ -59,7 +64,12 @@ export type {
   CapabilityArtifacts,
   CapabilityDef,
 } from "./types.js"
-export { CAPABILITY_EFFECTS, POLICY_ERRORS } from "./types.js"
+export {
+  CAPABILITY_EFFECTS,
+  POLICY_ERRORS,
+  LIFECYCLE_EVENTS,
+  LIFECYCLE_EVENT_PRIMITIVES,
+} from "./types.js"
 
 export type { MemoryAdapter, AdapterCapabilities } from "./memory/adapter.js"
 export { FilesystemAdapter } from "./memory/filesystem.js"

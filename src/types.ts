@@ -364,6 +364,103 @@ export type DispatchHandlerHooks = {
 }
 
 // ---------------------------------------------------------------------------
+// Lifecycle event types
+//
+// Lifecycle events are semantic facts about primitive operations. Agentic owns
+// the vocabulary and portable envelope; hosts own execution semantics: hooks,
+// dispatch bridges, queues, persistence, retries, observability, and UI.
+// ---------------------------------------------------------------------------
+
+export type LifecyclePrimitive =
+  | "artifact"
+  | "persona"
+  | "workflow"
+  | "memory"
+  | "capability"
+  | "approval"
+
+export type LifecycleEventName =
+  | "artifact.created"
+  | "artifact.written"
+  | "artifact.locked"
+  | "persona.activated"
+  | "workflow.transitioned"
+  | "memory.remembered"
+  | "capability.requested"
+  | "capability.allowed"
+  | "capability.denied"
+  | "capability.completed"
+  | "approval.requested"
+  | "approval.granted"
+  | "approval.rejected"
+  | "approval.expired"
+
+export const LIFECYCLE_EVENTS: readonly LifecycleEventName[] = [
+  "artifact.created",
+  "artifact.written",
+  "artifact.locked",
+  "persona.activated",
+  "workflow.transitioned",
+  "memory.remembered",
+  "capability.requested",
+  "capability.allowed",
+  "capability.denied",
+  "capability.completed",
+  "approval.requested",
+  "approval.granted",
+  "approval.rejected",
+  "approval.expired",
+] as const
+
+export const LIFECYCLE_EVENT_PRIMITIVES: Readonly<Record<LifecycleEventName, LifecyclePrimitive>> = {
+  "artifact.created": "artifact",
+  "artifact.written": "artifact",
+  "artifact.locked": "artifact",
+  "persona.activated": "persona",
+  "workflow.transitioned": "workflow",
+  "memory.remembered": "memory",
+  "capability.requested": "capability",
+  "capability.allowed": "capability",
+  "capability.denied": "capability",
+  "capability.completed": "capability",
+  "approval.requested": "approval",
+  "approval.granted": "approval",
+  "approval.rejected": "approval",
+  "approval.expired": "approval",
+} as const
+
+export type LifecycleEventRef = {
+  name: LifecycleEventName
+  id?: string | undefined
+}
+
+export type LifecycleEventSubject = {
+  /** Primitive-owned subject kind, e.g. `artifact`, `persona`, `workflow_run`. */
+  type: string
+  /** Stable subject identifier when one exists, e.g. artifact id or run id. */
+  id?: string | undefined
+  /** Human-readable or catalog name when the subject is name-addressed. */
+  name?: string | undefined
+  /** Primitive version when relevant, e.g. artifact or graph version. */
+  version?: string | number | undefined
+}
+
+export type LifecycleEvent<TName extends LifecycleEventName = LifecycleEventName> = {
+  /** Optional host-assigned event id. Agentic does not require persistence. */
+  id?: string | undefined
+  name: TName
+  primitive: (typeof LIFECYCLE_EVENT_PRIMITIVES)[TName]
+  subject: LifecycleEventSubject
+  timestamp: string
+  /** Host/runtime correlation id for grouping related primitive events. */
+  correlation_id?: string | undefined
+  /** Related lifecycle events, e.g. a workflow transition that wrote an artifact. */
+  related?: LifecycleEventRef[] | undefined
+  /** Primitive-specific payload; hosts should keep provider internals out. */
+  data?: Record<string, unknown> | undefined
+}
+
+// ---------------------------------------------------------------------------
 // Artifact types
 //
 // An Artifact is a named, versioned piece of content produced by an agent
