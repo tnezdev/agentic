@@ -88,7 +88,7 @@ async function maybeFireTerminated(
 ): Promise<WorkflowRunTerminatedOutput | null> {
   const run = await rt.getRun(runId)
   if (!run) return null
-  const graph = await rt.getGraph(run.graph_id)
+  const graph = await rt.getRunGraph(run)
   if (!graph) return null
 
   const states = rt.deriveNodeStates(graph, run)
@@ -234,7 +234,7 @@ export const workflowStatusCommand: Command = async (ctx, args) => {
   const rt = makeRuntime(ctx)
   const run = await rt.getRun(runId)
   if (!run) throw new Error(`Unknown run: ${runId}`)
-  const graph = await rt.getGraph(run.graph_id)
+  const graph = await rt.getRunGraph(run)
   if (!graph) throw new Error(`Unknown graph: ${run.graph_id}`)
 
   const states = rt.deriveNodeStates(graph, run)

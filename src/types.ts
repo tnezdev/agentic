@@ -140,6 +140,7 @@ export type NodeState = {
 export type Run = {
   run_id: string
   graph_id: string
+  graph_version?: string | undefined
   name?: string
   created_at: string
   history: Transition[]

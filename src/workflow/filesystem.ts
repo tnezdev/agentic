@@ -15,6 +15,10 @@ function isNodeError(err: unknown): err is NodeError {
   return err instanceof Error
 }
 
+function versionedGraphName(graphId: string, version: string): string {
+  return `${graphId}@${encodeURIComponent(version)}`
+}
+
 async function safeReaddir(dir: string): Promise<string[]> {
   try {
     return await readdir(dir)
@@ -41,6 +45,10 @@ export class FilesystemWorkflowAdapter implements WorkflowAdapter {
       join(this.graphsDir, `${graph.id}.json`),
       JSON.stringify(graph, null, 2),
     )
+    await writeFile(
+      join(this.graphsDir, `${versionedGraphName(graph.id, graph.version)}.json`),
+      JSON.stringify(graph, null, 2),
+    )
   }
 
   async saveSourceGraph(graph: GraphDef): Promise<void> {
@@ -65,9 +73,11 @@ export class FilesystemWorkflowAdapter implements WorkflowAdapter {
     return undefined
   }
 
-  async loadGraph(graphId: string): Promise<GraphDef | undefined> {
+  async loadGraph(graphId: string, version?: string): Promise<GraphDef | undefined> {
+    const name =
+      version === undefined ? graphId : versionedGraphName(graphId, version)
     for (const ext of [".json", ".yaml", ".yml"]) {
-      const filePath = join(this.graphsDir, `${graphId}${ext}`)
+      const filePath = join(this.graphsDir, `${name}${ext}`)
       try {
         const data = await readFile(filePath, "utf-8")
         return parseGraph(data, filePath)
@@ -91,7 +101,7 @@ export class FilesystemWorkflowAdapter implements WorkflowAdapter {
         file.endsWith(".json") ||
         file.endsWith(".yaml") ||
         file.endsWith(".yml")
-      if (!isGraphFile || isSourceFile) continue
+      if (!isGraphFile || isSourceFile || file.includes("@")) continue
       const filePath = join(this.graphsDir, file)
       const data = await readFile(filePath, "utf-8")
       graphs.push(parseGraph(data, filePath))
@@ -101,11 +111,16 @@ export class FilesystemWorkflowAdapter implements WorkflowAdapter {
 
   // ---- Runs ----------------------------------------------------------------
 
-  async createRun(graphId: string, name?: string): Promise<Run> {
+  async createRun(
+    graphId: string,
+    name?: string,
+    graphVersion?: string,
+  ): Promise<Run> {
     await mkdir(this.runsDir, { recursive: true })
     const run: Run = {
       run_id: randomUUID(),
       graph_id: graphId,
+      ...(graphVersion !== undefined ? { graph_version: graphVersion } : {}),
       ...(name !== undefined ? { name } : {}),
       created_at: new Date().toISOString(),
       history: [],
