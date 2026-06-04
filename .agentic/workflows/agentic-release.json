@@ -1,8 +1,8 @@
 {
-  "id": "spores-release",
+  "id": "agentic-release",
   "name": "Agentic release cut",
   "description": "CI-gated release flow for @tnezdev/agentic — land version bump on main, push tag, let publish.yml ship via OIDC trusted publishing",
-  "version": "2.0",
+  "version": "1.0",
   "nodes": [
     {
       "id": "version-bump-pr",
@@ -25,7 +25,7 @@
     {
       "id": "watch-publish-ci",
       "label": "Watch publish.yml run",
-      "description": "gh run watch --exit-status — publish.yml runs typecheck+test, bootstraps npm 11 via tarball, publishes with OIDC + provenance. No local publish.",
+      "description": "gh run watch --exit-status — publish.yml runs typecheck, tests, Bun and Node smoke tests, then publishes with OIDC + provenance. No local publish.",
       "artifact_type": "ci-run"
     },
     {
