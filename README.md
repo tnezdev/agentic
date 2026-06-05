@@ -23,4 +23,7 @@ The dogfood workspace still lives at `.agentic/`. Start with [`.agentic/ONRAMP.m
 
 ## Examples
 
-For a user-mode example, see [`examples/second-brain/`](examples/second-brain/). It shows a small research operating system with a persona, skill, workflow, task, and finalized artifact.
+- [`.agentic/`](.agentic/) is the project dogfood workspace — a persona, skills, workflow, tasks, and memories used to build Agentic itself. Read [`.agentic/ONRAMP.md`](.agentic/ONRAMP.md) for the maintainer flow.
+- [`examples/second-brain/`](examples/second-brain/) is a user-mode example. It shows how an agent harness can use Agentic primitives to run second-brain workflows with persona activation, task pickup, workflow gates, and finalized artifacts. Memory is intentionally left for user space and custom adapters.
+
+The second-brain example includes its own [`AGENTS.md`](examples/second-brain/AGENTS.md) bootstrap file for harnesses.

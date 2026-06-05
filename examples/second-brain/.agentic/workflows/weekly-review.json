@@ -1,0 +1,69 @@
+{
+  "id": "weekly-review",
+  "name": "Weekly review",
+  "description": "Review active commitments, recent outputs, and next-week focus across the second-brain workspace.",
+  "version": "1.0",
+  "nodes": [
+    {
+      "id": "collect-inputs",
+      "label": "Collect inputs",
+      "description": "Gather open tasks, recent artifacts, calendar/context notes, and inbox items relevant to the week.",
+      "artifact": {
+        "type": "review-inputs",
+        "description": "Input summary for the weekly review.",
+        "required": true,
+        "tags": ["second-brain", "review", "weekly"]
+      }
+    },
+    {
+      "id": "review-projects",
+      "label": "Review projects",
+      "description": "Scan active project buckets for stuck work, missing next actions, and completed outcomes.",
+      "artifact": {
+        "type": "project-review",
+        "description": "Project-by-project weekly review notes.",
+        "required": true,
+        "tags": ["second-brain", "project", "weekly"]
+      }
+    },
+    {
+      "id": "review-areas",
+      "label": "Review areas",
+      "description": "Check active areas for maintenance issues, recurring obligations, and ignored standards.",
+      "artifact": {
+        "type": "area-review",
+        "description": "Area maintenance review and risks.",
+        "required": true,
+        "tags": ["second-brain", "area", "weekly"]
+      }
+    },
+    {
+      "id": "choose-focus",
+      "label": "Choose focus",
+      "description": "Pick the next week's priority focus and name what will intentionally not be pursued.",
+      "artifact": {
+        "type": "weekly-plan",
+        "description": "Weekly focus, tradeoffs, and next actions.",
+        "required": true,
+        "tags": ["second-brain", "review", "plan"]
+      }
+    },
+    {
+      "id": "finalize-review",
+      "label": "Finalize review",
+      "description": "Finalize the weekly review artifact with a valid PARA tag and update tasks.",
+      "artifact": {
+        "type": "finalized-artifact-ref",
+        "description": "Reference to finalized weekly review and task updates.",
+        "required": true,
+        "tags": ["second-brain", "artifact", "tasks"]
+      }
+    }
+  ],
+  "edges": [
+    { "from": "collect-inputs", "to": "review-projects" },
+    { "from": "review-projects", "to": "review-areas" },
+    { "from": "review-areas", "to": "choose-focus" },
+    { "from": "choose-focus", "to": "finalize-review" }
+  ]
+}

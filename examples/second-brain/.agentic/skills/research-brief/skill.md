@@ -16,7 +16,9 @@ Use this procedure when the task is to answer a research question for later reus
 4. Extract findings as claims with source references. Do not preserve raw browsing notes unless they are necessary evidence.
 5. Synthesize tradeoffs. Call out uncertainty and missing information.
 6. Write a brief artifact. Keep it readable without the transcript.
-7. Add follow-up tasks only for unresolved questions that affect a decision.
+7. Validate that the artifact has at least one PARA bucket tag.
+8. Finalize the artifact once taxonomy validation passes.
+9. Add follow-up tasks only for unresolved questions that affect a decision.
 
 ## Artifact Contract
 
@@ -29,6 +31,16 @@ Write a `research-brief` artifact with these sections:
 - `Recommendation`
 - `Sources Consulted`
 - `Follow-Up Questions`
+
+Every artifact must include at least one PARA bucket tag in this form:
+
+```text
+para:<bucket>/<slug>
+```
+
+Allowed buckets are `project`, `area`, `resource`, and `archive`. Choose the bucket that describes where the brief belongs in the user's second-brain system.
+
+Do not finalize the artifact until this tag is present. Finalization means the brief is durable output for this research pass, not that it can never be superseded.
 
 ## Quality Bar
 

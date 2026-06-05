@@ -1,0 +1,69 @@
+{
+  "id": "yearly-review",
+  "name": "Yearly review",
+  "description": "Synthesize the year, extract long-term lessons, and choose next-year direction.",
+  "version": "1.0",
+  "nodes": [
+    {
+      "id": "collect-year",
+      "label": "Collect year",
+      "description": "Gather monthly reviews, major artifacts, completed projects, and meaningful area changes.",
+      "artifact": {
+        "type": "year-review-inputs",
+        "description": "Collected source material for yearly review.",
+        "required": true,
+        "tags": ["second-brain", "review", "yearly"]
+      }
+    },
+    {
+      "id": "identify-themes",
+      "label": "Identify themes",
+      "description": "Find repeated patterns, compounding wins, recurring failures, and identity-level shifts.",
+      "artifact": {
+        "type": "yearly-themes",
+        "description": "Themes and lessons from the year.",
+        "required": true,
+        "tags": ["second-brain", "reflection", "yearly"]
+      }
+    },
+    {
+      "id": "archive-completed-work",
+      "label": "Archive completed work",
+      "description": "Identify projects to archive and resources or memories to preserve for long-term use.",
+      "artifact": {
+        "type": "archive-plan",
+        "description": "Project archive and preservation plan.",
+        "required": true,
+        "tags": ["second-brain", "archive", "resource"]
+      }
+    },
+    {
+      "id": "set-direction",
+      "label": "Set direction",
+      "description": "Choose next-year priorities, standards, and explicit non-goals.",
+      "artifact": {
+        "type": "yearly-plan",
+        "description": "Next-year direction and planning decisions.",
+        "required": true,
+        "tags": ["second-brain", "review", "plan"]
+      }
+    },
+    {
+      "id": "finalize-review",
+      "label": "Finalize review",
+      "description": "Finalize the yearly review artifact and create follow-up projects or area standards.",
+      "artifact": {
+        "type": "finalized-artifact-ref",
+        "description": "Reference to finalized yearly review and resulting project/task updates.",
+        "required": true,
+        "tags": ["second-brain", "artifact", "tasks"]
+      }
+    }
+  ],
+  "edges": [
+    { "from": "collect-year", "to": "identify-themes" },
+    { "from": "identify-themes", "to": "archive-completed-work" },
+    { "from": "archive-completed-work", "to": "set-direction" },
+    { "from": "set-direction", "to": "finalize-review" }
+  ]
+}

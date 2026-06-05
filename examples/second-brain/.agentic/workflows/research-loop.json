@@ -38,6 +38,28 @@
       }
     },
     {
+      "id": "validate-taxonomy",
+      "label": "Validate taxonomy",
+      "description": "Inspect the research-brief artifact metadata and confirm it includes at least one valid PARA bucket tag in the form para:<bucket>/<slug> before finalization.",
+      "artifact": {
+        "type": "taxonomy-validation",
+        "description": "Validation note naming the artifact id and the PARA tag that places it in the user's second-brain system.",
+        "required": true,
+        "tags": ["second-brain", "taxonomy"]
+      }
+    },
+    {
+      "id": "finalize-brief",
+      "label": "Finalize brief",
+      "description": "Finalize the research-brief artifact after taxonomy validation passes so it becomes durable output for this research pass.",
+      "artifact": {
+        "type": "finalized-artifact-ref",
+        "description": "Reference to the finalized research-brief artifact.",
+        "required": true,
+        "tags": ["second-brain", "research", "artifact"]
+      }
+    },
+    {
       "id": "decide-next-actions",
       "label": "Decide next actions",
       "description": "Mark the task done if the brief supports the decision, or add specific follow-up tasks for remaining blockers.",
@@ -52,6 +74,8 @@
   "edges": [
     { "from": "frame-question", "to": "gather-sources" },
     { "from": "gather-sources", "to": "write-brief" },
-    { "from": "write-brief", "to": "decide-next-actions" }
+    { "from": "write-brief", "to": "validate-taxonomy" },
+    { "from": "validate-taxonomy", "to": "finalize-brief" },
+    { "from": "finalize-brief", "to": "decide-next-actions" }
   ]
 }

@@ -2,7 +2,7 @@
 name: researcher
 description: Activate when turning an open question into a concise second-brain research brief
 memory_tags: [second-brain, research]
-skills: [research-brief]
+skills: [research-brief, project-kickoff]
 task_filter:
   tags: [research]
   status: ready
@@ -27,8 +27,8 @@ The current time is `{{timestamp}}`.
 ## Before Research
 
 1. Check `task next` for the active research question.
-2. Recall memories tagged `second-brain` and `research`.
-3. Run the `research-brief` skill for the work procedure.
+2. Run the `research-brief` skill for the work procedure.
+3. If user memory is configured, recall relevant context tagged `second-brain` and `research`.
 4. Use the `research-loop` workflow when the question spans more than one pass.
 
 ## Output Shape

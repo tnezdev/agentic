@@ -1,0 +1,69 @@
+{
+  "id": "project-archive",
+  "name": "Project archive",
+  "description": "Close a PARA project, preserve lessons, and move reusable material to the right long-term bucket.",
+  "version": "1.0",
+  "nodes": [
+    {
+      "id": "review-outcome",
+      "label": "Review outcome",
+      "description": "Compare the project outcome against the original success criteria and current reality.",
+      "artifact": {
+        "type": "project-retrospective",
+        "description": "Outcome review, what shipped, what changed, and what did not happen.",
+        "required": true,
+        "tags": ["second-brain", "project", "review"]
+      }
+    },
+    {
+      "id": "extract-lessons",
+      "label": "Extract lessons",
+      "description": "Capture durable lessons, reusable patterns, and warnings as memories or artifacts.",
+      "artifact": {
+        "type": "lessons-learned",
+        "description": "Reusable lessons from the project and suggested memory updates.",
+        "required": true,
+        "tags": ["second-brain", "memory"]
+      }
+    },
+    {
+      "id": "reclassify-material",
+      "label": "Reclassify material",
+      "description": "Move or retag durable outputs into area, resource, or archive buckets.",
+      "artifact": {
+        "type": "taxonomy-validation",
+        "description": "PARA reclassification plan for project artifacts and references.",
+        "required": true,
+        "tags": ["second-brain", "taxonomy"]
+      }
+    },
+    {
+      "id": "close-loops",
+      "label": "Close loops",
+      "description": "Mark completed tasks done, cancel obsolete tasks, and create follow-up tasks only for live commitments.",
+      "artifact": {
+        "type": "next-actions",
+        "description": "Task closure and remaining follow-up actions.",
+        "required": true,
+        "tags": ["second-brain", "tasks"]
+      }
+    },
+    {
+      "id": "finalize-archive-note",
+      "label": "Finalize archive note",
+      "description": "Write and finalize the archive note with a para:archive/<slug> or successor bucket tag.",
+      "artifact": {
+        "type": "archive-note",
+        "description": "Final project archive note suitable for future retrieval.",
+        "required": true,
+        "tags": ["second-brain", "archive"]
+      }
+    }
+  ],
+  "edges": [
+    { "from": "review-outcome", "to": "extract-lessons" },
+    { "from": "extract-lessons", "to": "reclassify-material" },
+    { "from": "reclassify-material", "to": "close-loops" },
+    { "from": "close-loops", "to": "finalize-archive-note" }
+  ]
+}
