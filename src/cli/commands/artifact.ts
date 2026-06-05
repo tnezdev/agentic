@@ -88,10 +88,10 @@ export const artifactCreateCommand: Command = async (ctx, args, flags) => {
   const hook = await fireHook(
     "artifact.created",
     {
-      SPORES_ARTIFACT_ID: record.id,
-      SPORES_ARTIFACT_TYPE: record.type,
-      SPORES_ARTIFACT_TITLE: record.title,
-      SPORES_ARTIFACT_TAGS: record.tags.join(","),
+      AGENTIC_ARTIFACT_ID: record.id,
+      AGENTIC_ARTIFACT_TYPE: record.type,
+      AGENTIC_ARTIFACT_TITLE: record.title,
+      AGENTIC_ARTIFACT_TAGS: record.tags.join(","),
     },
     ctx.baseDir,
   )
@@ -160,9 +160,9 @@ export const artifactWriteCommand: Command = async (ctx, args, flags) => {
   const hook = await fireHook(
     "artifact.written",
     {
-      SPORES_ARTIFACT_ID: record.id,
-      SPORES_ARTIFACT_VERSION: String(record.version),
-      SPORES_ARTIFACT_MODE: mode,
+      AGENTIC_ARTIFACT_ID: record.id,
+      AGENTIC_ARTIFACT_VERSION: String(record.version),
+      AGENTIC_ARTIFACT_MODE: mode,
     },
     ctx.baseDir,
   )
@@ -196,8 +196,8 @@ export const artifactEditCommand: Command = async (ctx, args, flags) => {
   const hook = await fireHook(
     "artifact.edited",
     {
-      SPORES_ARTIFACT_ID: record.id,
-      SPORES_ARTIFACT_VERSION: String(record.version),
+      AGENTIC_ARTIFACT_ID: record.id,
+      AGENTIC_ARTIFACT_VERSION: String(record.version),
     },
     ctx.baseDir,
   )
@@ -268,8 +268,8 @@ export const artifactFinalizeCommand: Command = async (ctx, args, _flags) => {
   const hook = await fireHook(
     "artifact.finalized",
     {
-      SPORES_ARTIFACT_ID: record.id,
-      SPORES_ARTIFACT_FINAL_VERSION: String(record.version),
+      AGENTIC_ARTIFACT_ID: record.id,
+      AGENTIC_ARTIFACT_FINAL_VERSION: String(record.version),
     },
     ctx.baseDir,
   )

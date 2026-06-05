@@ -129,7 +129,7 @@ describe("artifact CLI commands", () => {
       const hookScript = join(hooksDir, "artifact.created")
       await writeFile(
         hookScript,
-        `#!/usr/bin/env sh\necho "hook ran: $SPORES_ARTIFACT_ID"`,
+        `#!/usr/bin/env sh\necho "hook ran: $AGENTIC_ARTIFACT_ID / $SPORES_ARTIFACT_ID"`,
       )
       await chmod(hookScript, 0o755)
 
@@ -139,7 +139,7 @@ describe("artifact CLI commands", () => {
       const result = JSON.parse(out)
       expect(result.hook).toBeDefined()
       expect(result.hook.ran).toBe(true)
-      expect(result.hook.stdout).toContain("hook ran:")
+      expect(result.hook.stdout).toMatch(/hook ran: [0-9A-HJKMNP-TV-Z]{26} \/ [0-9A-HJKMNP-TV-Z]{26}/)
     })
   })
 
@@ -361,7 +361,7 @@ describe("artifact CLI commands", () => {
       const hookScript = join(hooksDir, "artifact.finalized")
       await writeFile(
         hookScript,
-        `#!/usr/bin/env sh\necho "finalized: $SPORES_ARTIFACT_ID v$SPORES_ARTIFACT_FINAL_VERSION"`,
+        `#!/usr/bin/env sh\necho "finalized: $AGENTIC_ARTIFACT_ID v$AGENTIC_ARTIFACT_FINAL_VERSION / $SPORES_ARTIFACT_ID v$SPORES_ARTIFACT_FINAL_VERSION"`,
       )
       await chmod(hookScript, 0o755)
 
@@ -371,7 +371,7 @@ describe("artifact CLI commands", () => {
       const result = JSON.parse(out)
       expect(result.hook).toBeDefined()
       expect(result.hook.ran).toBe(true)
-      expect(result.hook.stdout).toContain("finalized:")
+      expect(result.hook.stdout).toMatch(/finalized: [0-9A-HJKMNP-TV-Z]{26} v1 \/ [0-9A-HJKMNP-TV-Z]{26} v1/)
     })
   })
 })
