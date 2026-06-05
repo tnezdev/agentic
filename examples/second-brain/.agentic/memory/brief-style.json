@@ -1,0 +1,13 @@
+{
+  "key": "brief-style",
+  "content": "Second-brain briefs should be decision-oriented and skimmable: question, why it matters, findings, tradeoffs, recommendation, sources, and follow-up questions.",
+  "weight": 0.8,
+  "confidence": 0.9,
+  "tier": "L1",
+  "tags": [
+    "second-brain",
+    "research",
+    "writing"
+  ],
+  "timestamp": "2026-06-05T16:00:00.000Z"
+}

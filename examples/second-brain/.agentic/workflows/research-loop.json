@@ -1,0 +1,57 @@
+{
+  "id": "research-loop",
+  "name": "Second-brain research loop",
+  "description": "Turn an open question into a durable research brief and explicit follow-up tasks.",
+  "version": "1.0",
+  "nodes": [
+    {
+      "id": "frame-question",
+      "label": "Frame question",
+      "description": "Restate the question, identify the decision it supports, and define what a useful answer must contain.",
+      "artifact": {
+        "type": "research-frame",
+        "description": "Question framing notes: decision, scope, constraints, and success criteria.",
+        "required": true,
+        "tags": ["second-brain", "research"]
+      }
+    },
+    {
+      "id": "gather-sources",
+      "label": "Gather sources",
+      "description": "Collect a small set of high-signal sources and record why each source is credible or limited.",
+      "artifact": {
+        "type": "source-notes",
+        "description": "Source list with claims, links or locators, and quality notes.",
+        "required": true,
+        "tags": ["second-brain", "research", "sources"]
+      }
+    },
+    {
+      "id": "write-brief",
+      "label": "Write brief",
+      "description": "Synthesize findings, tradeoffs, recommendation, and follow-up questions into a durable artifact.",
+      "artifact": {
+        "type": "research-brief",
+        "description": "Final research brief suitable for future recall.",
+        "required": true,
+        "tags": ["second-brain", "research", "brief"]
+      }
+    },
+    {
+      "id": "decide-next-actions",
+      "label": "Decide next actions",
+      "description": "Mark the task done if the brief supports the decision, or add specific follow-up tasks for remaining blockers.",
+      "artifact": {
+        "type": "next-actions",
+        "description": "Task updates or follow-up questions derived from the brief.",
+        "required": false,
+        "tags": ["second-brain", "tasks"]
+      }
+    }
+  ],
+  "edges": [
+    { "from": "frame-question", "to": "gather-sources" },
+    { "from": "gather-sources", "to": "write-brief" },
+    { "from": "write-brief", "to": "decide-next-actions" }
+  ]
+}
