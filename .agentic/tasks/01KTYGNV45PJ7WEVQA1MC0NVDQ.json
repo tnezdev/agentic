@@ -1,0 +1,18 @@
+{
+  "description": "tnezdev/agentic#107: CLI support runtime package discovery and delegation",
+  "status": "done",
+  "tags": [],
+  "id": "01KTYGNV45PJ7WEVQA1MC0NVDQ",
+  "annotations": [
+    {
+      "text": "status: ready → in_progress",
+      "timestamp": "2026-06-12T18:14:34.120Z"
+    },
+    {
+      "text": "status: in_progress → done",
+      "timestamp": "2026-06-12T18:25:07.419Z"
+    }
+  ],
+  "created_at": "2026-06-12T18:14:30.277Z",
+  "updated_at": "2026-06-12T18:25:07.419Z"
+}

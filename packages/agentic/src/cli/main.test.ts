@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test"
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 
@@ -21,6 +21,46 @@ async function run(
 async function runJson(...args: string[]): Promise<unknown> {
   const { stdout } = await run("--json", ...args)
   return JSON.parse(stdout)
+}
+
+async function writeRuntimePackage(baseDir: string, source?: string): Promise<void> {
+  const pkgDir = join(
+    baseDir,
+    "node_modules",
+    "@tnezdev",
+    "agentic-runtime-local",
+  )
+  await mkdir(pkgDir, { recursive: true })
+  await writeFile(
+    join(pkgDir, "package.json"),
+    JSON.stringify({ type: "module", exports: "./index.js" }, null, 2),
+  )
+  await writeFile(
+    join(pkgDir, "index.js"),
+    source ?? `export const runtime = {
+  kind: "agentic-runtime",
+  api_version: 1,
+  name: "local",
+  package_name: "@tnezdev/agentic-runtime-local",
+  description: "Test local runtime",
+  capabilities: ["init", "run", "status"],
+  commands: {
+    init: async (ctx, args) => ({
+      summary: "initialized local runtime",
+      data: { runtime_config: ctx.runtime_config, args: args.args },
+    }),
+    run: async (ctx, args) => ({
+      summary: "ran local target",
+      data: { target: args.target, args: args.args, json: ctx.json },
+    }),
+    status: async () => ({
+      summary: "runtime ready",
+      data: { ready: true },
+    }),
+  },
+}
+`,
+  )
 }
 
 describe("CLI", () => {
@@ -57,15 +97,16 @@ describe("CLI", () => {
 
   it("routes runtime list", async () => {
     const result = (await runJson(...base, "runtime", "list")) as {
-      runtimes: Array<{ name: string; package_name: string }>
+      runtimes: Array<{ name: string; package_name: string; status: string }>
       note: string
     }
     expect(result.runtimes[0]!.name).toBe("local")
     expect(result.runtimes[0]!.package_name).toBe("@tnezdev/agentic-runtime-local")
-    expect(result.note).toContain("CLI namespace only")
+    expect(result.runtimes[0]!.status).toBe("available")
+    expect(result.note).toContain("Runtime packages are optional")
   })
 
-  it("runtime add gives package guidance for local", async () => {
+  it("runtime add records local and gives package guidance when missing", async () => {
     const result = (await runJson(...base, "runtime", "add", "local")) as {
       command: string
       status: string
@@ -73,9 +114,52 @@ describe("CLI", () => {
       next_steps: string[]
     }
     expect(result.command).toBe("add")
-    expect(result.status).toBe("recognized")
+    expect(result.status).toBe("needs_package")
     expect(result.runtime.package_name).toBe("@tnezdev/agentic-runtime-local")
     expect(result.next_steps.join("\n")).toContain("bun add -d @tnezdev/agentic-runtime-local")
+
+    const config = await readFile(join(tmpDir, ".agentic", "config.toml"), "utf-8")
+    expect(config).toContain('[runtime]')
+    expect(config).toContain('default = "local"')
+    expect(config).toContain('[runtime.local]')
+    expect(config).toContain('package = "@tnezdev/agentic-runtime-local"')
+  })
+
+  it("runtime add verifies an installed runtime package", async () => {
+    await writeRuntimePackage(tmpDir)
+
+    const result = (await runJson(...base, "runtime", "add", "local")) as {
+      status: string
+      runtime: { status: string }
+      result: { data: { manifest: { capabilities: string[] } } }
+    }
+
+    expect(result.status).toBe("added")
+    expect(result.runtime.status).toBe("configured")
+    expect(result.result.data.manifest.capabilities).toContain("run")
+  })
+
+  it("runtime add rejects an invalid installed package without writing config", async () => {
+    await writeRuntimePackage(
+      tmpDir,
+      `export const runtime = { kind: "not-agentic", api_version: 1 }
+`,
+    )
+
+    const { stdout, exitCode } = await run(
+      "--json",
+      ...base,
+      "runtime",
+      "add",
+      "local",
+    )
+
+    expect(exitCode).toBe(1)
+    const result = JSON.parse(stdout) as { error: string }
+    expect(result.error).toContain("invalid kind")
+
+    const configExists = await Bun.file(join(tmpDir, ".agentic", "config.toml")).exists()
+    expect(configExists).toBe(false)
   })
 
   it("runtime add rejects unknown runtime names", async () => {
@@ -91,7 +175,7 @@ describe("CLI", () => {
     expect(result.error).toContain('Unknown runtime target "spaceship"')
   })
 
-  it("runtime run fails with actionable package guidance before delegation exists", async () => {
+  it("runtime run fails with actionable package guidance when package is missing", async () => {
     const { stdout, exitCode } = await run(
       "--json",
       ...base,
@@ -103,6 +187,44 @@ describe("CLI", () => {
     const result = JSON.parse(stdout) as { error: string }
     expect(result.error).toContain("@tnezdev/agentic-runtime-local")
     expect(result.error).toContain("bun add -d @tnezdev/agentic-runtime-local")
+  })
+
+  it("runtime run delegates to an installed runtime package", async () => {
+    await writeRuntimePackage(tmpDir)
+    await run(...base, "runtime", "add", "local")
+
+    const result = (await runJson(
+      ...base,
+      "runtime",
+      "run",
+      "inbox-review",
+      "extra",
+    )) as {
+      status: string
+      result: { data: { target: string; args: string[]; json: boolean } }
+    }
+
+    expect(result.status).toBe("delegated")
+    expect(result.result.data.target).toBe("inbox-review")
+    expect(result.result.data.args).toEqual(["extra"])
+    expect(result.result.data.json).toBe(true)
+  })
+
+  it("runtime init passes opaque runtime config to the package", async () => {
+    await writeRuntimePackage(tmpDir)
+    await mkdir(join(tmpDir, ".agentic"), { recursive: true })
+    await writeFile(
+      join(tmpDir, ".agentic", "config.toml"),
+      '[runtime]\ndefault = "local"\n\n[runtime.local]\npackage = "@tnezdev/agentic-runtime-local"\nharness = "pi"\n',
+    )
+
+    const result = (await runJson(...base, "runtime", "init")) as {
+      status: string
+      result: { data: { runtime_config: Record<string, string> } }
+    }
+
+    expect(result.status).toBe("delegated")
+    expect(result.result.data.runtime_config).toEqual({ harness: "pi" })
   })
 
   it("exits 1 on unknown command", async () => {

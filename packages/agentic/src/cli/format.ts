@@ -637,11 +637,17 @@ export function formatRuntimeList(result: RuntimeListOutput): string {
 }
 
 export function formatRuntimeAction(result: RuntimeCommandOutput): string {
-  return [
+  const lines = [
     `${result.runtime.name}: ${result.status}`,
     result.message,
     ...(result.target !== undefined ? [`target: ${result.target}`] : []),
-    "next steps:",
-    ...result.next_steps.map((step) => `  - ${step}`),
-  ].join("\n")
+  ]
+  if (result.result?.data !== undefined) {
+    lines.push(JSON.stringify(result.result.data, null, 2))
+  }
+  if (result.next_steps.length > 0) {
+    lines.push("next steps:")
+    lines.push(...result.next_steps.map((step) => `  - ${step}`))
+  }
+  return lines.join("\n")
 }

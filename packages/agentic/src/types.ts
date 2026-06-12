@@ -1,3 +1,9 @@
+import type { ArtifactAdapter } from "./artifact/adapter.js"
+import type { MemoryAdapter } from "./memory/adapter.js"
+import type { PersonaAdapter } from "./personas/adapter.js"
+import type { Source } from "./sources/source.js"
+import type { WorkflowAdapter } from "./workflow/adapter.js"
+
 export type MemoryTier = "L1" | "L2" | "L3"
 
 export type Memory = {
@@ -42,6 +48,7 @@ export type SporesConfig = {
   wake: {
     template?: string | undefined // path to WAKE.md template (absolute or relative to baseDir)
   }
+  runtime?: RuntimeConfig | undefined
 }
 
 /** Preferred alias for {@link SporesConfig}. Use `AgenticConfig` in new code. */
@@ -368,9 +375,18 @@ export type DispatchHandlerHooks = {
 // Runtime package CLI types
 //
 // Core owns the runtime CLI front door and package seam. Runtime packages own
-// harness/platform integration. These types describe the narrow placeholder
-// surface used before package discovery/delegation lands.
+// harness/platform integration.
 // ---------------------------------------------------------------------------
+
+export type RuntimeTargetConfig = {
+  package?: string | undefined
+  config: Record<string, string>
+}
+
+export type RuntimeConfig = {
+  default?: string | undefined
+  targets: Record<string, RuntimeTargetConfig>
+}
 
 export type RuntimeCapability =
   | "init"
@@ -384,13 +400,97 @@ export type RuntimeCapability =
 
 export type RuntimeCommandName = "add" | "init" | "run" | "status"
 
+export type RuntimeCommandFlags = Record<string, string | true>
+
+export type RuntimeInitArgs = {
+  args: string[]
+  flags: RuntimeCommandFlags
+}
+
+export type RuntimeRunArgs = {
+  target?: string | undefined
+  args: string[]
+  flags: RuntimeCommandFlags
+}
+
+export type RuntimeStatusArgs = {
+  args: string[]
+  flags: RuntimeCommandFlags
+}
+
+export type RuntimeDevArgs = {
+  args: string[]
+  flags: RuntimeCommandFlags
+}
+
+export type RuntimeDeployArgs = {
+  args: string[]
+  flags: RuntimeCommandFlags
+}
+
+export type RuntimeCommandResult = {
+  summary?: string | undefined
+  data?: unknown
+}
+
+export type RuntimeCommandHandler<TArgs> = (
+  ctx: RuntimeContext,
+  args: TArgs,
+) => Promise<RuntimeCommandResult | void>
+
+export type RuntimeCommandMap = {
+  init?: RuntimeCommandHandler<RuntimeInitArgs> | undefined
+  run?: RuntimeCommandHandler<RuntimeRunArgs> | undefined
+  status?: RuntimeCommandHandler<RuntimeStatusArgs> | undefined
+  dev?: RuntimeCommandHandler<RuntimeDevArgs> | undefined
+  deploy?: RuntimeCommandHandler<RuntimeDeployArgs> | undefined
+}
+
+export type AgenticRuntimeBindings = {
+  memory: MemoryAdapter
+  workflows: WorkflowAdapter
+  personas: PersonaAdapter
+  skills: Source
+  artifacts: ArtifactAdapter
+}
+
+export type RuntimeContext = {
+  cwd: string
+  workspace_root: string
+  runtime_name: string
+  runtime_package: string
+  json: boolean
+  env: Record<string, string | undefined>
+  config: AgenticConfig
+  runtime_config: Record<string, string>
+  agentic: AgenticRuntimeBindings
+}
+
+export type AgenticRuntimePackage = {
+  kind: "agentic-runtime"
+  api_version: 1
+  name: string
+  package_name: string
+  description?: string | undefined
+  capabilities: RuntimeCapability[]
+  commands: RuntimeCommandMap
+}
+
+export type RuntimeRefStatus =
+  | "available"
+  | "configured"
+  | "installed"
+  | "missing_package"
+  | "invalid_manifest"
+
 export type RuntimeRef = {
   name: string
   package_name: string
   description: string
-  status: "known"
+  status: RuntimeRefStatus
   capabilities: RuntimeCapability[]
   install_command: string
+  error?: string | undefined
 }
 
 export type RuntimeListOutput = {
@@ -402,9 +502,10 @@ export type RuntimeCommandOutput = {
   command: RuntimeCommandName
   runtime: RuntimeRef
   target?: string | undefined
-  status: "recognized" | "needs_package"
+  status: "added" | "delegated" | "needs_package"
   message: string
   next_steps: string[]
+  result?: RuntimeCommandResult | undefined
 }
 
 // ---------------------------------------------------------------------------

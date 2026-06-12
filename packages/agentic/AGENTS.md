@@ -93,7 +93,7 @@ Current command surface:
 - `agentic workflow list/show/run/status`
 - `agentic persona list/view/activate`
 - `agentic artifact create/read/write/edit/inspect/list/finalize`
-- `agentic runtime list/add/init/run/status` — runtime package namespace only; package install/discovery/delegation belongs to the runtime lane
+- `agentic runtime list/add/init/run/status` — runtime package discovery and delegation in core; runtime behavior belongs to runtime packages
 
 ### Skills on disk
 
