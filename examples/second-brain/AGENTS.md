@@ -34,9 +34,9 @@ If this workspace has a user-provided memory adapter or seeded user memories, re
 If the installed `agentic` binary is unavailable while working from this repo, use:
 
 ```bash
-bun ../../src/cli/main.ts persona activate researcher --base-dir .
-bun ../../src/cli/main.ts task next --base-dir .
-bun ../../src/cli/main.ts skill run research-brief --base-dir .
+bun ../../packages/agentic/src/cli/main.ts persona activate researcher --base-dir .
+bun ../../packages/agentic/src/cli/main.ts task next --base-dir .
+bun ../../packages/agentic/src/cli/main.ts skill run research-brief --base-dir .
 ```
 
 When running `project-kickoff`, load its skill before planning:
