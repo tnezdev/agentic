@@ -17,6 +17,15 @@ describe("parseToml", () => {
     )
   })
 
+  it("parses dotted sections", () => {
+    const doc = parseToml(
+      '[runtime.local]\npackage = "@tnezdev/agentic-runtime-local"',
+    )
+    expect((doc["runtime.local"] as Record<string, string>)["package"]).toBe(
+      "@tnezdev/agentic-runtime-local",
+    )
+  })
+
   it("ignores comments and blank lines", () => {
     const doc = parseToml('# comment\n\nadapter = "test"')
     expect(doc["adapter"]).toBe("test")
@@ -60,6 +69,21 @@ describe("loadConfig", () => {
     )
     const config = await loadConfig(tmpDir)
     expect(config.memory.dreamDepth).toBe(7)
+  })
+
+  it("loads runtime config and opaque runtime target keys", async () => {
+    await mkdir(join(tmpDir, ".agentic"), { recursive: true })
+    await writeFile(
+      join(tmpDir, ".agentic", "config.toml"),
+      '[runtime]\ndefault = "local"\n\n[runtime.local]\npackage = "@tnezdev/agentic-runtime-local"\nharness = "pi"\n',
+    )
+
+    const config = await loadConfig(tmpDir)
+    expect(config.runtime!.default).toBe("local")
+    expect(config.runtime!.targets["local"]!.package).toBe(
+      "@tnezdev/agentic-runtime-local",
+    )
+    expect(config.runtime!.targets["local"]!.config).toEqual({ harness: "pi" })
   })
 
   it(".agentic config wins over .spores config when both exist", async () => {

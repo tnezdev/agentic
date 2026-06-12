@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises"
 import { join } from "node:path"
 import { homedir } from "node:os"
-import type { MemoryTier, SporesConfig } from "./types.js"
+import type { MemoryTier, RuntimeTargetConfig, SporesConfig } from "./types.js"
 
 const DEFAULTS: SporesConfig = {
   adapter: "filesystem",
@@ -15,6 +15,9 @@ const DEFAULTS: SporesConfig = {
     runsDir: ".agentic/runs",
   },
   wake: {},
+  runtime: {
+    targets: {},
+  },
 }
 
 type TomlSection = Record<string, string>
@@ -28,7 +31,7 @@ function parseToml(text: string): TomlDoc {
     const line = raw.trim()
     if (line === "" || line.startsWith("#")) continue
 
-    const sectionMatch = line.match(/^\[(\w+)]$/)
+    const sectionMatch = line.match(/^\[([\w.]+)]$/)
     if (sectionMatch) {
       currentSection = sectionMatch[1]!
       if (result[currentSection] === undefined) {
@@ -55,11 +58,24 @@ function parseToml(text: string): TomlDoc {
 }
 
 function applyToml(config: SporesConfig, doc: TomlDoc): SporesConfig {
+  const sourceRuntime = config.runtime ?? { targets: {} }
+  const runtimeTargets: Record<string, RuntimeTargetConfig> = {}
+  for (const [name, target] of Object.entries(sourceRuntime.targets)) {
+    runtimeTargets[name] = {
+      package: target.package,
+      config: { ...target.config },
+    }
+  }
+
   const result = {
     ...config,
     memory: { ...config.memory },
     workflow: { ...config.workflow },
     wake: { ...config.wake },
+    runtime: {
+      default: sourceRuntime.default,
+      targets: runtimeTargets,
+    },
   }
 
   if (typeof doc["adapter"] === "string") {
@@ -84,6 +100,29 @@ function applyToml(config: SporesConfig, doc: TomlDoc): SporesConfig {
   const wake = doc["wake"]
   if (typeof wake === "object") {
     if (wake["template"] !== undefined) result.wake.template = wake["template"]
+  }
+
+  const runtime = doc["runtime"]
+  if (typeof runtime === "object") {
+    if (runtime["default"] !== undefined) result.runtime.default = runtime["default"]
+  }
+
+  for (const [sectionName, section] of Object.entries(doc)) {
+    if (!sectionName.startsWith("runtime.") || typeof section !== "object") {
+      continue
+    }
+
+    const name = sectionName.slice("runtime.".length)
+    const runtimeConfig: Record<string, string> = {}
+    for (const [key, value] of Object.entries(section)) {
+      if (key !== "package") runtimeConfig[key] = value
+    }
+
+    const existing = result.runtime.targets[name]
+    result.runtime.targets[name] = {
+      package: section["package"] ?? existing?.package,
+      config: { ...(existing?.config ?? {}), ...runtimeConfig },
+    }
   }
 
   return result
