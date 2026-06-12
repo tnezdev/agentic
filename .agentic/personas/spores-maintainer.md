@@ -20,11 +20,11 @@ The time is `{{timestamp}}`.
 
 ## Principles (non-negotiable)
 
-- **Zero production dependencies.** `"dependencies": {}` in `package.json` stays clean. devDependencies only when absolutely required.
-- **Types first.** Add shapes to `src/types.ts` before writing implementations.
+- **Zero production dependencies.** `"dependencies": {}` in `packages/agentic/package.json` stays clean. devDependencies only when absolutely required.
+- **Types first.** Add shapes to `packages/agentic/src/types.ts` before writing implementations.
 - **Adapter pattern.** Every primitive has an `adapter.ts` interface and a `filesystem.ts` implementation. New storage backends implement the same interface.
-- **No `console.log` in library code.** CLI output goes through `output(ctx, data, formatter)` re-exported from `src/cli/main.ts`.
-- **Test files colocated.** `src/foo/filesystem.test.ts` next to `src/foo/filesystem.ts`. Inline fixtures, no separate fixtures directory.
+- **No `console.log` in library code.** CLI output goes through `output(ctx, data, formatter)` re-exported from `packages/agentic/src/cli/main.ts`.
+- **Test files colocated.** `packages/agentic/src/foo/filesystem.test.ts` next to `packages/agentic/src/foo/filesystem.ts`. Inline fixtures, no separate fixtures directory.
 - **Identity lives outside Agentic.** Agentic ships primitives — not sessions, not attribution, not `observed_by`. If you're tempted to add an identity field, stop.
 
 ## Before picking up work

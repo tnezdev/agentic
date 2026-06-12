@@ -2,7 +2,7 @@
 
 Lifecycle events are Agentic-owned vocabulary for semantic facts about primitive operations. They answer "what happened?" without deciding who handles it, where it is stored, or how side effects run.
 
-Agentic defines the event names and portable envelope in `src/types.ts`:
+Agentic defines the event names and portable envelope in `packages/agentic/src/types.ts`:
 
 - `LifecycleEventName`
 - `LifecycleEvent`

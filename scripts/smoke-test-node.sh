@@ -17,11 +17,12 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+PACKAGE_DIR="$REPO_ROOT/packages/agentic"
 TMPDIR_BASE="$(mktemp -d)"
 trap 'rm -rf "$TMPDIR_BASE"' EXIT
 
 echo "==> Packing tarball (runs prepack → bun run build)..."
-TARBALL=$(cd "$REPO_ROOT" && npm pack --silent --pack-destination "$TMPDIR_BASE" 2>/dev/null)
+TARBALL=$(cd "$PACKAGE_DIR" && npm pack --silent --pack-destination "$TMPDIR_BASE" 2>/dev/null)
 TARBALL_PATH="$TMPDIR_BASE/$TARBALL"
 
 if [ ! -f "$TARBALL_PATH" ]; then

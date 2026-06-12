@@ -344,7 +344,7 @@ Those are host bindings. The portable layer defines the shared vocabulary that l
 
 ## Neutral Example Set
 
-The following examples are useful fixtures for validating the vocabulary without binding it to a specific host. Each is stored as a JSON file under `src/capability/fixtures/` and validated in tests using `validateCapability`.
+The following examples are useful fixtures for validating the vocabulary without binding it to a specific host. Each is stored as a JSON file under `packages/agentic/src/capability/fixtures/` and validated in tests using `validateCapability`.
 
 ### `issue_tracker.list_issues`
 
