@@ -8,13 +8,13 @@ This repo dogfoods its own toolbelt. When you work on `@tnezdev/agentic`, you us
 
 ```bash
 # 1. Orient — load the maintainer hat with live situational tokens
-bun src/cli/main.ts persona activate spores-maintainer
+bun packages/agentic/src/cli/main.ts persona activate spores-maintainer
 
 # 2. Pick up work — top ready task from the local queue
-bun src/cli/main.ts task next
+bun packages/agentic/src/cli/main.ts task next
 
 # 3. When cutting a release — run the checklist
-bun src/cli/main.ts skill run release-check
+bun packages/agentic/src/cli/main.ts skill run release-check
 ```
 
 Read the persona output. Do what step 3 of its "Before picking up work" section tells you. Start the work.

@@ -22,28 +22,28 @@ From the repo root:
 
 ```bash
 # List what's available
-bun src/cli/main.ts persona list
-bun src/cli/main.ts skill list
-bun src/cli/main.ts workflow list
-bun src/cli/main.ts task list
+bun packages/agentic/src/cli/main.ts persona list
+bun packages/agentic/src/cli/main.ts skill list
+bun packages/agentic/src/cli/main.ts workflow list
+bun packages/agentic/src/cli/main.ts task list
 
 # Activate the maintainer hat — pipe into your LLM of choice
-bun src/cli/main.ts persona activate spores-maintainer
+bun packages/agentic/src/cli/main.ts persona activate spores-maintainer
 
 # Run the release check skill
-bun src/cli/main.ts skill run release-check
+bun packages/agentic/src/cli/main.ts skill run release-check
 
 # Pick up the next ready task
-bun src/cli/main.ts task next
+bun packages/agentic/src/cli/main.ts task next
 
 # Kick off a release run
-bun src/cli/main.ts workflow run agentic-release --name "0.5.0-cut"
+bun packages/agentic/src/cli/main.ts workflow run agentic-release --name "0.5.0-cut"
 
 # Query memories when you need the "why"
-bun src/cli/main.ts memory recall "runtime scope"
+bun packages/agentic/src/cli/main.ts memory recall "runtime scope"
 ```
 
-(After `npm install -g @tnezdev/agentic`, replace `bun src/cli/main.ts` with `agentic`.)
+(After `npm install -g @tnezdev/agentic`, replace `bun packages/agentic/src/cli/main.ts` with `agentic`.)
 
 ## Why this shape
 

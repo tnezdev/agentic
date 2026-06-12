@@ -18,9 +18,9 @@ Do this before the release PR or tag, not while a publish run is failing. The pa
 
 Open a `chore: release vX.Y.Z` PR that:
 
-- Bumps `version` in `package.json` per semver.
+- Bumps `version` in `packages/agentic/package.json` per semver.
 - Appends a CHANGELOG entry (or release notes section) covering user-visible changes since the last tag.
-- Keeps `"dependencies": {}` in `package.json`. A non-empty production dependency is a design regression — investigate before shipping.
+- Keeps `"dependencies": {}` in `packages/agentic/package.json`. A non-empty production dependency is a design regression — investigate before shipping.
 
 Merge only after CI (`.github/workflows/ci.yml`) is green on the PR. CI runs `bun test` and `bun run typecheck` — those are the authoritative gates, not a local run.
 

@@ -56,4 +56,5 @@ jobs:
           npm --version
 
       - name: Publish
+        working-directory: packages/agentic
         run: npm publish --provenance --access public
