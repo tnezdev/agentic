@@ -63,6 +63,11 @@ export type {
   CapabilityPolicy,
   CapabilityArtifacts,
   CapabilityDef,
+  RuntimeCapability,
+  RuntimeCommandName,
+  RuntimeRef,
+  RuntimeListOutput,
+  RuntimeCommandOutput,
 } from "./types.js"
 export {
   CAPABILITY_EFFECTS,
