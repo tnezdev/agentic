@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@tnezdev/agentic/runtime": ["../agentic/src/runtime.ts"],
+      "@tnezdev/agentic": ["../agentic/src/index.ts"]
+    }
+  },
+  "include": ["src/**/*"]
+}

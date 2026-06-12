@@ -18,11 +18,25 @@
         "typescript": "^5.7.0",
       },
     },
+    "packages/agentic-runtime-local": {
+      "name": "@tnezdev/agentic-runtime-local",
+      "version": "0.5.0",
+      "devDependencies": {
+        "@tnezdev/agentic": "^0.5.0",
+        "@types/bun": "^1.3.11",
+        "typescript": "^5.7.0",
+      },
+      "peerDependencies": {
+        "@tnezdev/agentic": "^0.5.0",
+      },
+    },
   },
   "packages": {
     "@cloudflare/workers-types": ["@cloudflare/workers-types@4.20260426.1", "", {}, "sha512-cBYeQaWwv/jFV8ualmwp6wIxmAf0rDe2DPPQwPbslKmPHqgv861YpAvm45r05K40QboZgxNQVIPgNkmtHqZeJQ=="],
 
     "@tnezdev/agentic": ["@tnezdev/agentic@workspace:packages/agentic"],
+
+    "@tnezdev/agentic-runtime-local": ["@tnezdev/agentic-runtime-local@workspace:packages/agentic-runtime-local"],
 
     "@types/bun": ["@types/bun@1.3.11", "", { "dependencies": { "bun-types": "1.3.11" } }, "sha512-5vPne5QvtpjGpsGYXiFyycfpDF2ECyPcTSsFBMa0fraoxiQyMJ3SmuQIGhzPg2WJuWxVBoxWJ2kClYTcw/4fAg=="],
 
