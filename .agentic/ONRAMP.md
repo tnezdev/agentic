@@ -4,17 +4,27 @@
 
 This repo dogfoods its own toolbelt. When you work on `@tnezdev/agentic`, you use the `agentic` CLI. Not because it's clever — because if the tool isn't good enough for us to use on its own source, it isn't good enough to ship.
 
+## Local command resolution
+
+This repo includes a `direnv` setup so `agentic` resolves to this checkout while you are inside the repo, even if you also have a global `agentic` installed. Run this once after cloning or after `.envrc` changes:
+
+```bash
+direnv allow
+```
+
+Verify resolution with `type -a agentic`; the first result should be `bin/agentic` from this repo.
+
 ## The three-command on-ramp
 
 ```bash
 # 1. Orient — load the maintainer hat with live situational tokens
-bun packages/agentic/src/cli/main.ts persona activate spores-maintainer
+agentic persona activate spores-maintainer
 
 # 2. Pick up work — top ready task from the local queue
-bun packages/agentic/src/cli/main.ts task next
+agentic task next
 
 # 3. When cutting a release — run the checklist
-bun packages/agentic/src/cli/main.ts skill run release-check
+agentic skill run release-check
 ```
 
 Read the persona output. Do what step 3 of its "Before picking up work" section tells you. Start the work.
