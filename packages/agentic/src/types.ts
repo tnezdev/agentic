@@ -365,6 +365,49 @@ export type DispatchHandlerHooks = {
 }
 
 // ---------------------------------------------------------------------------
+// Runtime package CLI types
+//
+// Core owns the runtime CLI front door and package seam. Runtime packages own
+// harness/platform integration. These types describe the narrow placeholder
+// surface used before package discovery/delegation lands.
+// ---------------------------------------------------------------------------
+
+export type RuntimeCapability =
+  | "init"
+  | "run"
+  | "status"
+  | "dev"
+  | "deploy"
+  | "interactive"
+  | "json-events"
+  | "harness-sessions"
+
+export type RuntimeCommandName = "add" | "init" | "run" | "status"
+
+export type RuntimeRef = {
+  name: string
+  package_name: string
+  description: string
+  status: "known"
+  capabilities: RuntimeCapability[]
+  install_command: string
+}
+
+export type RuntimeListOutput = {
+  runtimes: RuntimeRef[]
+  note: string
+}
+
+export type RuntimeCommandOutput = {
+  command: RuntimeCommandName
+  runtime: RuntimeRef
+  target?: string | undefined
+  status: "recognized" | "needs_package"
+  message: string
+  next_steps: string[]
+}
+
+// ---------------------------------------------------------------------------
 // Lifecycle event types
 //
 // Lifecycle events are semantic facts about primitive operations. Agentic owns

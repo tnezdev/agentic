@@ -49,6 +49,9 @@ agentic task next
 # Activate a persona (pipe into your LLM as system prompt)
 agentic persona list
 agentic persona activate spores-maintainer | llm --system -
+
+# Preview the runtime package front door
+agentic runtime list
 ```
 
 ## Primitives
@@ -60,6 +63,8 @@ agentic persona activate spores-maintainer | llm --system -
 | **Workflow** | Directed-graph runtime — register a graph, create runs, advance node state |
 | **Tasks** | ULID-keyed task queue with status transitions and annotations |
 | **Persona** | Activate a "hat" at the start of a turn: memory tags, skills, task filter, workflow, and a rendered body with live situational facts |
+
+The `agentic runtime ...` namespace is the CLI front door for optional runtime packages. Core Agentic recognizes official targets such as `local`, but package install, discovery, and command delegation live outside core and are being backfilled through runtime packages.
 
 All five primitives read from `.agentic/` in your project root, with optional global overrides from `~/.agentic/`. Legacy `.spores/` and `~/.spores/` paths are honoured during the compatibility window when `.agentic/` is absent.
 

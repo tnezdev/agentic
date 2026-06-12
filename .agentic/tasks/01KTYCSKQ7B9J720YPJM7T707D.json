@@ -1,0 +1,23 @@
+{
+  "description": "GitHub #106: CLI: add runtime command namespace",
+  "status": "done",
+  "tags": [
+    "spores",
+    "cli",
+    "runtime",
+    "github-106"
+  ],
+  "id": "01KTYCSKQ7B9J720YPJM7T707D",
+  "annotations": [
+    {
+      "text": "status: ready → in_progress",
+      "timestamp": "2026-06-12T17:06:48.577Z"
+    },
+    {
+      "text": "status: in_progress → done",
+      "timestamp": "2026-06-12T17:17:44.246Z"
+    }
+  ],
+  "created_at": "2026-06-12T17:06:39.463Z",
+  "updated_at": "2026-06-12T17:17:44.246Z"
+}

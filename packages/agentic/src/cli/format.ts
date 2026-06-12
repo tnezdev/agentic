@@ -36,6 +36,8 @@ import type {
   ArtifactFinalizedOutput,
   ArtifactInspectedOutput,
   CapabilityDef,
+  RuntimeCommandOutput,
+  RuntimeListOutput,
 } from "../types.js"
 
 
@@ -610,4 +612,36 @@ export function formatCapabilityValidate(result: CapabilityValidateResult): stri
   }
   const errorLines = result.errors.map((e) => `  ${e.field}: ${e.message}`)
   return [`${result.subject}: invalid`, ...errorLines].join("\n")
+}
+
+// ---------------------------------------------------------------------------
+// Runtime formatters
+// ---------------------------------------------------------------------------
+
+export function formatRuntimeHelp(help: string): string {
+  return help
+}
+
+export function formatRuntimeList(result: RuntimeListOutput): string {
+  const rows = result.runtimes.map((runtime) => [
+    runtime.name,
+    runtime.package_name,
+    runtime.status,
+    runtime.capabilities.join(", "),
+  ])
+  const body =
+    rows.length === 0
+      ? "No runtime targets known."
+      : table(["NAME", "PACKAGE", "STATUS", "CAPABILITIES"], rows)
+  return [body, "", result.note].join("\n")
+}
+
+export function formatRuntimeAction(result: RuntimeCommandOutput): string {
+  return [
+    `${result.runtime.name}: ${result.status}`,
+    result.message,
+    ...(result.target !== undefined ? [`target: ${result.target}`] : []),
+    "next steps:",
+    ...result.next_steps.map((step) => `  - ${step}`),
+  ].join("\n")
 }

@@ -59,6 +59,14 @@ import {
   capabilityShowCommand,
   capabilityValidateCommand,
 } from "./commands/capability.js"
+import {
+  runtimeAddCommand,
+  runtimeHelpCommand,
+  runtimeInitCommand,
+  runtimeListCommand,
+  runtimeRunCommand,
+  runtimeStatusCommand,
+} from "./commands/runtime.js"
 
 type Parsed = {
   positional: string[]
@@ -136,6 +144,13 @@ const commands: Record<string, Command> = {
   "capability list": capabilityListCommand,
   "capability show": capabilityShowCommand,
   "capability validate": capabilityValidateCommand,
+  runtime: runtimeHelpCommand,
+  "runtime help": runtimeHelpCommand,
+  "runtime list": runtimeListCommand,
+  "runtime add": runtimeAddCommand,
+  "runtime init": runtimeInitCommand,
+  "runtime run": runtimeRunCommand,
+  "runtime status": runtimeStatusCommand,
   wake: wakeCommand,
 }
 
@@ -189,6 +204,12 @@ Commands:
   capability list                     List available capabilities
   capability show <name>              Show capability declaration details
   capability validate <name-or-file>  Validate a capability by name or file path
+
+  runtime list                        List known runtime targets
+  runtime add <name>                  Show package guidance for a runtime target
+  runtime init [name]                 Initialize a configured runtime target
+  runtime run [target]                Run a target with the default runtime
+  runtime status [name]               Show runtime availability guidance
 
   wake                                Session bootstrap — identity, environment, personas
 

@@ -46,6 +46,63 @@ describe("CLI", () => {
     const { stdout, exitCode } = await run("--help")
     expect(exitCode).toBe(0)
     expect(stdout).toContain("Usage: agentic")
+    expect(stdout).toContain("runtime list")
+  })
+
+  it("routes runtime help", async () => {
+    const { stdout, exitCode } = await run(...base, "runtime")
+    expect(exitCode).toBe(0)
+    expect(stdout).toContain("Usage: agentic runtime")
+  })
+
+  it("routes runtime list", async () => {
+    const result = (await runJson(...base, "runtime", "list")) as {
+      runtimes: Array<{ name: string; package_name: string }>
+      note: string
+    }
+    expect(result.runtimes[0]!.name).toBe("local")
+    expect(result.runtimes[0]!.package_name).toBe("@tnezdev/agentic-runtime-local")
+    expect(result.note).toContain("CLI namespace only")
+  })
+
+  it("runtime add gives package guidance for local", async () => {
+    const result = (await runJson(...base, "runtime", "add", "local")) as {
+      command: string
+      status: string
+      runtime: { name: string; package_name: string }
+      next_steps: string[]
+    }
+    expect(result.command).toBe("add")
+    expect(result.status).toBe("recognized")
+    expect(result.runtime.package_name).toBe("@tnezdev/agentic-runtime-local")
+    expect(result.next_steps.join("\n")).toContain("bun add -d @tnezdev/agentic-runtime-local")
+  })
+
+  it("runtime add rejects unknown runtime names", async () => {
+    const { stdout, exitCode } = await run(
+      "--json",
+      ...base,
+      "runtime",
+      "add",
+      "spaceship",
+    )
+    expect(exitCode).toBe(1)
+    const result = JSON.parse(stdout) as { error: string }
+    expect(result.error).toContain('Unknown runtime target "spaceship"')
+  })
+
+  it("runtime run fails with actionable package guidance before delegation exists", async () => {
+    const { stdout, exitCode } = await run(
+      "--json",
+      ...base,
+      "runtime",
+      "run",
+      "inbox-review",
+    )
+    expect(exitCode).toBe(1)
+    const result = JSON.parse(stdout) as { error: string }
+    expect(result.error).toContain("@tnezdev/agentic-runtime-local")
+    expect(result.error).toContain("bun add -d @tnezdev/agentic-runtime-local")
   })
 
   it("exits 1 on unknown command", async () => {
