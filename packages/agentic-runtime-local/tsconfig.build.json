@@ -1,0 +1,20 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "allowImportingTsExtensions": false,
+    "paths": {
+      "@tnezdev/agentic/runtime": ["../agentic/dist/runtime.d.ts"],
+      "@tnezdev/agentic": ["../agentic/dist/index.d.ts"]
+    }
+  },
+  "include": ["src/**/*"],
+  "exclude": ["src/**/*.test.ts"]
+}

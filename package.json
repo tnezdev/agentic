@@ -6,8 +6,8 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "bun run --cwd packages/agentic build",
-    "typecheck": "bun run --cwd packages/agentic typecheck",
-    "test": "bun run --cwd packages/agentic test"
+    "build": "bun run --cwd packages/agentic build && bun run --cwd packages/agentic-runtime-local build",
+    "typecheck": "bun run --cwd packages/agentic typecheck && bun run --cwd packages/agentic-runtime-local typecheck",
+    "test": "bun run --cwd packages/agentic test && bun run --cwd packages/agentic-runtime-local test"
   }
 }
