@@ -2,4 +2,5 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+export AGENTIC_RUNTIME_PACKAGE_DIRS="$ROOT/packages${AGENTIC_RUNTIME_PACKAGE_DIRS:+:$AGENTIC_RUNTIME_PACKAGE_DIRS}"
 exec bun "$ROOT/packages/agentic/src/cli/main.ts" "$@"

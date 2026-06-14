@@ -1,7 +1,7 @@
-import { existsSync } from "node:fs"
+import { existsSync, readFileSync } from "node:fs"
 import { mkdir, readFile, writeFile } from "node:fs/promises"
 import { createRequire } from "node:module"
-import { join } from "node:path"
+import { delimiter, join } from "node:path"
 import { pathToFileURL } from "node:url"
 import { parseToml } from "../../config.js"
 import { FilesystemArtifactAdapter } from "../../artifact/filesystem.js"
@@ -33,6 +33,7 @@ import { output } from "../output.js"
 
 const PACKAGE_DISCOVERY_NOTE =
   "Runtime packages are optional. Use `agentic runtime add <name>` to record a target; install guidance is printed when a package is missing."
+const RUNTIME_PACKAGE_DIRS_ENV = "AGENTIC_RUNTIME_PACKAGE_DIRS"
 
 type OfficialRuntime = Omit<RuntimeRef, "status" | "error">
 
@@ -260,11 +261,69 @@ async function writeRuntimeConfig(
 }
 
 function resolveRuntimePackage(baseDir: string, packageName: string): string {
+  const devEntry = resolveRuntimePackageFromDirs(packageName)
+  if (devEntry !== undefined) return devEntry
+
   try {
     const requireFromWorkspace = createRequire(join(baseDir, "package.json"))
     return requireFromWorkspace.resolve(packageName)
   } catch {
     throw new MissingRuntimePackageError(`Runtime package "${packageName}" is not installed.`)
+  }
+}
+
+function resolveRuntimePackageFromDirs(packageName: string): string | undefined {
+  const roots = runtimePackageDirs()
+  const names = runtimePackageDirNames(packageName)
+
+  for (const root of roots) {
+    for (const name of names) {
+      const packageDir = join(root, name)
+      const packageJsonPath = join(packageDir, "package.json")
+      if (!existsSync(packageJsonPath)) continue
+
+      const packageJson = readPackageJson(packageJsonPath)
+      if (packageJson?.["name"] !== packageName) continue
+
+      const sourceEntry = join(packageDir, "src", "index.ts")
+      if (existsSync(sourceEntry)) return sourceEntry
+
+      try {
+        const requireFromPackage = createRequire(packageJsonPath)
+        return requireFromPackage.resolve(packageDir)
+      } catch {
+        throw new InvalidRuntimePackageError(
+          `Runtime package "${packageName}" was found in ${packageDir}, but no importable entrypoint exists.`,
+        )
+      }
+    }
+  }
+
+  return undefined
+}
+
+function runtimePackageDirs(): string[] {
+  return (process.env[RUNTIME_PACKAGE_DIRS_ENV] ?? "")
+    .split(delimiter)
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0)
+}
+
+function runtimePackageDirNames(packageName: string): string[] {
+  const names = [packageName]
+  if (packageName.startsWith("@")) {
+    const [, unscoped] = packageName.split("/")
+    if (unscoped !== undefined) names.push(unscoped)
+  }
+  return [...new Set(names)]
+}
+
+function readPackageJson(path: string): Record<string, unknown> | undefined {
+  try {
+    const parsed = JSON.parse(readFileSync(path, "utf-8"))
+    return isRecord(parsed) ? parsed : undefined
+  } catch {
+    return undefined
   }
 }
 

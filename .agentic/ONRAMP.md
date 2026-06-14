@@ -6,7 +6,9 @@ This repo dogfoods its own toolbelt. When you work on `@tnezdev/agentic`, you us
 
 ## Local command resolution
 
-This repo includes a `direnv` setup so `agentic` resolves to this checkout while you are inside the repo, even if you also have a global `agentic` installed. Run this once after cloning or after `.envrc` changes:
+This repo includes a `direnv` setup so `agentic` resolves to this checkout while you are inside the repo, even if you also have a global `agentic` installed. The repo-local shim also exposes `packages/` as the development runtime package directory, so nested workspaces like `examples/second-brain` use the local runtime package source instead of a global or published install.
+
+Run this once after cloning or after `.envrc` changes:
 
 ```bash
 direnv allow

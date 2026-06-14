@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test"
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
-import { join } from "node:path"
+import { delimiter, join } from "node:path"
 import { tmpdir } from "node:os"
 
 const CLI = join(import.meta.dir, "main.ts")
@@ -8,7 +8,15 @@ const CLI = join(import.meta.dir, "main.ts")
 async function run(
   ...args: string[]
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+  return runWithEnv({}, ...args)
+}
+
+async function runWithEnv(
+  env: Record<string, string>,
+  ...args: string[]
+): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   const proc = Bun.spawn(["bun", CLI, ...args], {
+    env: { ...process.env, AGENTIC_RUNTIME_PACKAGE_DIRS: "", ...env },
     stdout: "pipe",
     stderr: "pipe",
   })
@@ -20,6 +28,14 @@ async function run(
 
 async function runJson(...args: string[]): Promise<unknown> {
   const { stdout } = await run("--json", ...args)
+  return JSON.parse(stdout)
+}
+
+async function runJsonWithEnv(
+  env: Record<string, string>,
+  ...args: string[]
+): Promise<unknown> {
+  const { stdout } = await runWithEnv(env, "--json", ...args)
   return JSON.parse(stdout)
 }
 
@@ -55,6 +71,49 @@ async function writeRuntimePackage(baseDir: string, source?: string): Promise<vo
     }),
     status: async () => ({
       summary: "runtime ready",
+      data: { ready: true },
+    }),
+  },
+}
+`,
+  )
+}
+
+async function writeRuntimeWorkspacePackage(packagesDir: string): Promise<void> {
+  const pkgDir = join(packagesDir, "agentic-runtime-local")
+  await mkdir(join(pkgDir, "src"), { recursive: true })
+  await writeFile(
+    join(pkgDir, "package.json"),
+    JSON.stringify(
+      {
+        name: "@tnezdev/agentic-runtime-local",
+        type: "module",
+        exports: "./dist/index.js",
+      },
+      null,
+      2,
+    ),
+  )
+  await writeFile(
+    join(pkgDir, "src", "index.ts"),
+    `export const runtime = {
+  kind: "agentic-runtime",
+  api_version: 1,
+  name: "local",
+  package_name: "@tnezdev/agentic-runtime-local",
+  description: "Workspace local runtime",
+  capabilities: ["init", "run", "status"],
+  commands: {
+    init: async (ctx, args) => ({
+      summary: "initialized workspace runtime",
+      data: { cwd: ctx.cwd, args: args.args },
+    }),
+    run: async (ctx, args) => ({
+      summary: "ran workspace target",
+      data: { target: args.target, args: args.args },
+    }),
+    status: async () => ({
+      summary: "workspace runtime ready",
       data: { ready: true },
     }),
   },
@@ -129,6 +188,30 @@ describe("CLI", () => {
     await writeRuntimePackage(tmpDir)
 
     const result = (await runJson(...base, "runtime", "add", "local")) as {
+      status: string
+      runtime: { status: string }
+      result: { data: { manifest: { capabilities: string[] } } }
+    }
+
+    expect(result.status).toBe("added")
+    expect(result.runtime.status).toBe("configured")
+    expect(result.result.data.manifest.capabilities).toContain("run")
+  })
+
+  it("runtime add discovers workspace runtime packages from dev package dirs", async () => {
+    const nestedBase = join(tmpDir, "examples", "second-brain")
+    const packagesDir = join(tmpDir, "packages")
+    await mkdir(nestedBase, { recursive: true })
+    await writeRuntimeWorkspacePackage(packagesDir)
+
+    const result = (await runJsonWithEnv(
+      { AGENTIC_RUNTIME_PACKAGE_DIRS: packagesDir },
+      "--base-dir",
+      nestedBase,
+      "runtime",
+      "add",
+      "local",
+    )) as {
       status: string
       runtime: { status: string }
       result: { data: { manifest: { capabilities: string[] } } }
@@ -225,6 +308,34 @@ describe("CLI", () => {
 
     expect(result.status).toBe("delegated")
     expect(result.result.data.runtime_config).toEqual({ harness: "pi" })
+  })
+
+  it("runtime init delegates to a workspace runtime package from a nested baseDir", async () => {
+    const nestedBase = join(tmpDir, "examples", "second-brain")
+    const packagesDir = join(tmpDir, "packages")
+    await mkdir(join(nestedBase, ".agentic"), { recursive: true })
+    await writeFile(
+      join(nestedBase, ".agentic", "config.toml"),
+      '[runtime]\ndefault = "local"\n\n[runtime.local]\npackage = "@tnezdev/agentic-runtime-local"\n',
+    )
+    await writeRuntimeWorkspacePackage(packagesDir)
+
+    const result = (await runJsonWithEnv(
+      { AGENTIC_RUNTIME_PACKAGE_DIRS: [packagesDir, join(tmpDir, "missing")].join(delimiter) },
+      "--base-dir",
+      nestedBase,
+      "runtime",
+      "init",
+      "local",
+      "research-loop",
+    )) as {
+      status: string
+      result: { data: { cwd: string; args: string[] } }
+    }
+
+    expect(result.status).toBe("delegated")
+    expect(result.result.data.cwd).toBe(nestedBase)
+    expect(result.result.data.args).toEqual(["research-loop"])
   })
 
   it("exits 1 on unknown command", async () => {
