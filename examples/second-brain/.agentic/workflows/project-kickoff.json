@@ -1,0 +1,82 @@
+{
+  "id": "project-kickoff",
+  "name": "Project kickoff",
+  "description": "Turn a project idea into a scoped PARA project with next actions and success criteria.",
+  "version": "1.0",
+  "nodes": [
+    {
+      "id": "intake-questions",
+      "label": "Ask kickoff questions",
+      "description": "Ask the user enough questions to understand the project outcome, motivation, constraints, success criteria, and first useful next action. Do not draft the project plan from assumptions unless the user explicitly asks for a speculative draft.",
+      "type": "manual",
+      "artifact": {
+        "type": "project-intake",
+        "description": "User-provided answers or explicitly labeled assumptions from the kickoff interview.",
+        "required": true,
+        "tags": ["second-brain", "project", "intake"]
+      }
+    },
+    {
+      "id": "define-outcome",
+      "label": "Define outcome",
+      "description": "State the desired outcome, why it matters, and what done looks like using the kickoff intake answers as source material.",
+      "artifact": {
+        "type": "project-outcome",
+        "description": "Project outcome, success criteria, and decision context.",
+        "required": true,
+        "tags": ["second-brain", "project"]
+      }
+    },
+    {
+      "id": "choose-para-bucket",
+      "label": "Choose PARA bucket",
+      "description": "Assign the project to a concrete PARA project tag in the form para:project/<slug>.",
+      "artifact": {
+        "type": "taxonomy-validation",
+        "description": "Selected PARA project tag and rationale.",
+        "required": true,
+        "tags": ["second-brain", "taxonomy"]
+      }
+    },
+    {
+      "id": "map-resources",
+      "label": "Map resources",
+      "description": "Identify related areas, resources, constraints, stakeholders, and reference material.",
+      "artifact": {
+        "type": "project-context",
+        "description": "Context map for the project: related areas/resources, constraints, and references.",
+        "required": true,
+        "tags": ["second-brain", "project", "resources"]
+      }
+    },
+    {
+      "id": "create-project-plan",
+      "label": "Create project plan",
+      "description": "Write the project plan artifact with scope, milestones, risks, and next actions.",
+      "artifact": {
+        "type": "project-plan",
+        "description": "Durable project plan artifact tagged with para:project/<slug>.",
+        "required": true,
+        "tags": ["second-brain", "project", "plan"]
+      }
+    },
+    {
+      "id": "seed-next-actions",
+      "label": "Seed next actions",
+      "description": "Create or update tasks for the first concrete next actions.",
+      "artifact": {
+        "type": "next-actions",
+        "description": "Initial task list or task updates for the project.",
+        "required": true,
+        "tags": ["second-brain", "tasks"]
+      }
+    }
+  ],
+  "edges": [
+    { "from": "intake-questions", "to": "define-outcome" },
+    { "from": "define-outcome", "to": "choose-para-bucket" },
+    { "from": "choose-para-bucket", "to": "map-resources" },
+    { "from": "map-resources", "to": "create-project-plan" },
+    { "from": "create-project-plan", "to": "seed-next-actions" }
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "runtime": "local",
+  "package_name": "@tnezdev/agentic-runtime-local",
+  "targets_dir": "targets"
+}

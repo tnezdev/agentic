@@ -1,0 +1,7 @@
+{
+  "name": "second-brain-example",
+  "private": true,
+  "devDependencies": {
+    "@tnezdev/agentic-runtime-local": "workspace:*"
+  }
+}
