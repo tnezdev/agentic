@@ -11,3 +11,9 @@ dream_depth = "3"
 [workflow]
 graphs_dir = ".agentic/workflows"
 runs_dir = ".agentic/runs"
+
+[runtime]
+default = "local"
+
+[runtime.local]
+package = "@tnezdev/agentic-runtime-local"

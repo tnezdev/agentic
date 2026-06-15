@@ -1,5 +1,6 @@
 import { access, mkdir, readFile, stat, writeFile } from "node:fs/promises"
 import { join, relative } from "node:path"
+import { Runtime } from "@tnezdev/agentic"
 import type {
   AgenticRuntimePackage,
   RuntimeCommandResult,
@@ -8,6 +9,7 @@ import type {
   RuntimeRunArgs,
   RuntimeStatusArgs,
 } from "@tnezdev/agentic/runtime"
+import type { GraphDef } from "@tnezdev/agentic"
 
 const RUNTIME_NAME = "local"
 const PACKAGE_NAME = "@tnezdev/agentic-runtime-local"
@@ -103,12 +105,76 @@ async function runLocalRuntime(
   ctx: RuntimeContext,
   args: RuntimeRunArgs,
 ): Promise<RuntimeCommandResult> {
+  const initialized = await pathExists(statePath(ctx))
+  if (!initialized) {
+    return {
+      summary: "Local runtime is not initialized. Run `agentic runtime init local` first.",
+      data: {
+        target: args.target ?? null,
+        initialized: false,
+      },
+    }
+  }
+
+  const target = args.target
+  if (!target) {
+    const graphs = await ctx.agentic.workflows.listGraphs()
+    const graphList = graphs.map((g: GraphDef) => `  ${g.id} — ${g.name}`).join("\n")
+    return {
+      summary: graphs.length > 0
+        ? `Specify a target workflow to run. Available workflows:\n${graphList}`
+        : "No workflows found in this workspace. Add workflows to .agentic/workflows/ first.",
+      data: {
+        target: null,
+        initialized: true,
+        available_graphs: graphs.map((g: GraphDef) => ({ id: g.id, name: g.name })),
+      },
+    }
+  }
+
+  // Resolve target to a workflow graph
+  const graph = await ctx.agentic.workflows.loadGraph(target)
+  if (!graph) {
+    const graphs = await ctx.agentic.workflows.listGraphs()
+    const graphList = graphs.map((g: GraphDef) => `  ${g.id} — ${g.name}`).join("\n")
+    return {
+      summary: `Workflow "${target}" not found. Available workflows:\n${graphList || "  (none)"}`,
+      data: {
+        target,
+        initialized: true,
+        error: "graph_not_found",
+        available_graphs: graphs.map((g: GraphDef) => ({ id: g.id, name: g.name })),
+      },
+    }
+  }
+
+  // Create a workflow run
+  const rt = new Runtime(ctx.agentic.workflows)
+  const run = await rt.createRun(graph.id)
+  const available = await rt.next(graph.id, run.run_id)
+
+  // Build node info for available first steps
+  const nodeInfo = available.map((nodeId: string) => {
+    const node = graph.nodes.find((n) => n.id === nodeId)
+    return {
+      id: nodeId,
+      label: node?.label ?? nodeId,
+      type: node?.type ?? "automated",
+      artifact_type: node?.artifact?.type ?? node?.artifact_type ?? null,
+    }
+  })
+
+  const label = graph.name ?? graph.id
+
   return {
-    summary: "Local runtime execution is not implemented yet.",
+    summary: `Created run for "${label}" (${graph.id}).\n\nRun ID: ${run.run_id}\n\nNext steps (ready to start):\n${nodeInfo.map((n: { id: string; label: string; artifact_type: string | null }) => `  ${n.id}: ${n.label}${n.artifact_type ? ` → ${n.artifact_type}` : ""}`).join("\n")}\n\nDrive transitions with:\n  agentic workflow start ${run.run_id} <node-id>\n  agentic workflow done ${run.run_id} <node-id> --artifact-type <type>\n  agentic workflow next ${run.run_id}`,
     data: {
-      target: args.target ?? null,
-      args: args.args,
-      initialized: await pathExists(statePath(ctx)),
+      target,
+      initialized: true,
+      run_id: run.run_id,
+      graph_id: graph.id,
+      graph_name: graph.name,
+      available_nodes: nodeInfo,
     },
   }
 }

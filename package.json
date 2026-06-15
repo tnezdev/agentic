@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "examples/*"
   ],
   "scripts": {
     "build": "bun run --cwd packages/agentic build && bun run --cwd packages/agentic-runtime-local build",

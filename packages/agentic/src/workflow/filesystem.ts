@@ -74,16 +74,22 @@ export class FilesystemWorkflowAdapter implements WorkflowAdapter {
   }
 
   async loadGraph(graphId: string, version?: string): Promise<GraphDef | undefined> {
-    const name =
-      version === undefined ? graphId : versionedGraphName(graphId, version)
-    for (const ext of [".json", ".yaml", ".yml"]) {
-      const filePath = join(this.graphsDir, `${name}${ext}`)
-      try {
-        const data = await readFile(filePath, "utf-8")
-        return parseGraph(data, filePath)
-      } catch (err) {
-        if (isNodeError(err) && err.code === "ENOENT") continue
-        throw err
+    // Try versioned name first, then fall back to unversioned.
+    // Source graphs (hand-written workflow files) only have the unversioned copy;
+    // compiled/expanded graphs saved by saveGraph have both.
+    const names = version === undefined
+      ? [graphId]
+      : [versionedGraphName(graphId, version), graphId]
+    for (const name of names) {
+      for (const ext of [".json", ".yaml", ".yml"]) {
+        const filePath = join(this.graphsDir, `${name}${ext}`)
+        try {
+          const data = await readFile(filePath, "utf-8")
+          return parseGraph(data, filePath)
+        } catch (err) {
+          if (isNodeError(err) && err.code === "ENOENT") continue
+          throw err
+        }
       }
     }
     return undefined

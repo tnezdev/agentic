@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 
+import { resolve } from "node:path"
 import { loadConfig } from "../config.js"
 import { FilesystemAdapter } from "../memory/filesystem.js"
 import type { Ctx, Command } from "./context.js"
@@ -230,7 +231,7 @@ async function main() {
   }
 
   const baseDir =
-    typeof flags["base-dir"] === "string" ? flags["base-dir"] : process.cwd()
+    typeof flags["base-dir"] === "string" ? resolve(flags["base-dir"]) : process.cwd()
   const json = flags["json"] === true
   const wide = flags["wide"] === true
   const config = await loadConfig(baseDir)
