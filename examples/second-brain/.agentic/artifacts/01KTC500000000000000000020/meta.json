@@ -1,0 +1,16 @@
+{
+  "id": "01KTC500000000000000000020",
+  "type": "inbox-capture",
+  "title": "Inbox Captures: Reading Queue Friction",
+  "body_ref": "01KTC500000000000000000020/v1.md",
+  "version": 1,
+  "finalized": false,
+  "tags": [
+    "second-brain",
+    "inbox",
+    "example",
+    "para:project/reading-queue-refresh"
+  ],
+  "created_at": "2026-06-15T18:30:00.000Z",
+  "updated_at": "2026-06-15T18:30:00.000Z"
+}

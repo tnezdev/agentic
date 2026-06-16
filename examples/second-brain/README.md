@@ -1,6 +1,6 @@
 # Second-Brain Research Example
 
-This example shows Agentic as a small research operating system: personas, skills, workflows, a task queue, and finalized artifacts.
+This example shows Agentic as a small research operating system: personas, skills, workflows, a task queue, and durable artifacts.
 
 It is intentionally personal-workflow shaped rather than product-demo shaped. The point is not to automate research end-to-end. The point is to give an agent enough durable structure to pick up a question, preserve useful findings, and produce a reusable brief without turning Agentic into a host runtime.
 
@@ -11,16 +11,44 @@ Agentic is the primitive layer. It stores and loads the pieces an agent needs in
 In this example:
 
 - The harness reads `AGENTS.md` to learn how to enter the workspace.
-- The harness activates the `researcher` persona and gives that output to the model.
-- The agent uses `task next` and `skill run` to gather working context.
+- The harness asks `task next` for the workspace's current next action.
+- The task names the persona, skill, workflow, and input artifacts to load.
+- The harness activates the named persona and gives that output to the model.
 - The agent uses the `research-loop` workflow to keep multi-step research resumable.
 - The agent writes the final answer as an artifact so the result survives beyond the transcript.
 
 The host harness still owns model calls, tool execution, browsing, credentials, approvals, scheduling, and user communication.
 
+## Start With The Workspace State
+
+This example is meant to be self-guided by its own second-brain content. Ask the
+task queue what to do first:
+
+```bash
+agentic task next --base-dir examples/second-brain
+```
+
+The seeded task starts with `START HERE`. It names the input artifacts, persona,
+skill, workflow, expected durable changes, and the steward follow-up to leave
+behind. To read the full embedded breadcrumb:
+
+```bash
+agentic task show 01KTC500000000000000000001 --base-dir examples/second-brain
+```
+
+The task points at the messy inbox captures, the current reading-queue snapshot,
+and a finalized sample brief:
+
+```bash
+agentic artifact read 01KTC500000000000000000020 --base-dir examples/second-brain
+agentic artifact read 01KTC500000000000000000030 --base-dir examples/second-brain
+agentic artifact read 01KTC500000000000000000010 --base-dir examples/second-brain
+```
+
 ## Run It Locally
 
-From the repo root:
+After inspecting the task, let the local runtime prepare the same turn. From the
+repo root:
 
 ```bash
 agentic runtime init local --base-dir examples/second-brain
@@ -83,10 +111,10 @@ choose to track or sync those durable artifacts instead.
 To inspect the same pieces manually without preparing a runtime run, use:
 
 ```bash
+agentic task next --base-dir examples/second-brain
 agentic persona activate researcher --base-dir examples/second-brain
 agentic skill run research-brief --base-dir examples/second-brain
 agentic workflow list --base-dir examples/second-brain
-agentic task next --base-dir examples/second-brain
 agentic artifact list --base-dir examples/second-brain
 ```
 
@@ -102,6 +130,8 @@ The packaged user story this example is proving is:
 ```bash
 bun add @tnezdev/agentic
 agentic init --example second-brain
+agentic task next
+agentic task show 01KTC500000000000000000001
 
 bun add -d @tnezdev/agentic-runtime-local
 agentic runtime add local
@@ -110,9 +140,11 @@ agentic runtime run research-loop
 ```
 
 `agentic init --example second-brain` scaffolds a starter workspace with the
-researcher persona, required skills, the `research-loop` workflow, a seed task,
-and a seed artifact. This repository directory remains the richer source example
-for documentation and dogfooding.
+researcher and `second-brain-steward` personas, required skills, the
+`research-loop` and `weekly-review` workflows, a self-guided seed task, and seed
+artifacts for inbox captures, a reading queue, and a sample brief. This
+repository directory remains the richer source example for documentation and
+dogfooding.
 
 ## How The Pieces Work Together
 
@@ -130,7 +162,9 @@ It answers the questions a generic harness needs at startup:
 
 ### Persona
 
-`.agentic/personas/researcher.md` is the agent's operating mode for this workspace.
+`.agentic/personas/researcher.md` is the agent's operating mode for research
+work in this workspace. `.agentic/personas/second-brain-steward.md` is the
+curation hat for follow-up review tasks.
 
 It declares:
 
@@ -144,7 +178,7 @@ Running `persona activate researcher` prints the rendered persona. A harness sho
 
 ### Skill
 
-`.agentic/skills/research-brief/skill.md` is the reusable procedure for producing a research brief.
+`.agentic/skills/research-brief/skill.md` is the reusable procedure for producing a research brief. `.agentic/skills/steward-review/skill.md` is the procedure for pruning, promoting, and turning leftovers into specific follow-up tasks.
 
 It tells the agent how to move from open question to durable answer, including the expected artifact sections and the requirement to validate PARA taxonomy before finalization.
 
@@ -162,7 +196,12 @@ Memories are not a transcript. They are compact facts the user wants the agent t
 
 `.agentic/tasks/*.json` stores open work.
 
-The seeded task gives the agent a concrete research question to pick up. In a real second-brain workspace, tasks would be the research questions, decisions, or follow-ups that should not disappear between turns.
+The seeded task gives the agent a concrete research question and acts as the
+onboarding breadcrumb. It points at the inbox and reading-queue artifacts, names
+the persona/skill/workflow to use, and describes the durable state changes a real
+run should leave behind. In a real second-brain workspace, tasks would be the
+research questions, decisions, or follow-ups that should not disappear between
+turns.
 
 ### Workflow
 
@@ -203,7 +242,9 @@ This example also includes other common second-brain workflows:
 
 `.agentic/artifacts/*` stores durable outputs.
 
-The seed artifact is a finalized `research-brief`. It demonstrates the expected output shape and the required PARA tag convention:
+The seed artifacts include unfinalized inbox and reading-queue working state plus
+one finalized `research-brief`. The finalized brief demonstrates the expected
+output shape and the required PARA tag convention:
 
 ```text
 para:<bucket>/<slug>
@@ -231,11 +272,13 @@ Finalization means the artifact is durable output for this research pass. It doe
 |---|---|---|
 | `AGENTS.md` | Harness bootstrap | Minimal instructions for agents using this workspace |
 | `.agentic/personas/researcher.md` | Persona | Activates the research hat: question-first, source-aware, concise synthesis |
+| `.agentic/personas/second-brain-steward.md` | Persona | Activates the stewardship hat: prune, promote, and choose next focus |
 | `.agentic/skills/research-brief/skill.md` | Skill | Agent-facing procedure for turning a question into a cited brief |
+| `.agentic/skills/steward-review/skill.md` | Skill | Agent-facing procedure for curating leftovers into clear next actions |
 | `.agentic/skills/project-kickoff/skill.md` | Skill | Agent-facing procedure for interviewing before drafting a project plan |
 | `.agentic/workflows/*.json` | Workflow | Research, project, review, archive, and inbox operating loops |
-| `.agentic/tasks/*.json` | Tasks | A real ready task seeded with an example research question |
-| `.agentic/artifacts/*` | Artifact | A finalized sample brief showing the target output |
+| `.agentic/tasks/*.json` | Tasks | A ready `START HERE` task that drives the dogfood path |
+| `.agentic/artifacts/*` | Artifact | Inbox captures, a reading queue snapshot, and a finalized sample brief |
 
 After `agentic runtime init local`, the local runtime also creates
 `.agentic/runtime/local/runtime.json` plus `targets/` and `invocations/`
@@ -260,16 +303,17 @@ the current local loop rather than duplicating that roadmap.
 
 ## Dogfooding Loop
 
-To dogfood this example, use it for one real research question and watch for friction.
+To dogfood this example, let the content drive the first run and watch for friction.
 
-1. Activate the persona.
-2. Load the task and skill.
-3. Start or inspect a `research-loop` workflow run.
-4. Do the research using whatever tools the harness provides.
-5. Create or update a `research-brief` artifact.
-6. Validate that the artifact has a `para:<bucket>/<slug>` tag.
-7. Finalize the artifact.
-8. Mark the task done or add follow-up tasks.
+1. Run `agentic task next` and read the `START HERE` task.
+2. Inspect the artifacts named by the task.
+3. Activate the persona and skill named by the task.
+4. Start or inspect a `research-loop` workflow run.
+5. Do the research using whatever tools the harness provides.
+6. Create or update a `research-brief` artifact.
+7. Validate that the artifact has a `para:<bucket>/<slug>` tag.
+8. Finalize the artifact.
+9. Mark the task done and add the stewardship follow-up task the seed asks for.
 
 Good dogfood findings are not just better answers. They are also places where the primitive boundaries feel wrong, missing, or too ceremonial.
 

@@ -8,7 +8,20 @@ This directory is an Agentic second-brain research workspace. Agentic provides t
 
 ## Start Here
 
-At the start of a research turn, activate the researcher persona:
+At the start of a turn, ask the workspace what is ready:
+
+```bash
+agentic task next --base-dir .
+```
+
+The seeded `START HERE` task is the dogfood breadcrumb. Show it before choosing
+the rest of the commands:
+
+```bash
+agentic task show 01KTC500000000000000000001 --base-dir .
+```
+
+For the seeded research task, activate the researcher persona:
 
 ```bash
 agentic persona activate researcher --base-dir .
@@ -19,11 +32,20 @@ Treat the output as operating context for the turn. Follow the persona's instruc
 Then gather the current working context:
 
 ```bash
-agentic task next --base-dir .
 agentic skill run research-brief --base-dir .
+agentic artifact read 01KTC500000000000000000020 --base-dir .
+agentic artifact read 01KTC500000000000000000030 --base-dir .
 ```
 
 If this workspace has a user-provided memory adapter or seeded user memories, recall relevant context as well. This starter does not ship with memory records.
+
+If a follow-up task is tagged `stewardship`, switch hats instead of forcing the
+researcher persona to do curation:
+
+```bash
+agentic persona activate second-brain-steward --base-dir .
+agentic skill run steward-review --base-dir .
+```
 
 To let the local runtime prepare the turn instead of manually stepping through each primitive, run:
 

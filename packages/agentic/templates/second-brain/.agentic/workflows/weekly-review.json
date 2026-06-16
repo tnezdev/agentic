@@ -1,0 +1,57 @@
+{
+  "id": "weekly-review",
+  "name": "Weekly review",
+  "description": "Review active commitments, recent outputs, and next-week focus across the second-brain workspace.",
+  "version": "1.0",
+  "nodes": [
+    {
+      "id": "collect-inputs",
+      "label": "Collect inputs",
+      "description": "Gather open tasks, recent artifacts, and inbox or queue items relevant to the review.",
+      "artifact": {
+        "type": "review-inputs",
+        "description": "Input summary for the weekly review.",
+        "required": true,
+        "tags": ["second-brain", "review", "weekly"]
+      }
+    },
+    {
+      "id": "triage-queue",
+      "label": "Triage queue",
+      "description": "Choose which inputs should be promoted, kept, deferred, archived, or discarded.",
+      "artifact": {
+        "type": "queue-triage",
+        "description": "Queue and inbox triage decisions.",
+        "required": true,
+        "tags": ["second-brain", "review", "triage"]
+      }
+    },
+    {
+      "id": "choose-focus",
+      "label": "Choose focus",
+      "description": "Pick the next useful focus and name what will intentionally not be pursued.",
+      "artifact": {
+        "type": "weekly-plan",
+        "description": "Weekly focus, tradeoffs, and next actions.",
+        "required": true,
+        "tags": ["second-brain", "review", "plan"]
+      }
+    },
+    {
+      "id": "finalize-review",
+      "label": "Finalize review",
+      "description": "Finalize the review artifact with a valid PARA tag and update tasks.",
+      "artifact": {
+        "type": "finalized-artifact-ref",
+        "description": "Reference to finalized weekly review and task updates.",
+        "required": true,
+        "tags": ["second-brain", "artifact", "tasks"]
+      }
+    }
+  ],
+  "edges": [
+    { "from": "collect-inputs", "to": "triage-queue" },
+    { "from": "triage-queue", "to": "choose-focus" },
+    { "from": "choose-focus", "to": "finalize-review" }
+  ]
+}

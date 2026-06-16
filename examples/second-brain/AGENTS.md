@@ -14,7 +14,20 @@ examples/second-brain
 
 ## Start Here
 
-At the start of a research turn, activate the researcher persona:
+At the start of a turn, ask the workspace what is ready:
+
+```bash
+agentic task next --base-dir examples/second-brain
+```
+
+The seeded `START HERE` task is the dogfood breadcrumb. Show it before choosing
+the rest of the commands:
+
+```bash
+agentic task show 01KTC500000000000000000001 --base-dir examples/second-brain
+```
+
+For the seeded research task, activate the researcher persona:
 
 ```bash
 agentic persona activate researcher --base-dir examples/second-brain
@@ -25,11 +38,20 @@ Treat the output as operating context for the turn. Follow the persona's instruc
 Then gather the current working context:
 
 ```bash
-agentic task next --base-dir examples/second-brain
 agentic skill run research-brief --base-dir examples/second-brain
+agentic artifact read 01KTC500000000000000000020 --base-dir examples/second-brain
+agentic artifact read 01KTC500000000000000000030 --base-dir examples/second-brain
 ```
 
 If this workspace has a user-provided memory adapter or seeded user memories, recall relevant context as well. This public example does not ship with memory records.
+
+If a follow-up task is tagged `stewardship`, switch hats instead of forcing the
+researcher persona to do curation:
+
+```bash
+agentic persona activate second-brain-steward --base-dir examples/second-brain
+agentic skill run steward-review --base-dir examples/second-brain
+```
 
 To let the local runtime prepare the turn instead of manually stepping through
 each primitive, run from the repository root:
