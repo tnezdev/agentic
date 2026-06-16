@@ -33,6 +33,7 @@
     "dist/**/*.js",
     "dist/**/*.d.ts",
     "dist/**/*.map",
+    "templates/**/*",
     "AGENTS.md",
     "CHANGELOG.md"
   ],

@@ -1,0 +1,18 @@
+{
+  "id": "01KTC500000000000000000001",
+  "description": "Research lightweight reading queue practices for a personal knowledge system",
+  "status": "ready",
+  "tags": [
+    "second-brain",
+    "research",
+    "example"
+  ],
+  "annotations": [
+    {
+      "text": "Seed task for the public example. Replace with a real recurring research question in your own workspace.",
+      "timestamp": "2026-06-05T16:00:00.000Z"
+    }
+  ],
+  "created_at": "2026-06-05T16:00:00.000Z",
+  "updated_at": "2026-06-05T16:00:00.000Z"
+}

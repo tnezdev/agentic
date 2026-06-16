@@ -359,6 +359,52 @@ describe("CLI", () => {
       const { exitCode } = await run(...base, "init")
       expect(exitCode).toBe(0)
     })
+
+    it("scaffolds the second-brain example", async () => {
+      const result = (await runJson(...base, "init", "--example", "second-brain")) as {
+        initialized: boolean
+        example: string
+        filesWritten: number
+      }
+
+      expect(result.initialized).toBe(true)
+      expect(result.example).toBe("second-brain")
+      expect(result.filesWritten).toBeGreaterThan(0)
+
+      const agentBootstrap = await readFile(join(tmpDir, "AGENTS.md"), "utf-8")
+      expect(agentBootstrap).toContain("Second-Brain Starter")
+
+      const persona = await runJson(...base, "persona", "list") as Array<{ name: string }>
+      expect(persona.map((ref) => ref.name)).toContain("researcher")
+
+      const workflows = await runJson(...base, "workflow", "list") as Array<{ id: string }>
+      expect(workflows.map((workflow) => workflow.id)).toContain("research-loop")
+
+      const task = await runJson(...base, "task", "next") as { description: string }
+      expect(task.description).toContain("Research lightweight reading queue practices")
+
+      const artifact = await runJson(
+        ...base,
+        "artifact",
+        "inspect",
+        "01KTC500000000000000000010",
+      ) as { artifact: { type: string; finalized: boolean } }
+      expect(artifact.artifact.type).toBe("research-brief")
+      expect(artifact.artifact.finalized).toBe(true)
+    })
+
+    it("does not overwrite existing files when scaffolding an example", async () => {
+      await mkdir(tmpDir, { recursive: true })
+      await writeFile(join(tmpDir, "AGENTS.md"), "custom bootstrap")
+
+      const result = (await runJson(...base, "init", "--example", "second-brain")) as {
+        filesSkipped: number
+      }
+
+      expect(result.filesSkipped).toBeGreaterThan(0)
+      await run(...base, "init", "--example", "second-brain")
+      expect(await readFile(join(tmpDir, "AGENTS.md"), "utf-8")).toBe("custom bootstrap")
+    })
   })
 
   describe("workflow", () => {

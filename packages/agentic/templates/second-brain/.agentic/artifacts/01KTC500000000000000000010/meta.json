@@ -1,0 +1,16 @@
+{
+  "id": "01KTC500000000000000000010",
+  "type": "research-brief",
+  "title": "Reading Queue Practices Research Seed",
+  "body_ref": "01KTC500000000000000000010/v1.md",
+  "version": 1,
+  "finalized": true,
+  "tags": [
+    "second-brain",
+    "research",
+    "example",
+    "para:resource/reading-queues"
+  ],
+  "created_at": "2026-06-05T16:00:00.000Z",
+  "updated_at": "2026-06-05T16:00:00.000Z"
+}

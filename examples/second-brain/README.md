@@ -90,9 +90,10 @@ agentic runtime init local
 agentic runtime run research-loop
 ```
 
-`agentic init --example second-brain` is the intended starter command for a
-future packaged example. Until that scaffold exists, this repository directory
-is the runnable source of truth.
+`agentic init --example second-brain` scaffolds a starter workspace with the
+researcher persona, required skills, the `research-loop` workflow, a seed task,
+and a seed artifact. This repository directory remains the richer source example
+for documentation and dogfooding.
 
 ## How The Pieces Work Together
 
