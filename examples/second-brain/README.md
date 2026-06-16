@@ -31,6 +31,13 @@ That is the current runnable path for this example. It uses the public runtime
 target, `local`, and the repo-local `agentic` shim discovers
 `packages/agentic-runtime-local` from this checkout.
 
+If Pi is installed and you want the local runtime to hand the prepared turn to a
+real harness, use the same public target with an explicit harness flag:
+
+```bash
+agentic runtime run examples/second-brain --harness pi
+```
+
 You can also run the workflow explicitly from inside the example workspace:
 
 ```bash
@@ -42,7 +49,9 @@ The local runtime does not browse, call a model, or complete the research for
 you. It prepares the workspace for harness execution by loading the selected
 persona, skills, ready task, and workflow; creating a workflow run; starting the
 entry node; recording a runtime invocation; and writing a finalized
-`local-runtime-run` artifact as the durable run packet.
+`local-runtime-run` artifact as the durable run packet. With `--harness pi`, it
+then invokes the Pi CLI in print mode with generated prompt files and records the
+Pi session reference on the invocation.
 
 After `runtime run`, inspect the IDs printed in the command output:
 
@@ -59,7 +68,9 @@ Running the example creates local state under `.agentic/runtime/`,
 `.agentic/runs/`, and `.agentic/artifacts/`. Runtime invocation records live in
 `.agentic/runtime/local/invocations/`; they link the runtime command to the
 workflow run and artifact without storing a model transcript. Use a throwaway
-copy if you want to keep a repository checkout clean.
+copy if you want to keep a repository checkout clean. Pi harness runs also create
+prompt files beside the invocation JSON and session state under
+`.agentic/runtime/local/pi-sessions/`.
 
 ## Inspect The Primitives
 
@@ -234,8 +245,8 @@ outputs, not starter content.
 - External artifact storage or sync
 - Model calls, browsing, credentials, approvals, or tool execution
 
-Pi may power the local runtime under the hood later, but users should choose the
-public `local` runtime target, not `runtime pi`.
+Pi can power the local runtime under the hood, but users should choose the public
+`local` runtime target, not `runtime pi`.
 
 This is the runnable slice of the broader second-brain example direction tracked
 in [#100](https://github.com/tnezdev/agentic/issues/100). This README documents

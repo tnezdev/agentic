@@ -1,6 +1,9 @@
+import { spawn } from "node:child_process"
 import { access, mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises"
+import { hostname } from "node:os"
 import { join, relative, resolve } from "node:path"
 import {
+  activatePersona,
   FilesystemArtifactAdapter,
   FilesystemPersonaAdapter,
   FilesystemTaskAdapter,
@@ -9,6 +12,7 @@ import {
 } from "@tnezdev/agentic"
 import type {
   GraphDef,
+  Persona,
   PersonaFile,
   PersonaRef,
   Skill,
@@ -21,6 +25,7 @@ import type {
   RuntimeContext,
   RuntimeInitArgs,
   RuntimeInvocation,
+  RuntimeInvocationHarnessRef,
   RuntimeRunArgs,
   RuntimeStatusArgs,
 } from "@tnezdev/agentic/runtime"
@@ -31,10 +36,14 @@ const STATE_VERSION = 1
 const RUNTIME_DIR = join(".agentic", "runtime", RUNTIME_NAME)
 const TARGETS_DIR = "targets"
 const INVOCATIONS_DIR = "invocations"
+const PI_SESSIONS_DIR = "pi-sessions"
 const STATE_FILE = "runtime.json"
 const ULID_ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
 const TIME_LEN = 10
 const RANDOM_LEN = 16
+const OUTPUT_CAPTURE_LIMIT = 20_000
+
+type LocalHarness = "none" | "pi"
 
 type LocalRuntimeState = {
   version: typeof STATE_VERSION
@@ -54,11 +63,24 @@ type LocalRunContext = {
   target: LocalRunTarget
   graph: GraphDef
   persona?: PersonaFile | undefined
+  activated_persona?: Persona | undefined
   skills: Skill[]
   task?: Task | undefined
   workflow_run_id: string
   artifact_id: string
   invocation_id: string
+  harness_ref?: RuntimeInvocationHarnessRef | undefined
+}
+
+type PiHarnessResult = {
+  provider: "pi"
+  session_id: string
+  session_dir: string
+  system_prompt_path: string
+  user_prompt_path: string
+  exit_code: number
+  stdout: string
+  stderr: string
 }
 
 function encodeTime(now: number, len: number): string {
@@ -135,8 +157,20 @@ function invocationsDir(ctx: RuntimeContext): string {
   return invocationsDirFor(ctx.workspace_root)
 }
 
+function piSessionsDirFor(workspaceRoot: string): string {
+  return join(runtimeDirFor(workspaceRoot), PI_SESSIONS_DIR)
+}
+
 function invocationPathFor(workspaceRoot: string, invocationId: string): string {
   return join(invocationsDirFor(workspaceRoot), `${invocationId}.json`)
+}
+
+function piSystemPromptPathFor(workspaceRoot: string, invocationId: string): string {
+  return join(invocationsDirFor(workspaceRoot), `${invocationId}.pi-system.md`)
+}
+
+function piUserPromptPathFor(workspaceRoot: string, invocationId: string): string {
+  return join(invocationsDirFor(workspaceRoot), `${invocationId}.pi-user.md`)
 }
 
 function statePathFor(workspaceRoot: string): string {
@@ -186,6 +220,29 @@ function stringFlag(
 ): string | undefined {
   const value = flags[name]
   return typeof value === "string" && value.length > 0 ? value : undefined
+}
+
+function stringRuntimeConfig(ctx: RuntimeContext, name: string): string | undefined {
+  const value = ctx.runtime_config[name]
+  return typeof value === "string" && value.length > 0 ? value : undefined
+}
+
+function resolveHarness(ctx: RuntimeContext, args: RuntimeRunArgs): LocalHarness {
+  if (args.flags["harness"] === true) {
+    throw new Error('`--harness` requires a value. Supported values: "none", "pi".')
+  }
+
+  const value = stringFlag(args.flags, "harness") ?? stringRuntimeConfig(ctx, "harness")
+  if (value === undefined || value === "none" || value === "off" || value === "prepare") {
+    return "none"
+  }
+  if (value === "pi") return "pi"
+
+  throw new Error(`Unsupported local runtime harness "${value}". Supported values: none, pi.`)
+}
+
+function piCommand(ctx: RuntimeContext, args: RuntimeRunArgs): string {
+  return stringFlag(args.flags, "pi-command") ?? stringRuntimeConfig(ctx, "pi_command") ?? "pi"
 }
 
 async function resolveRunTarget(
@@ -259,6 +316,19 @@ async function loadSelectedPersona(
     throw new Error(`Persona "${selected.name}" could not be loaded.`)
   }
   return persona
+}
+
+function activateLocalRunPersona(
+  target: LocalRunTarget,
+  persona: PersonaFile | undefined,
+): Persona | undefined {
+  if (persona === undefined) return undefined
+  return activatePersona(persona, {
+    cwd: target.workspace_root,
+    timestamp: new Date().toISOString(),
+    hostname: hostname(),
+    git_branch: undefined,
+  })
 }
 
 function firstEntryNode(graph: GraphDef): string | undefined {
@@ -349,6 +419,9 @@ function renderRunPacket(ctx: RuntimeContext, run: LocalRunContext): string {
   const personaSummary = run.persona === undefined
     ? "No persona selected."
     : `${run.persona.name}: ${run.persona.description}`
+  const harnessSummary = run.harness_ref === undefined
+    ? "No harness was invoked. The runtime prepared durable Agentic state only."
+    : `Provider: ${run.harness_ref.provider}\n- Session id: ${run.harness_ref.id}`
 
   return `# Local Runtime Run: ${run.graph.name}
 
@@ -374,6 +447,10 @@ This is not a model transcript and does not claim the workflow's research work i
   )}
 - Workflow run id: ${run.workflow_run_id}
 - Artifact id: ${run.artifact_id}
+
+## Harness
+
+${harnessSummary}
 
 ## Persona
 
@@ -406,6 +483,14 @@ function invocationTarget(args: RuntimeRunArgs, target: LocalRunTarget): string 
   return args.target ?? target.workflow_id ?? target.workspace_label
 }
 
+function harnessRefFor(harness: LocalHarness, invocationId: string): RuntimeInvocationHarnessRef | undefined {
+  if (harness === "none") return undefined
+  return {
+    provider: "pi",
+    id: invocationId,
+  }
+}
+
 async function writeInvocation(
   workspaceRoot: string,
   invocation: RuntimeInvocation,
@@ -422,9 +507,11 @@ async function writeInvocation(
 async function createInvocation(
   args: RuntimeRunArgs,
   target: LocalRunTarget,
+  harness: LocalHarness,
 ): Promise<RuntimeInvocation> {
+  const id = createInvocationId()
   return writeInvocation(target.workspace_root, {
-    id: createInvocationId(),
+    id,
     runtime: RUNTIME_NAME,
     runtime_package: PACKAGE_NAME,
     target: invocationTarget(args, target),
@@ -432,6 +519,7 @@ async function createInvocation(
     status: "running",
     started_at: new Date().toISOString(),
     artifact_ids: [],
+    harness_ref: harnessRefFor(harness, id),
   })
 }
 
@@ -451,14 +539,187 @@ async function completeInvocation(
 async function failInvocation(
   invocation: RuntimeInvocation,
   err: unknown,
+  run?: LocalRunContext | undefined,
 ): Promise<RuntimeInvocation> {
   const message = err instanceof Error ? err.message : String(err)
   return writeInvocation(invocation.workspace_root, {
     ...invocation,
     status: "failed",
     ended_at: new Date().toISOString(),
+    workflow_run_id: run?.workflow_run_id ?? invocation.workflow_run_id,
+    artifact_ids: run === undefined ? invocation.artifact_ids : [run.artifact_id],
     error: message,
   })
+}
+
+function renderPiSystemPrompt(ctx: RuntimeContext, run: LocalRunContext): string {
+  const personaBody = run.activated_persona === undefined
+    ? "No persona selected."
+    : run.activated_persona.body.trim()
+  const skillBlocks = run.skills.length === 0
+    ? "No skills loaded."
+    : run.skills.map((skill) => `## ${skill.name}\n\n${skill.content.trim()}`).join("\n\n")
+  const taskBlock = run.task === undefined
+    ? "No ready task matched the selected persona/task filter."
+    : `${run.task.id}: ${run.task.description}`
+
+  return `You are Pi running behind the Agentic local runtime.
+
+Agentic owns durable workspace primitives: personas, skills, memories, tasks,
+workflows, artifacts, and runtime invocation records. Pi owns the harness loop,
+model call, tool execution, and its own session tree. Do not invent Agentic
+session semantics or store transcripts in Agentic invocation records.
+
+Workspace: ${run.target.workspace_root}
+Runtime invocation id: ${run.invocation_id}
+Workflow: ${run.graph.id} (${run.graph.name})
+Workflow run id: ${run.workflow_run_id}
+Run packet artifact id: ${run.artifact_id}
+Persona: ${run.persona?.name ?? "none"}
+Runtime package: ${ctx.runtime_package}
+
+Use the Agentic CLI when you need to inspect or update durable primitives. When
+you produce reusable output, persist it as an Agentic artifact and advance the
+workflow with explicit transitions. Do not claim the research is complete unless
+the durable workflow/artifact state reflects that completion.
+
+# Selected Task
+
+${taskBlock}
+
+# Persona
+
+${personaBody}
+
+# Skills
+
+${skillBlocks}
+
+# Workflow Definition
+
+\`\`\`json
+${JSON.stringify(run.graph, null, 2)}
+\`\`\`
+`
+}
+
+function renderPiUserPrompt(run: LocalRunContext): string {
+  const taskLine = run.task === undefined
+    ? "No ready task was selected; inspect the workspace before choosing next action."
+    : `Work the selected task: ${run.task.description}`
+
+  return `Continue this Agentic local runtime run.
+
+${taskLine}
+
+Start from the generated run packet artifact (${run.artifact_id}) and workflow
+run (${run.workflow_run_id}). Use Agentic primitives for durable state. Keep the
+final answer concise and include the IDs of any artifacts or workflow runs you
+create or update.`
+}
+
+function appendCapturedOutput(current: string, chunk: string): string {
+  const next = current + chunk
+  if (next.length <= OUTPUT_CAPTURE_LIMIT) return next
+  return next.slice(next.length - OUTPUT_CAPTURE_LIMIT)
+}
+
+async function runProcess(
+  command: string,
+  args: string[],
+  options: {
+    cwd: string
+    env: NodeJS.ProcessEnv
+  },
+): Promise<{ exit_code: number; stdout: string; stderr: string }> {
+  return new Promise((resolveProcess, rejectProcess) => {
+    const child = spawn(command, args, {
+      cwd: options.cwd,
+      env: options.env,
+      stdio: ["ignore", "pipe", "pipe"],
+    })
+
+    let stdout = ""
+    let stderr = ""
+    child.stdout?.setEncoding("utf-8")
+    child.stderr?.setEncoding("utf-8")
+    child.stdout?.on("data", (chunk: string) => {
+      stdout = appendCapturedOutput(stdout, chunk)
+    })
+    child.stderr?.on("data", (chunk: string) => {
+      stderr = appendCapturedOutput(stderr, chunk)
+    })
+    child.on("error", rejectProcess)
+    child.on("close", (code) => {
+      resolveProcess({ exit_code: code ?? 0, stdout, stderr })
+    })
+  })
+}
+
+async function runPiHarness(
+  ctx: RuntimeContext,
+  args: RuntimeRunArgs,
+  run: LocalRunContext,
+): Promise<PiHarnessResult> {
+  const harnessRef = run.harness_ref
+  if (harnessRef === undefined) {
+    throw new Error("Pi harness requested without a harness reference.")
+  }
+
+  await mkdir(invocationsDirFor(run.target.workspace_root), { recursive: true })
+  await mkdir(piSessionsDirFor(run.target.workspace_root), { recursive: true })
+
+  const systemPromptPath = piSystemPromptPathFor(run.target.workspace_root, run.invocation_id)
+  const userPromptPath = piUserPromptPathFor(run.target.workspace_root, run.invocation_id)
+  await writeFile(systemPromptPath, renderPiSystemPrompt(ctx, run), "utf-8")
+  await writeFile(userPromptPath, renderPiUserPrompt(run), "utf-8")
+
+  const sessionDir = piSessionsDirFor(run.target.workspace_root)
+  const result = await runProcess(
+    piCommand(ctx, args),
+    [
+      "--print",
+      "--mode",
+      "text",
+      "--session-dir",
+      sessionDir,
+      "--session-id",
+      harnessRef.id,
+      "--name",
+      `Agentic ${run.graph.id}`,
+      "--append-system-prompt",
+      systemPromptPath,
+      `@${userPromptPath}`,
+    ],
+    {
+      cwd: run.target.workspace_root,
+      env: { ...process.env, ...ctx.env },
+    },
+  )
+
+  if (result.exit_code !== 0) {
+    const detail = result.stderr.trim() || result.stdout.trim() || `exit code ${result.exit_code}`
+    throw new Error(`Pi harness failed: ${detail}`)
+  }
+
+  return {
+    provider: "pi",
+    session_id: harnessRef.id,
+    session_dir: pathRelative(run.target.workspace_root, sessionDir),
+    system_prompt_path: pathRelative(run.target.workspace_root, systemPromptPath),
+    user_prompt_path: pathRelative(run.target.workspace_root, userPromptPath),
+    ...result,
+  }
+}
+
+async function runHarness(
+  ctx: RuntimeContext,
+  args: RuntimeRunArgs,
+  run: LocalRunContext,
+): Promise<PiHarnessResult | undefined> {
+  if (run.harness_ref === undefined) return undefined
+  if (run.harness_ref.provider === "pi") return runPiHarness(ctx, args, run)
+  throw new Error(`Unsupported harness provider "${run.harness_ref.provider}".`)
 }
 
 async function listInvocations(workspaceRoot: string): Promise<RuntimeInvocation[]> {
@@ -500,6 +761,7 @@ async function prepareLocalRun(
   }
 
   const persona = await loadSelectedPersona(target.workspace_root, target.workflow_id)
+  const activatedPersona = activateLocalRunPersona(target, persona)
   const workflows = new FilesystemWorkflowAdapter(target.workspace_root)
   const graph = await resolveWorkflow(workflows, target.workflow_id, persona, target.workspace_root)
   const skills = await loadPersonaSkills(target.workspace_root, persona)
@@ -514,11 +776,13 @@ async function prepareLocalRun(
     target,
     graph,
     persona,
+    activated_persona: activatedPersona,
     skills,
     task: task ?? undefined,
     workflow_run_id: workflowRun.run_id,
     artifact_id: "pending",
     invocation_id: invocation.id,
+    harness_ref: invocation.harness_ref,
   }
   await createRunPacketArtifact(ctx, run)
 
@@ -536,6 +800,7 @@ async function prepareLocalRun(
         runtime: RUNTIME_NAME,
         invocation_id: invocation.id,
         artifact_id: run.artifact_id,
+        ...(run.harness_ref === undefined ? {} : { harness_ref: run.harness_ref }),
       },
     })
   }
@@ -595,6 +860,7 @@ async function runLocalRuntime(
   args: RuntimeRunArgs,
 ): Promise<RuntimeCommandResult> {
   const target = await resolveRunTarget(ctx, args)
+  const harness = resolveHarness(ctx, args)
   if (!(await hasAgenticWorkspace(target.workspace_root))) {
     throw new Error(`No Agentic workspace found at ${target.workspace_root}.`)
   }
@@ -604,19 +870,27 @@ async function runLocalRuntime(
     )
   }
 
-  const invocation = await createInvocation(args, target)
-  let run: LocalRunContext
+  const invocation = await createInvocation(args, target, harness)
+  let run: LocalRunContext | undefined
+  let harnessResult: PiHarnessResult | undefined
 
   try {
     run = await prepareLocalRun(ctx, target, invocation)
+    harnessResult = await runHarness(ctx, args, run)
     await completeInvocation(invocation, run)
   } catch (err) {
-    await failInvocation(invocation, err)
+    await failInvocation(invocation, err, run)
     throw err
   }
 
+  if (run === undefined) {
+    throw new Error("Local runtime run did not produce a run context.")
+  }
+
   return {
-    summary: `Prepared local Agentic run for ${run.graph.id} and wrote artifact ${run.artifact_id}.`,
+    summary: harnessResult === undefined
+      ? `Prepared local Agentic run for ${run.graph.id} and wrote artifact ${run.artifact_id}.`
+      : `Ran local Agentic target ${run.graph.id} through Pi session ${harnessResult.session_id}.`,
     data: {
       invocation_id: invocation.id,
       invocation_path: pathRelative(
@@ -627,6 +901,8 @@ async function runLocalRuntime(
       args: args.args,
       workspace: pathRelative(ctx.workspace_root, run.target.workspace_root),
       initialized: true,
+      harness: run.harness_ref ?? null,
+      harness_result: harnessResult === undefined ? null : harnessResult,
       workflow_id: run.graph.id,
       workflow_run_id: run.workflow_run_id,
       artifact_id: run.artifact_id,
@@ -666,6 +942,7 @@ async function statusLocalRuntime(
         ended_at: lastInvocation.ended_at,
         workflow_run_id: lastInvocation.workflow_run_id,
         artifact_ids: lastInvocation.artifact_ids,
+        harness_ref: lastInvocation.harness_ref,
       },
     },
   }

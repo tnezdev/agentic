@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test"
-import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises"
+import { chmod, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises"
 import { dirname, join } from "node:path"
 import { tmpdir } from "node:os"
 import type { RuntimeContext } from "@tnezdev/agentic/runtime"
@@ -29,6 +29,7 @@ workflow: research-loop
 # Researcher
 
 Use durable Agentic primitives.
+You are working from {{cwd}} at {{timestamp}} on {{hostname}}.
 `,
   )
   await writeText(
@@ -77,6 +78,20 @@ Write a concise durable brief.
       2,
     ),
   )
+}
+
+async function writeFakePi(binDir: string): Promise<string> {
+  const path = join(binDir, "pi")
+  await writeText(
+    path,
+    `#!/bin/sh
+printf '%s\n' "$@" > "$PI_ARGS_FILE"
+printf '%s\n' "$PWD" > "$PI_CWD_FILE"
+printf 'fake pi completed\n'
+`,
+  )
+  await chmod(path, 0o755)
+  return path
 }
 
 function dataOf(
@@ -241,6 +256,7 @@ describe("local runtime package", () => {
       workflow_run_id: workflowRunId,
       artifact_ids: [artifactId],
     })
+    expect(invocation.harness_ref).toBeUndefined()
     expect(typeof invocation.started_at).toBe("string")
     expect(typeof invocation.ended_at).toBe("string")
 
@@ -267,8 +283,119 @@ describe("local runtime package", () => {
         status: "completed",
         workflow_run_id: workflowRunId,
         artifact_ids: [artifactId],
+        harness_ref: undefined,
       },
     })
+  })
+
+  it("can invoke Pi as an optional local harness", async () => {
+    await writeSecondBrainWorkspace(tmpDir)
+    await runtime.commands.init!(ctx, { args: [], flags: {} })
+
+    const binDir = join(tmpDir, "bin")
+    const piArgsFile = join(tmpDir, "pi-args.txt")
+    const piCwdFile = join(tmpDir, "pi-cwd.txt")
+    await writeFakePi(binDir)
+
+    const result = await runtime.commands.run!({
+      ...ctx,
+      env: {
+        PATH: `${binDir}:${process.env.PATH ?? ""}`,
+        PI_ARGS_FILE: piArgsFile,
+        PI_CWD_FILE: piCwdFile,
+      },
+    }, {
+      target: "research-loop",
+      args: [],
+      flags: { harness: "pi" },
+    })
+    const data = dataOf(result)
+    const invocationId = data["invocation_id"] as string
+    const artifactId = data["artifact_id"] as string
+    const workflowRunId = data["workflow_run_id"] as string
+
+    expect(result?.summary).toContain("through Pi session")
+    expect(data["harness"]).toEqual({ provider: "pi", id: invocationId })
+    expect(data["harness_result"]).toMatchObject({
+      provider: "pi",
+      session_id: invocationId,
+      session_dir: ".agentic/runtime/local/pi-sessions",
+      system_prompt_path: `.agentic/runtime/local/invocations/${invocationId}.pi-system.md`,
+      user_prompt_path: `.agentic/runtime/local/invocations/${invocationId}.pi-user.md`,
+      exit_code: 0,
+      stdout: "fake pi completed\n",
+    })
+
+    const piArgs = (await readFile(piArgsFile, "utf-8")).split("\n")
+    expect(piArgs).toContain("--print")
+    expect(piArgs).toContain("--mode")
+    expect(piArgs).toContain("text")
+    expect(piArgs).toContain("--session-id")
+    expect(piArgs).toContain(invocationId)
+    expect(piArgs).toContain("--session-dir")
+    expect(piArgs).toContain(join(tmpDir, ".agentic", "runtime", "local", "pi-sessions"))
+    expect(piArgs).toContain("--append-system-prompt")
+    expect(piArgs).toContain(join(
+      tmpDir,
+      ".agentic",
+      "runtime",
+      "local",
+      "invocations",
+      `${invocationId}.pi-system.md`,
+    ))
+    expect(piArgs).toContain(`@${join(
+      tmpDir,
+      ".agentic",
+      "runtime",
+      "local",
+      "invocations",
+      `${invocationId}.pi-user.md`,
+    )}`)
+    expect((await readFile(piCwdFile, "utf-8")).trim().endsWith(tmpDir)).toBe(true)
+
+    const systemPrompt = await readFile(
+      join(tmpDir, ".agentic", "runtime", "local", "invocations", `${invocationId}.pi-system.md`),
+      "utf-8",
+    )
+    expect(systemPrompt).toContain("You are Pi running behind the Agentic local runtime")
+    expect(systemPrompt).toContain("researcher")
+    expect(systemPrompt).toContain("research-brief")
+    expect(systemPrompt).toContain(workflowRunId)
+    expect(systemPrompt).toContain(artifactId)
+    expect(systemPrompt).toContain(`working from ${tmpDir}`)
+    expect(systemPrompt).not.toContain("{{cwd}}")
+    expect(systemPrompt).not.toContain("{{timestamp}}")
+    expect(systemPrompt).not.toContain("{{hostname}}")
+
+    const userPrompt = await readFile(
+      join(tmpDir, ".agentic", "runtime", "local", "invocations", `${invocationId}.pi-user.md`),
+      "utf-8",
+    )
+    expect(userPrompt).toContain("Research lightweight reading queue practices")
+
+    const invocation = JSON.parse(
+      await readFile(
+        join(tmpDir, ".agentic", "runtime", "local", "invocations", `${invocationId}.json`),
+        "utf-8",
+      ),
+    )
+    expect(invocation).toMatchObject({
+      id: invocationId,
+      status: "completed",
+      workflow_run_id: workflowRunId,
+      artifact_ids: [artifactId],
+      harness_ref: {
+        provider: "pi",
+        id: invocationId,
+      },
+    })
+
+    const body = await readFile(
+      join(tmpDir, ".agentic", "artifacts", artifactId, "v1.md"),
+      "utf-8",
+    )
+    expect(body).toContain("Provider: pi")
+    expect(body).toContain(`Session id: ${invocationId}`)
   })
 
   it("records failed invocations after a run starts", async () => {

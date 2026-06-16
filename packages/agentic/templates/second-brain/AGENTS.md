@@ -34,6 +34,12 @@ agentic runtime run research-loop --base-dir .
 
 The runtime uses the public `local` target. It records a runtime invocation, prepares a workflow run, and writes a finalized `local-runtime-run` artifact for inspection; it still does not browse, call a model, or complete the research on its own.
 
+If Pi is installed and you want the local runtime to hand this prepared turn to a harness, keep the public target and add the harness flag:
+
+```bash
+agentic runtime run research-loop --base-dir . --harness pi
+```
+
 ## Boundary
 
 Agentic is not the harness. Do not expect it to browse, call a model, schedule work, manage auth, or execute approvals.

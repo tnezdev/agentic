@@ -43,6 +43,13 @@ The runtime uses the public `local` target. It prepares a workflow run and a
 finalized `local-runtime-run` artifact for inspection; it still does not browse,
 call a model, or complete the research on its own.
 
+If Pi is installed and you want the local runtime to hand this prepared turn to a
+harness, keep the public target and add the harness flag:
+
+```bash
+agentic runtime run examples/second-brain --harness pi
+```
+
 If the installed `agentic` binary is unavailable while working from this repo, use:
 
 ```bash
