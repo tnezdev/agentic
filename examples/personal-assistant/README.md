@@ -1,6 +1,6 @@
 # Personal Assistant Example
 
-This example shows Agentic as the durable operating layer for a personal assistant: persona, skills, workflows, tasks, and artifacts.
+This example shows Agentic as the durable operating layer for a personal assistant: persona, skills, artifacts, and optional task/workflow projections.
 
 It is inspired by a real session-start ritual, but the fixture data is fictional and public-safe. The goal is to show how an assistant can resume from durable context without baking in a private identity, a home server, Slack, email, calendars, or any specific harness.
 
@@ -11,13 +11,30 @@ Agentic stores and loads the pieces an assistant needs inside a turn. It does no
 In this example:
 
 - The harness reads `AGENTS.md` to learn how to enter the workspace.
-- The ready task names the assistant persona, `session-brief` skill, `session-start` workflow, and fixture artifacts.
+- The artifact-led path mounts the assistant persona, skills, and fixture artifacts without first-class task/workflow pressure.
+- The task/workflow path remains available as a comparison run.
 - The assistant reads a fictional user profile, operating policy, continuity brief, recent sessions, open loops, and workspace context.
 - The assistant synthesizes a startup briefing and writes it as a durable `session-brief` artifact.
 - At the end of meaningful work, the assistant can run a wrap loop and write a durable `session-wrap` artifact.
 - The host harness still owns model calls, tool execution, credentials, scheduling, notifications, and final user communication.
 
 ## Quick Smoke Test
+
+The pared-down personal-assistant experiment mounts only persona, skills, and artifacts:
+
+```bash
+agentic run examples/personal-assistant --context artifacts --persona assistant --artifact-tags session-start-context
+```
+
+For an interactive Pi handoff, use the same artifact context and add Pi:
+
+```bash
+agentic run examples/personal-assistant --context artifacts --persona assistant --artifact-tags session-start-context --harness pi --interactive
+```
+
+That path creates a runtime invocation and run-packet artifact, but intentionally does not create a workflow run or select a task. The generated Pi prompt should briefly orient the user from mounted artifacts and then wait instead of starting the recommended work.
+
+## Task/Workflow Comparison
 
 From the repo root, run the example:
 
@@ -39,7 +56,7 @@ agentic workflow status <workflow-run-id> --base-dir examples/personal-assistant
 agentic artifact read <artifact-id> --base-dir examples/personal-assistant
 ```
 
-That is the first-run path. It should show the assistant startup loop without requiring you to memorize artifact ids, persona names, or workflow internals first.
+That path shows the assistant startup loop through task/workflow projections without requiring you to memorize artifact ids, persona names, or workflow internals first.
 
 ## Manual Primitive Path
 
@@ -148,11 +165,11 @@ The important gate is `write-wrap-note`: the assistant should write a `session-w
 | `AGENTS.md` | Harness bootstrap | Minimal instructions for agents using this workspace |
 | `.agentic/personas/assistant.md` | Persona | Activates the personal assistant hat |
 | `.agentic/skills/*.md` | Skills | Procedures for synthesizing startup briefings and session wraps |
-| `.agentic/workflows/*.json` | Workflows | Resumable session-start and session-wrap loops |
-| `.agentic/tasks/*.json` | Task | A ready `START HERE` task that drives the dogfood path |
+| `.agentic/workflows/*.json` | Workflows | Optional resumable session-start and session-wrap loops |
+| `.agentic/tasks/*.json` | Task | Optional ready `START HERE` task for the comparison path |
 | `.agentic/artifacts/*` | Artifact | Fictional profile, policy, continuity, sessions, open loops, context, sample brief, and sample wrap |
 
-On first `agentic run`, the local runtime creates `.agentic/runtime/local/runtime.json` plus runtime output directories. Each run creates an invocation record, a workflow run, and a finalized `local-runtime-run` artifact. Those are runtime outputs, not starter content.
+On first `agentic run`, the local runtime creates `.agentic/runtime/local/runtime.json` plus runtime output directories. Each run creates an invocation record and a finalized `local-runtime-run` artifact; task/workflow comparison runs also create a workflow run. Those are runtime outputs, not starter content.
 
 ## What Is Not Included Yet
 
@@ -170,10 +187,10 @@ On first `agentic run`, the local runtime creates `.agentic/runtime/local/runtim
 
 To dogfood this example, let the content drive the first run and watch for friction.
 
-1. Run `agentic run` from inside the example, or `agentic run examples/personal-assistant` from the repo root.
-2. Inspect the workflow-run id and run-packet artifact id printed by the runtime.
-3. If you are testing a real one-shot harness, rerun with `--harness pi`.
-4. If you want to keep talking after the turn is prepared, rerun with `--harness pi --interactive`.
+1. Run the artifact-led path: `agentic run examples/personal-assistant --context artifacts --persona assistant --artifact-tags session-start-context`.
+2. Inspect the run-packet artifact id printed by the runtime.
+3. If you are testing a real conversational harness, rerun the same command with `--harness pi --interactive`.
+4. Compare against the task/workflow path: `agentic run examples/personal-assistant`.
 5. Confirm the harness creates a durable `session-brief` artifact rather than leaving the briefing only in a transcript.
 6. End the test with `wrap-session` and confirm it creates a durable `session-wrap` artifact with a next-session pointer.
 7. Patch only the friction you observed in the loop.

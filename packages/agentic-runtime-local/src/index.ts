@@ -11,6 +11,7 @@ import {
   loadSkill,
 } from "@tnezdev/agentic"
 import type {
+  ArtifactMetadata,
   GraphDef,
   Persona,
   PersonaFile,
@@ -44,6 +45,7 @@ const RANDOM_LEN = 16
 const OUTPUT_CAPTURE_LIMIT = 20_000
 
 type LocalHarness = "none" | "pi"
+type LocalContextMode = "workflow" | "artifacts"
 
 type LocalRuntimeState = {
   version: typeof STATE_VERSION
@@ -60,16 +62,28 @@ type LocalRunTarget = {
 }
 
 type LocalRunContext = {
+  context_mode: LocalContextMode
   target: LocalRunTarget
-  graph: GraphDef
+  graph?: GraphDef | undefined
   persona?: PersonaFile | undefined
   activated_persona?: Persona | undefined
   skills: Skill[]
+  input_artifacts: LocalInputArtifact[]
   task?: Task | undefined
-  workflow_run_id: string
+  workflow_run_id?: string | undefined
   artifact_id: string
   invocation_id: string
   harness_ref?: RuntimeInvocationHarnessRef | undefined
+}
+
+type LocalInputArtifact = {
+  id: string
+  type: string
+  title: string
+  version: number
+  finalized: boolean
+  tags: string[]
+  body: string
 }
 
 type PiHarnessResult = {
@@ -250,6 +264,20 @@ function piInteractive(args: RuntimeRunArgs): boolean {
   return args.flags["interactive"] === true
 }
 
+function resolveContextMode(ctx: RuntimeContext, args: RuntimeRunArgs): LocalContextMode {
+  const value = stringFlag(args.flags, "context") ?? stringRuntimeConfig(ctx, "context") ?? "workflow"
+  if (value === "workflow") return "workflow"
+  if (value === "artifacts" || value === "artifact") return "artifacts"
+
+  throw new Error('Unsupported local runtime context "' + value + '". Supported values: workflow, artifacts.')
+}
+
+function splitCsvFlag(args: RuntimeRunArgs, name: string): string[] {
+  const value = stringFlag(args.flags, name)
+  if (value === undefined) return []
+  return value.split(",").map((item) => item.trim()).filter(Boolean)
+}
+
 async function resolveRunTarget(
   ctx: RuntimeContext,
   args: RuntimeRunArgs,
@@ -414,6 +442,48 @@ async function loadPersonaSkills(
   return skills
 }
 
+function inputArtifactFromMeta(meta: ArtifactMetadata, body: string): LocalInputArtifact {
+  return {
+    id: meta.id,
+    type: meta.type,
+    title: meta.title,
+    version: meta.version,
+    finalized: meta.finalized,
+    tags: meta.tags,
+    body,
+  }
+}
+
+async function loadInputArtifacts(
+  workspaceRoot: string,
+  args: RuntimeRunArgs,
+): Promise<LocalInputArtifact[]> {
+  const artifacts = new FilesystemArtifactAdapter(workspaceRoot)
+  const ids = splitCsvFlag(args, "artifacts")
+  const tags = splitCsvFlag(args, "artifact-tags")
+
+  if (ids.length > 0) {
+    const mounted: LocalInputArtifact[] = []
+    for (const id of ids) {
+      const meta = await artifacts.inspect(id)
+      mounted.push(inputArtifactFromMeta(meta, await artifacts.read(id)))
+    }
+    return mounted
+  }
+
+  if (tags.length === 0) return []
+
+  const refs = await artifacts.list({ tags, finalized: true })
+  refs.sort((a, b) => a.id.localeCompare(b.id))
+
+  const mounted: LocalInputArtifact[] = []
+  for (const ref of refs) {
+    const meta = await artifacts.inspect(ref.id)
+    mounted.push(inputArtifactFromMeta(meta, await artifacts.read(ref.id)))
+  }
+  return mounted
+}
+
 async function createRunPacketArtifact(
   ctx: RuntimeContext,
   run: LocalRunContext,
@@ -424,16 +494,17 @@ async function createRunPacketArtifact(
     "runtime",
     "local",
     `invocation:${run.invocation_id}`,
-    `workflow:${run.graph.id}`,
+    `context:${run.context_mode}`,
   ])
 
+  if (run.graph !== undefined) tags.add(`workflow:${run.graph.id}`)
   for (const tag of run.persona?.memory_tags ?? []) tags.add(tag)
   for (const tag of run.task?.tags ?? []) tags.add(tag)
   if (run.persona !== undefined) tags.add(`persona:${run.persona.name}`)
 
   const artifact = await artifacts.create({
     type: "local-runtime-run",
-    title: `Local runtime run: ${run.graph.name}`,
+    title: `Local runtime run: ${run.graph?.name ?? run.persona?.name ?? run.context_mode}`,
     body,
     tags: [...tags],
   })
@@ -452,7 +523,9 @@ function renderRunPacket(ctx: RuntimeContext, run: LocalRunContext): string {
     ? "- None loaded."
     : run.skills.map((skill) => `- ${skill.name}: ${skill.description}`).join("\n")
   const taskSummary = run.task === undefined
-    ? "No ready task matched the selected persona/task filter."
+    ? run.context_mode === "artifacts"
+      ? "No task projection was mounted for this artifact context run."
+      : "No ready task matched the selected persona/task filter."
     : `${run.task.id}: ${run.task.description}`
   const personaSummary = run.persona === undefined
     ? "No persona selected."
@@ -460,13 +533,27 @@ function renderRunPacket(ctx: RuntimeContext, run: LocalRunContext): string {
   const harnessSummary = run.harness_ref === undefined
     ? "No harness was invoked. The runtime prepared durable Agentic state only."
     : `Provider: ${run.harness_ref.provider}\n- Session id: ${run.harness_ref.id}`
+  const workflowSummary = run.graph === undefined
+    ? "- Workflow: none selected.\n- Workflow run id: none created."
+    : `- Workflow: ${run.graph.id} (${run.graph.name})\n- Workflow version: ${run.graph.version}\n- Workflow run id: ${run.workflow_run_id}`
+  const inputArtifactList = run.input_artifacts.length === 0
+    ? "- None mounted."
+    : run.input_artifacts
+      .map((artifact) => `- ${artifact.id}: ${artifact.title} (${artifact.type}, v${artifact.version})`)
+      .join("\n")
+  const inspectionCommands = run.workflow_run_id === undefined
+    ? `agentic artifact read ${run.artifact_id} --base-dir ${baseDirArg}
+agentic artifact inspect ${run.artifact_id} --base-dir ${baseDirArg}`
+    : `agentic workflow status ${run.workflow_run_id} --base-dir ${baseDirArg}
+agentic artifact read ${run.artifact_id} --base-dir ${baseDirArg}
+agentic artifact inspect ${run.artifact_id} --base-dir ${baseDirArg}`
 
-  return `# Local Runtime Run: ${run.graph.name}
+  return `# Local Runtime Run: ${run.graph?.name ?? run.persona?.name ?? "Artifact Context"}
 
 ## Summary
 
 The local runtime prepared an Agentic workspace run and left this durable packet for inspection.
-This is not a model transcript and does not claim the workflow's research work is complete.
+This is not a model transcript and does not claim the assistant work is complete.
 
 ## Workspace
 
@@ -476,14 +563,13 @@ This is not a model transcript and does not claim the workflow's research work i
 
 ## Target
 
-- Workflow: ${run.graph.id} (${run.graph.name})
-- Workflow version: ${run.graph.version}
+- Context mode: ${run.context_mode}
+${workflowSummary}
 - Runtime invocation id: ${run.invocation_id}
 - Runtime invocation path: ${pathRelative(
     run.target.workspace_root,
     invocationPathFor(run.target.workspace_root, run.invocation_id),
   )}
-- Workflow run id: ${run.workflow_run_id}
 - Artifact id: ${run.artifact_id}
 
 ## Harness
@@ -498,6 +584,10 @@ ${personaSummary}
 
 ${skillList}
 
+## Input Artifacts
+
+${inputArtifactList}
+
 ## Task
 
 ${taskSummary}
@@ -506,9 +596,7 @@ ${taskSummary}
 
 
 \`\`\`bash
-agentic workflow status ${run.workflow_run_id} --base-dir ${baseDirArg}
-agentic artifact read ${run.artifact_id} --base-dir ${baseDirArg}
-agentic artifact inspect ${run.artifact_id} --base-dir ${baseDirArg}
+${inspectionCommands}
 \`\`\`
 `
 }
@@ -598,8 +686,31 @@ function renderPiSystemPrompt(ctx: RuntimeContext, run: LocalRunContext): string
     ? "No skills loaded."
     : run.skills.map((skill) => `## ${skill.name}\n\n${skill.content.trim()}`).join("\n\n")
   const taskBlock = run.task === undefined
-    ? "No ready task matched the selected persona/task filter."
+    ? run.context_mode === "artifacts"
+      ? "No task projection was mounted for this artifact context run."
+      : "No ready task matched the selected persona/task filter."
     : `${run.task.id}: ${run.task.description}`
+  const workflowBlock = run.graph === undefined
+    ? "No workflow is selected for this run. Do not invent workflow state or advance workflow transitions."
+    : `Workflow: ${run.graph.id} (${run.graph.name})\nWorkflow run id: ${run.workflow_run_id}`
+  const artifactList = run.input_artifacts.length === 0
+    ? "No input artifacts were mounted."
+    : run.input_artifacts
+      .map((artifact) => `- ${artifact.id}: ${artifact.title} (${artifact.type}, v${artifact.version})`)
+      .join("\n")
+  const artifactBlocks = run.input_artifacts.length === 0
+    ? "No input artifact bodies were mounted."
+    : run.input_artifacts.map((artifact) => `## ${artifact.title}
+
+- Artifact id: ${artifact.id}
+- Type: ${artifact.type}
+- Version: ${artifact.version}
+- Tags: ${artifact.tags.join(", ") || "none"}
+
+${artifact.body.trim()}`).join("\n\n")
+  const workflowDefinition = run.graph === undefined
+    ? "No workflow definition is mounted for this run."
+    : ["```json", JSON.stringify(run.graph, null, 2), "```"].join("\n")
 
   return `You are Pi running behind the Agentic local runtime.
 
@@ -610,16 +721,17 @@ session semantics or store transcripts in Agentic invocation records.
 
 Workspace: ${run.target.workspace_root}
 Runtime invocation id: ${run.invocation_id}
-Workflow: ${run.graph.id} (${run.graph.name})
-Workflow run id: ${run.workflow_run_id}
+Context mode: ${run.context_mode}
+${workflowBlock}
 Run packet artifact id: ${run.artifact_id}
 Persona: ${run.persona?.name ?? "none"}
 Runtime package: ${ctx.runtime_package}
 
 Use the Agentic CLI when you need to inspect or update durable primitives. When
-you produce reusable output, persist it as an Agentic artifact and advance the
-workflow with explicit transitions. Do not claim the research is complete unless
-the durable workflow/artifact state reflects that completion.
+you produce reusable output, persist it as an Agentic artifact. If a workflow run
+is present, advance it with explicit transitions. If no workflow run is present,
+stay in persona/skill/artifact context and do not create workflow state just to
+act busy.
 
 # Selected Task
 
@@ -633,15 +745,34 @@ ${personaBody}
 
 ${skillBlocks}
 
+# Mounted Input Artifacts
+
+${artifactList}
+
+${artifactBlocks}
+
 # Workflow Definition
 
-\`\`\`json
-${JSON.stringify(run.graph, null, 2)}
-\`\`\`
+${workflowDefinition}
 `
 }
 
-function renderPiUserPrompt(run: LocalRunContext): string {
+function renderPiUserPrompt(run: LocalRunContext, mode: "print" | "interactive"): string {
+  if (run.context_mode === "artifacts") {
+    const interactionLine = mode === "interactive"
+      ? "After the briefing, stop and wait for the user instead of starting the recommended work."
+      : "Produce the briefing as the final response for this one-shot run."
+
+    return `Start a personal-assistant session from the mounted Agentic artifacts.
+
+Briefly orient the user with the current picture, open work, items needing the user, and one recommended next step. Do not start executing the recommended work before the user confirms intent.
+
+${interactionLine}
+
+Run packet artifact: ${run.artifact_id}
+Mounted artifact ids: ${run.input_artifacts.map((artifact) => artifact.id).join(", ") || "none"}`
+  }
+
   const taskLine = run.task === undefined
     ? "No ready task was selected; inspect the workspace before choosing next action."
     : `Work the selected task: ${run.task.description}`
@@ -731,7 +862,7 @@ function piHarnessArgs(run: LocalRunContext, mode: "print" | "interactive"): str
     "--session-id",
     harnessRef.id,
     "--name",
-    `Agentic ${run.graph.id}`,
+    `Agentic ${run.graph?.id ?? run.persona?.name ?? run.context_mode}`,
     "--append-system-prompt",
     systemPromptPath,
     `@${userPromptPath}`,
@@ -756,11 +887,11 @@ async function runPiHarness(
 
   const systemPromptPath = piSystemPromptPathFor(run.target.workspace_root, run.invocation_id)
   const userPromptPath = piUserPromptPathFor(run.target.workspace_root, run.invocation_id)
+  const mode = piInteractive(args) ? "interactive" : "print"
   await writeFile(systemPromptPath, renderPiSystemPrompt(ctx, run), "utf-8")
-  await writeFile(userPromptPath, renderPiUserPrompt(run), "utf-8")
+  await writeFile(userPromptPath, renderPiUserPrompt(run, mode), "utf-8")
 
   const sessionDir = piSessionsDirFor(run.target.workspace_root)
-  const mode = piInteractive(args) ? "interactive" : "print"
   const command = piCommand(ctx, args)
   const commandArgs = piHarnessArgs(run, mode)
   const processOptions = {
@@ -821,27 +952,20 @@ async function listInvocations(workspaceRoot: string): Promise<RuntimeInvocation
   return invocations.sort((a, b) => b.started_at.localeCompare(a.started_at))
 }
 
-async function prepareLocalRun(
+async function prepareWorkflowLocalRun(
   ctx: RuntimeContext,
   target: LocalRunTarget,
   invocation: RuntimeInvocation,
+  args: RuntimeRunArgs,
 ): Promise<LocalRunContext> {
-  if (!(await hasAgenticWorkspace(target.workspace_root))) {
-    throw new Error(`No Agentic workspace found at ${target.workspace_root}.`)
-  }
-  if (!(await pathExists(statePathFor(target.workspace_root)))) {
-    throw new Error(
-      `Local runtime is not initialized for ${target.workspace_root}. Run \`agentic runtime init local --base-dir ${target.workspace_label}\` first.`,
-    )
-  }
-
   const taskAdapter = new FilesystemTaskAdapter(target.workspace_root)
   const taskDriven = target.workflow_id === undefined
   const task = taskDriven
     ? await taskAdapter.nextReadyTask()
     : undefined
   const workflowId = target.workflow_id ?? taskMetadataString(task ?? undefined, "workflow")
-  const personaName = taskDriven ? taskMetadataString(task ?? undefined, "persona") : undefined
+  const personaName = stringFlag(args.flags, "persona")
+    ?? (taskDriven ? taskMetadataString(task ?? undefined, "persona") : undefined)
   const persona = await loadSelectedPersona(target.workspace_root, workflowId, personaName)
   const activatedPersona = activateLocalRunPersona(target, persona)
   const workflows = new FilesystemWorkflowAdapter(target.workspace_root)
@@ -856,11 +980,13 @@ async function prepareLocalRun(
   )
 
   const run: LocalRunContext = {
+    context_mode: "workflow",
     target,
     graph,
     persona,
     activated_persona: activatedPersona,
     skills,
+    input_artifacts: [],
     task: selectedTask ?? undefined,
     workflow_run_id: workflowRun.run_id,
     artifact_id: "pending",
@@ -889,6 +1015,62 @@ async function prepareLocalRun(
   }
 
   return run
+}
+
+async function prepareArtifactContextRun(
+  ctx: RuntimeContext,
+  target: LocalRunTarget,
+  invocation: RuntimeInvocation,
+  args: RuntimeRunArgs,
+): Promise<LocalRunContext> {
+  const personaName = stringFlag(args.flags, "persona")
+  const persona = await loadSelectedPersona(target.workspace_root, undefined, personaName)
+  const activatedPersona = activateLocalRunPersona(target, persona)
+  const skills = await loadPersonaSkills(target.workspace_root, persona)
+  const inputArtifacts = await loadInputArtifacts(target.workspace_root, args)
+
+  if (inputArtifacts.length === 0) {
+    throw new Error(
+      '`--context artifacts` requires mounted artifacts. Add `--artifacts <ids>` or `--artifact-tags <tags>`.',
+    )
+  }
+
+  const run: LocalRunContext = {
+    context_mode: "artifacts",
+    target,
+    persona,
+    activated_persona: activatedPersona,
+    skills,
+    input_artifacts: inputArtifacts,
+    artifact_id: "pending",
+    invocation_id: invocation.id,
+    harness_ref: invocation.harness_ref,
+  }
+  await createRunPacketArtifact(ctx, run)
+
+  return run
+}
+
+async function prepareLocalRun(
+  ctx: RuntimeContext,
+  target: LocalRunTarget,
+  invocation: RuntimeInvocation,
+  args: RuntimeRunArgs,
+  contextMode: LocalContextMode,
+): Promise<LocalRunContext> {
+  if (!(await hasAgenticWorkspace(target.workspace_root))) {
+    throw new Error(`No Agentic workspace found at ${target.workspace_root}.`)
+  }
+  if (!(await pathExists(statePathFor(target.workspace_root)))) {
+    throw new Error(
+      `Local runtime is not initialized for ${target.workspace_root}. Run \`agentic runtime init local --base-dir ${target.workspace_label}\` first.`,
+    )
+  }
+
+  if (contextMode === "artifacts") {
+    return prepareArtifactContextRun(ctx, target, invocation, args)
+  }
+  return prepareWorkflowLocalRun(ctx, target, invocation, args)
 }
 
 async function readStateFor(workspaceRoot: string): Promise<LocalRuntimeState | undefined> {
@@ -956,6 +1138,7 @@ async function runLocalRuntime(
 ): Promise<RuntimeCommandResult> {
   const target = await resolveRunTarget(ctx, args)
   const harness = resolveHarness(ctx, args)
+  const contextMode = resolveContextMode(ctx, args)
   if (harness === "none" && piInteractive(args)) {
     throw new Error('`--interactive` requires `--harness pi` or runtime config `harness = "pi"`.')
   }
@@ -969,7 +1152,7 @@ async function runLocalRuntime(
   let harnessResult: PiHarnessResult | undefined
 
   try {
-    run = await prepareLocalRun(ctx, target, invocation)
+    run = await prepareLocalRun(ctx, target, invocation, args, contextMode)
     harnessResult = await runHarness(ctx, args, run)
     await completeInvocation(invocation, run)
   } catch (err) {
@@ -980,28 +1163,36 @@ async function runLocalRuntime(
   if (run === undefined) {
     throw new Error("Local runtime run did not produce a run context.")
   }
+  const targetName = run.graph?.id ?? run.persona?.name ?? run.context_mode
 
   return {
     summary: harnessResult === undefined
-      ? `Prepared local Agentic run for ${run.graph.id} and wrote artifact ${run.artifact_id}.`
-      : `Ran local Agentic target ${run.graph.id} through Pi session ${harnessResult.session_id}.`,
+      ? `Prepared local Agentic run for ${targetName} and wrote artifact ${run.artifact_id}.`
+      : `Ran local Agentic target ${targetName} through Pi session ${harnessResult.session_id}.`,
     data: {
       invocation_id: invocation.id,
       invocation_path: pathRelative(
         ctx.workspace_root,
         invocationPathFor(run.target.workspace_root, invocation.id),
       ),
-      target: args.target ?? run.graph.id,
+      target: args.target ?? run.graph?.id ?? run.persona?.name ?? run.context_mode,
       args: args.args,
       workspace: pathRelative(ctx.workspace_root, run.target.workspace_root),
       initialized: true,
+      context_mode: run.context_mode,
       harness: run.harness_ref ?? null,
       harness_result: harnessResult === undefined ? null : harnessResult,
-      workflow_id: run.graph.id,
-      workflow_run_id: run.workflow_run_id,
+      workflow_id: run.graph?.id ?? null,
+      workflow_run_id: run.workflow_run_id ?? null,
       artifact_id: run.artifact_id,
       persona: run.persona?.name ?? null,
       skills: run.skills.map((skill) => skill.name),
+      input_artifacts: run.input_artifacts.map((artifact) => ({
+        id: artifact.id,
+        type: artifact.type,
+        title: artifact.title,
+        version: artifact.version,
+      })),
       task: run.task === undefined ? null : {
         id: run.task.id,
         description: run.task.description,

@@ -6,6 +6,8 @@ import type { RuntimeContext } from "@tnezdev/agentic/runtime"
 import { runtime } from "./index.js"
 
 const TASK_ID = "01KTC500000000000000000001"
+const PROFILE_ARTIFACT_ID = "01KAC500000000000000000001"
+const CONTINUITY_ARTIFACT_ID = "01KAC500000000000000000002"
 
 async function writeText(path: string, text: string): Promise<void> {
   await mkdir(dirname(path), { recursive: true })
@@ -77,6 +79,81 @@ Write a concise durable brief.
       null,
       2,
     ),
+  )
+}
+
+async function writeArtifactAssistantWorkspace(baseDir: string): Promise<void> {
+  await writeText(
+    join(baseDir, ".agentic", "personas", "assistant.md"),
+    `---
+name: assistant
+description: Activate when starting a personal assistant session from durable artifacts
+memory_tags: [personal-assistant, continuity]
+skills: [session-brief]
+---
+
+# Assistant
+
+Load durable artifacts before acting.
+You are working from {{cwd}} at {{timestamp}} on {{hostname}}.
+`,
+  )
+  await writeText(
+    join(baseDir, ".agentic", "skills", "session-brief", "skill.md"),
+    `---
+name: session-brief
+description: Activate when synthesizing a startup briefing from assistant artifacts
+tags: [personal-assistant, continuity]
+---
+
+# Session Brief
+
+Read mounted artifacts, brief the user, and wait for confirmation before doing follow-on work.
+`,
+  )
+  await writeText(
+    join(baseDir, ".agentic", "artifacts", PROFILE_ARTIFACT_ID, "meta.json"),
+    JSON.stringify(
+      {
+        id: PROFILE_ARTIFACT_ID,
+        type: "user-profile",
+        title: "Alex Profile",
+        body_ref: `${PROFILE_ARTIFACT_ID}/v1.md`,
+        version: 1,
+        finalized: true,
+        tags: ["personal-assistant", "session-start-context"],
+        created_at: "2026-06-16T13:00:00.000Z",
+        updated_at: "2026-06-16T13:00:00.000Z",
+      },
+      null,
+      2,
+    ),
+  )
+  await writeText(
+    join(baseDir, ".agentic", "artifacts", PROFILE_ARTIFACT_ID, "v1.md"),
+    "# Alex Profile\n\nAlex wants a conversational assistant that reconstructs context before acting.\n",
+  )
+  await writeText(
+    join(baseDir, ".agentic", "artifacts", CONTINUITY_ARTIFACT_ID, "meta.json"),
+    JSON.stringify(
+      {
+        id: CONTINUITY_ARTIFACT_ID,
+        type: "continuity-brief",
+        title: "Alex Continuity",
+        body_ref: `${CONTINUITY_ARTIFACT_ID}/v1.md`,
+        version: 1,
+        finalized: true,
+        tags: ["personal-assistant", "session-start-context"],
+        created_at: "2026-06-16T13:00:00.000Z",
+        updated_at: "2026-06-16T13:00:00.000Z",
+      },
+      null,
+      2,
+    ),
+  )
+  await writeText(
+    join(baseDir, ".agentic", "artifacts", CONTINUITY_ARTIFACT_ID, "v1.md"),
+    "# Alex Continuity\n\nOpen work: choose the next assistant portability experiment.\n",
   )
 }
 
@@ -366,6 +443,66 @@ describe("local runtime package", () => {
     })
   })
 
+  it("can prepare persona, skills, and artifacts without task or workflow state", async () => {
+    await writeArtifactAssistantWorkspace(tmpDir)
+
+    const result = await runtime.commands.run!(ctx, {
+      args: [],
+      flags: {
+        context: "artifacts",
+        persona: "assistant",
+        "artifact-tags": "session-start-context",
+      },
+    })
+    const data = dataOf(result)
+    const artifactId = data["artifact_id"] as string
+    const invocationId = data["invocation_id"] as string
+
+    expect(result?.summary).toContain("Prepared local Agentic run")
+    expect(data).toMatchObject({
+      context_mode: "artifacts",
+      workflow_id: null,
+      workflow_run_id: null,
+      persona: "assistant",
+      skills: ["session-brief"],
+      task: null,
+      input_artifacts: [
+        { id: PROFILE_ARTIFACT_ID, type: "user-profile", title: "Alex Profile", version: 1 },
+        { id: CONTINUITY_ARTIFACT_ID, type: "continuity-brief", title: "Alex Continuity", version: 1 },
+      ],
+    })
+
+    const meta = JSON.parse(
+      await readFile(join(tmpDir, ".agentic", "artifacts", artifactId, "meta.json"), "utf-8"),
+    )
+    expect(meta.type).toBe("local-runtime-run")
+    expect(meta.tags).toContain("context:artifacts")
+    expect(meta.tags).not.toContain("workflow:research-loop")
+
+    const body = await readFile(
+      join(tmpDir, ".agentic", "artifacts", artifactId, "v1.md"),
+      "utf-8",
+    )
+    expect(body).toContain("Context mode: artifacts")
+    expect(body).toContain("Workflow run id: none created")
+    expect(body).toContain(PROFILE_ARTIFACT_ID)
+    expect(body).toContain(CONTINUITY_ARTIFACT_ID)
+    expect(body).not.toContain("agentic workflow status")
+
+    const invocation = JSON.parse(
+      await readFile(
+        join(tmpDir, ".agentic", "runtime", "local", "invocations", `${invocationId}.json`),
+        "utf-8",
+      ),
+    )
+    expect(invocation).toMatchObject({
+      id: invocationId,
+      status: "completed",
+      artifact_ids: [artifactId],
+    })
+    expect(invocation.workflow_run_id).toBeUndefined()
+  })
+
   it("can invoke Pi as an optional local harness", async () => {
     await writeSecondBrainWorkspace(tmpDir)
     await runtime.commands.init!(ctx, { args: [], flags: {} })
@@ -543,6 +680,74 @@ describe("local runtime package", () => {
     )}`)
     expect((await readFile(piCwdFile, "utf-8")).trim().endsWith(tmpDir)).toBe(true)
     expect(await readFile(piStdoutFile, "utf-8")).toBe("fake pi completed\n")
+  })
+
+  it("prompts interactive Pi to brief and wait in artifact context mode", async () => {
+    await writeArtifactAssistantWorkspace(tmpDir)
+    await runtime.commands.init!(ctx, { args: [], flags: {} })
+
+    const binDir = join(tmpDir, "bin")
+    const piArgsFile = join(tmpDir, "pi-args.txt")
+    const piCwdFile = join(tmpDir, "pi-cwd.txt")
+    const piStdoutFile = join(tmpDir, "pi-stdout.txt")
+    await writeFakePi(binDir)
+
+    const result = await runtime.commands.run!({
+      ...ctx,
+      env: {
+        PATH: `${binDir}:${process.env.PATH ?? ""}`,
+        PI_ARGS_FILE: piArgsFile,
+        PI_CWD_FILE: piCwdFile,
+        PI_STDOUT_FILE: piStdoutFile,
+      },
+    }, {
+      args: [],
+      flags: {
+        context: "artifacts",
+        persona: "assistant",
+        "artifact-tags": "session-start-context",
+        harness: "pi",
+        interactive: true,
+      },
+    })
+    const data = dataOf(result)
+    const invocationId = data["invocation_id"] as string
+
+    expect(data).toMatchObject({
+      context_mode: "artifacts",
+      workflow_id: null,
+      workflow_run_id: null,
+    })
+    expect(data["harness_result"]).toMatchObject({
+      provider: "pi",
+      mode: "interactive",
+      session_id: invocationId,
+    })
+
+    const piArgs = (await readFile(piArgsFile, "utf-8")).split("\n")
+    expect(piArgs).not.toContain("--print")
+    expect(piArgs).toContain("Agentic assistant")
+
+    const systemPrompt = await readFile(
+      join(tmpDir, ".agentic", "runtime", "local", "invocations", `${invocationId}.pi-system.md`),
+      "utf-8",
+    )
+    expect(systemPrompt).toContain("Context mode: artifacts")
+    expect(systemPrompt).toContain("No workflow is selected")
+    expect(systemPrompt).toContain("No task projection was mounted")
+    expect(systemPrompt).toContain("Alex wants a conversational assistant")
+    expect(systemPrompt).toContain("choose the next assistant portability experiment")
+    expect(systemPrompt).not.toContain("No ready task matched")
+    expect(systemPrompt).not.toContain("{{cwd}}")
+
+    const userPrompt = await readFile(
+      join(tmpDir, ".agentic", "runtime", "local", "invocations", `${invocationId}.pi-user.md`),
+      "utf-8",
+    )
+    expect(userPrompt).toContain("Start a personal-assistant session from the mounted Agentic artifacts")
+    expect(userPrompt).toContain("stop and wait for the user")
+    expect(userPrompt).not.toContain("Work the selected task")
+    expect(userPrompt).not.toContain("workflow run")
   })
 
   it("requires the Pi harness for interactive mode", async () => {

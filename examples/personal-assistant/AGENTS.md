@@ -14,16 +14,29 @@ examples/personal-assistant
 
 ## Start Here
 
-For a first smoke test, let the local runtime prepare the turn:
+For the pared-down artifact context experiment, mount only persona, skills, and artifacts:
+
+```bash
+agentic run examples/personal-assistant --context artifacts --persona assistant --artifact-tags session-start-context
+```
+
+For a conversational Pi handoff, add the harness flags:
+
+```bash
+agentic run examples/personal-assistant --context artifacts --persona assistant --artifact-tags session-start-context --harness pi --interactive
+```
+
+That path should orient from mounted artifacts and wait for the user. It should not select a task or create workflow state.
+
+For a task/workflow comparison smoke test, let the local runtime prepare the original projected turn:
 
 ```bash
 agentic run examples/personal-assistant
 ```
 
-For a manual harness turn, show the seeded task and activate the assistant persona:
+For a manual harness turn, activate the assistant persona and read the same mounted artifacts:
 
 ```bash
-agentic task show 01KPA500000000000000000001 --base-dir examples/personal-assistant
 agentic persona activate assistant --base-dir examples/personal-assistant
 ```
 
@@ -47,19 +60,17 @@ agentic workflow show session-wrap --base-dir examples/personal-assistant
 agentic artifact read 01KPA500000000000000000080 --base-dir examples/personal-assistant
 ```
 
-The runtime uses the public `local` target. It prepares a workflow run and a finalized `local-runtime-run` artifact for inspection; it does not check calendars, read email, call external APIs, or complete the assistant work on its own.
+The runtime uses the public `local` target. Artifact context mode prepares an invocation plus a finalized `local-runtime-run` artifact for inspection; task/workflow comparison mode also prepares a workflow run. Neither mode checks calendars, reads email, calls external APIs, or completes the assistant work on its own.
 
 When using the checked-in repository example, treat runtime output as local dogfood state. Do not commit generated `.agentic/runtime/`, `.agentic/runs/`, or ad hoc artifact directories unless deliberately refreshing the fixture.
 
-If Pi is installed and you want the local runtime to hand this prepared turn to a harness, keep the public target and add the harness flag:
+If Pi is installed and you want to compare the original task/workflow turn through a harness, keep the public target and add the harness flag:
 
 ```bash
 agentic run examples/personal-assistant --harness pi
 ```
 
-For a conversational handoff, add `--interactive`; Agentic prepares the same
-invocation, workflow run, artifact, and Pi prompt files, then attaches the
-terminal to Pi:
+For a task/workflow conversational handoff, add `--interactive`; Agentic prepares the same invocation, workflow run, artifact, and Pi prompt files, then attaches the terminal to Pi:
 
 ```bash
 agentic run examples/personal-assistant --harness pi --interactive
@@ -69,16 +80,16 @@ If the installed `agentic` binary is unavailable while working from this repo, u
 
 ```bash
 bun ../../packages/agentic/src/cli/main.ts persona activate assistant --base-dir .
-bun ../../packages/agentic/src/cli/main.ts task next --base-dir .
 bun ../../packages/agentic/src/cli/main.ts skill run session-brief --base-dir .
+bun ../../packages/agentic/src/cli/main.ts artifact list --tags session-start-context --base-dir .
 ```
 
 ## How To Use Agentic
 
 - Use `persona activate` to load the assistant hat and turn-level operating instructions.
 - Use `skill run` to load the session-start or wrap-session procedure.
-- Use `task next` to find the current assistant task.
-- Use `workflow run` for resumable session-start state.
+- Use `task next` only when intentionally testing task projection.
+- Use `workflow run` only when intentionally testing resumable session-start state.
 - Use `artifact read` to load durable fixture context.
 - Use `artifact create`, `artifact write`, and `artifact finalize` for durable session briefs and wrap notes.
 - Ask one concise question when the next action depends on user intent.
@@ -101,9 +112,9 @@ Agentic owns:
 
 - Personas
 - Skills
-- Tasks
-- Workflows
 - Artifacts
+- Optional tasks
+- Optional workflows
 - Optional memories when the user configures them
 
 ## Session Output

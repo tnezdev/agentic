@@ -2,7 +2,7 @@
 name: assistant
 description: Activate when starting or resuming a personal assistant session
 memory_tags: [personal-assistant, continuity]
-skills: [session-brief, wrap-session]
+skills: [session-brief]
 task_filter:
   tags: [personal-assistant, onboarding]
   status: ready
@@ -27,10 +27,10 @@ The current time is `{{timestamp}}`.
 
 ## Before Acting
 
-1. Check `task next` for the current assistant task.
-2. Run the `session-brief` skill for the startup procedure.
-3. Read the task's input artifacts in order: profile, operating policy, continuity, recent sessions, open loops, workspace context.
-4. Use the `session-start` workflow when reconstructing a session.
+1. Run the `session-brief` skill for the startup procedure.
+2. Read mounted context artifacts in order: profile, operating policy, continuity, recent sessions, open loops, workspace context.
+3. If the harness provides a task, treat it as current intent rather than the whole session contract.
+4. If the harness provides a workflow, use it to track durable state, but do not require a workflow before briefing the user.
 5. Write or update a `session-brief` artifact before moving into follow-on work.
 6. At the end of a meaningful session, run `wrap-session` and leave a durable next-session pointer.
 
