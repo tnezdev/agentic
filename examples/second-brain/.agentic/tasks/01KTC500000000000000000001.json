@@ -1,24 +1,20 @@
 {
   "id": "01KTC500000000000000000001",
-  "description": "START HERE: Research lightweight reading queue practices by turning the seeded inbox and reading-queue artifacts into a durable brief; then leave a steward follow-up task.",
+  "description": "START HERE: Research lightweight reading queue practices using one selected queue item, then inspect the durable brief.",
   "status": "ready",
   "tags": [
     "second-brain",
     "research",
     "example",
-    "dogfood"
+    "onboarding"
   ],
   "annotations": [
     {
-      "text": "This task is the example's onboarding breadcrumb. If you found it with `agentic task next`, show this task, activate the `researcher` persona, run the `research-brief` skill, and use the `research-loop` workflow.",
+      "text": "First run from the repo root: `agentic runtime init local --base-dir examples/second-brain`, then `agentic runtime run examples/second-brain`. Add `--harness pi` to the second command only when you want Pi to execute the prepared turn.",
       "timestamp": "2026-06-05T16:00:00.000Z"
     },
     {
-      "text": "Inputs: read artifact `01KTC500000000000000000020` for the messy inbox captures, artifact `01KTC500000000000000000030` for the reading-queue snapshot, and artifact `01KTC500000000000000000010` for the finished-brief shape to emulate but not overwrite.",
-      "timestamp": "2026-06-15T18:30:00.000Z"
-    },
-    {
-      "text": "Expected durable changes during a real run: create and finalize a new `research-brief` artifact with a `para:<bucket>/<slug>` tag, update or supersede the selected queue item, and add one follow-up task tagged `stewardship` for the `second-brain-steward` persona.",
+      "text": "What this demonstrates: captured input -> ready task -> research loop -> durable brief -> steward follow-up. The manual artifact/persona details live in AGENTS.md for harnesses that step through primitives directly.",
       "timestamp": "2026-06-15T18:30:00.000Z"
     }
   ],

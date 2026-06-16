@@ -19,48 +19,45 @@ In this example:
 
 The host harness still owns model calls, tool execution, browsing, credentials, approvals, scheduling, and user communication.
 
-## Start With The Workspace State
+## Quick Smoke Test
 
-This example is meant to be self-guided by its own second-brain content. Ask the
-task queue what to do first:
+This example is meant to be self-guided by its own second-brain content. Start
+from the repo root and ask the workspace what is ready:
 
 ```bash
 agentic task next --base-dir examples/second-brain
 ```
 
-The seeded task starts with `START HERE`. It names the input artifacts, persona,
-skill, workflow, expected durable changes, and the steward follow-up to leave
-behind. To read the full embedded breadcrumb:
-
-```bash
-agentic task show 01KTC500000000000000000001 --base-dir examples/second-brain
-```
-
-The task points at the messy inbox captures, the current reading-queue snapshot,
-and a finalized sample brief:
-
-```bash
-agentic artifact read 01KTC500000000000000000020 --base-dir examples/second-brain
-agentic artifact read 01KTC500000000000000000030 --base-dir examples/second-brain
-agentic artifact read 01KTC500000000000000000010 --base-dir examples/second-brain
-```
-
-## Run It Locally
-
-After inspecting the task, let the local runtime prepare the same turn. From the
-repo root:
+Then let the local runtime prepare that turn:
 
 ```bash
 agentic runtime init local --base-dir examples/second-brain
 agentic runtime run examples/second-brain
 ```
 
-That is the current runnable path for this example. It uses the public runtime
-target, `local`, and the repo-local `agentic` shim discovers
-`packages/agentic-runtime-local` from this checkout.
+The runtime prints a workflow-run id and a run-packet artifact id. Inspect those
+ids next:
+
+```bash
+agentic workflow status <workflow-run-id> --base-dir examples/second-brain
+agentic artifact read <artifact-id> --base-dir examples/second-brain
+```
+
+That is the first-run path. It should show the loop without requiring you to
+memorize artifact ids, persona names, or workflow internals first.
+
+## Run It Locally
+
+The local runtime uses the public runtime target, `local`, and the repo-local
+`agentic` shim discovers `packages/agentic-runtime-local` from this checkout.
+It does not browse, call a model, or complete the research for you. It prepares
+the workspace for harness execution by loading the selected persona, skills,
+ready task, and workflow; creating a workflow run; starting the entry node;
+recording a runtime invocation; and writing a finalized `local-runtime-run`
+artifact as the durable run packet.
 
 If Pi is installed and you want the local runtime to hand the prepared turn to a
-real harness, use the same public target with an explicit harness flag:
+real harness, rerun the second command with an explicit harness flag:
 
 ```bash
 agentic runtime run examples/second-brain --harness pi
@@ -72,25 +69,6 @@ You can also run the workflow explicitly from inside the example workspace:
 agentic runtime init local --base-dir .
 agentic runtime run research-loop --base-dir .
 ```
-
-The local runtime does not browse, call a model, or complete the research for
-you. It prepares the workspace for harness execution by loading the selected
-persona, skills, ready task, and workflow; creating a workflow run; starting the
-entry node; recording a runtime invocation; and writing a finalized
-`local-runtime-run` artifact as the durable run packet. With `--harness pi`, it
-then invokes the Pi CLI in print mode with generated prompt files and records the
-Pi session reference on the invocation.
-
-After `runtime run`, inspect the IDs printed in the command output:
-
-```bash
-agentic workflow status <workflow-run-id> --base-dir examples/second-brain
-agentic artifact read <artifact-id> --base-dir examples/second-brain
-agentic artifact inspect <artifact-id> --base-dir examples/second-brain
-```
-
-Those commands are also written into the run-packet artifact with an absolute
-`--base-dir`, so the packet remains pasteable from anywhere.
 
 Running the example creates local state under `.agentic/runtime/`,
 `.agentic/runs/`, and `.agentic/artifacts/`. Runtime invocation records live in
@@ -106,15 +84,23 @@ ignores generated runtime state and new artifact directories under the example s
 dogfood runs do not become fixture churn; a personal second-brain workspace can
 choose to track or sync those durable artifacts instead.
 
-## Inspect The Primitives
+## Manual Primitive Path
 
-To inspect the same pieces manually without preparing a runtime run, use:
+After the quick smoke test, inspect the same inputs manually:
 
 ```bash
-agentic task next --base-dir examples/second-brain
+agentic task show 01KTC500000000000000000001 --base-dir examples/second-brain
+agentic artifact read 01KTC500000000000000000020 --base-dir examples/second-brain
+agentic artifact read 01KTC500000000000000000030 --base-dir examples/second-brain
+agentic artifact read 01KTC500000000000000000010 --base-dir examples/second-brain
+```
+
+Then load the exact primitives a manual harness would give to the model:
+
+```bash
 agentic persona activate researcher --base-dir examples/second-brain
 agentic skill run research-brief --base-dir examples/second-brain
-agentic workflow list --base-dir examples/second-brain
+agentic workflow show research-loop --base-dir examples/second-brain
 agentic artifact list --base-dir examples/second-brain
 ```
 
@@ -131,7 +117,6 @@ The packaged user story this example is proving is:
 bun add @tnezdev/agentic
 agentic init --example second-brain
 agentic task next
-agentic task show 01KTC500000000000000000001
 
 bun add -d @tnezdev/agentic-runtime-local
 agentic runtime add local

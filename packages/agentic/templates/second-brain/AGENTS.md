@@ -8,22 +8,20 @@ This directory is an Agentic second-brain research workspace. Agentic provides t
 
 ## Start Here
 
-At the start of a turn, ask the workspace what is ready:
+For a first smoke test, ask the workspace what is ready and let the local runtime
+prepare the turn:
 
 ```bash
 agentic task next --base-dir .
+agentic runtime init local --base-dir .
+agentic runtime run research-loop --base-dir .
 ```
 
-The seeded `START HERE` task is the dogfood breadcrumb. Show it before choosing
-the rest of the commands:
+For a manual harness turn, show the seeded task and activate the researcher
+persona:
 
 ```bash
 agentic task show 01KTC500000000000000000001 --base-dir .
-```
-
-For the seeded research task, activate the researcher persona:
-
-```bash
 agentic persona activate researcher --base-dir .
 ```
 
@@ -45,13 +43,6 @@ researcher persona to do curation:
 ```bash
 agentic persona activate second-brain-steward --base-dir .
 agentic skill run steward-review --base-dir .
-```
-
-To let the local runtime prepare the turn instead of manually stepping through each primitive, run:
-
-```bash
-agentic runtime init local --base-dir .
-agentic runtime run research-loop --base-dir .
 ```
 
 The runtime uses the public `local` target. It records a runtime invocation, prepares a workflow run, and writes a finalized `local-runtime-run` artifact for inspection; it still does not browse, call a model, or complete the research on its own.

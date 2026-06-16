@@ -14,22 +14,20 @@ examples/second-brain
 
 ## Start Here
 
-At the start of a turn, ask the workspace what is ready:
+For a first smoke test, ask the workspace what is ready and let the local runtime
+prepare the turn:
 
 ```bash
 agentic task next --base-dir examples/second-brain
+agentic runtime init local --base-dir examples/second-brain
+agentic runtime run examples/second-brain
 ```
 
-The seeded `START HERE` task is the dogfood breadcrumb. Show it before choosing
-the rest of the commands:
+For a manual harness turn, show the seeded task and activate the researcher
+persona:
 
 ```bash
 agentic task show 01KTC500000000000000000001 --base-dir examples/second-brain
-```
-
-For the seeded research task, activate the researcher persona:
-
-```bash
 agentic persona activate researcher --base-dir examples/second-brain
 ```
 
@@ -51,14 +49,6 @@ researcher persona to do curation:
 ```bash
 agentic persona activate second-brain-steward --base-dir examples/second-brain
 agentic skill run steward-review --base-dir examples/second-brain
-```
-
-To let the local runtime prepare the turn instead of manually stepping through
-each primitive, run from the repository root:
-
-```bash
-agentic runtime init local --base-dir examples/second-brain
-agentic runtime run examples/second-brain
 ```
 
 The runtime uses the public `local` target. It prepares a workflow run and a
