@@ -6,3 +6,11 @@ dist/
 # the compatibility window. Track everything except ephemeral per-run state.
 .agentic/runs/
 .spores/runs/
+
+# The checked-in second-brain example is a reusable fixture. Real harness
+# dogfood creates local runtime state and ad hoc output artifacts under it.
+examples/second-brain/.agentic/runtime/
+examples/second-brain/.agentic/runs/
+examples/second-brain/.agentic/artifacts/*/
+!examples/second-brain/.agentic/artifacts/01KTC500000000000000000010/
+!examples/second-brain/.agentic/artifacts/01KTC500000000000000000010/**

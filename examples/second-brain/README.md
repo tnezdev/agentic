@@ -72,6 +72,12 @@ copy if you want to keep a repository checkout clean. Pi harness runs also creat
 prompt files beside the invocation JSON and session state under
 `.agentic/runtime/local/pi-sessions/`.
 
+This checked-in example is a reusable fixture. Real harness runs are stateful:
+they may mark the seed task done and create additional artifacts. This repository
+ignores generated runtime state and new artifact directories under the example so
+dogfood runs do not become fixture churn; a personal second-brain workspace can
+choose to track or sync those durable artifacts instead.
+
 ## Inspect The Primitives
 
 To inspect the same pieces manually without preparing a runtime run, use:

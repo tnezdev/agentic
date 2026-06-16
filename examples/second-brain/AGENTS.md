@@ -43,6 +43,12 @@ The runtime uses the public `local` target. It prepares a workflow run and a
 finalized `local-runtime-run` artifact for inspection; it still does not browse,
 call a model, or complete the research on its own.
 
+When using the checked-in repository example, treat runtime output as local
+dogfood state. Do not commit generated `.agentic/runtime/`, `.agentic/runs/`, or
+ad hoc artifact directories unless deliberately refreshing the fixture. A real
+harness run may mark the seed task done; restore or replace it before committing
+the example as a reusable starter.
+
 If Pi is installed and you want the local runtime to hand this prepared turn to a
 harness, keep the public target and add the harness flag:
 
