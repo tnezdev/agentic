@@ -1,0 +1,69 @@
+{
+  "id": "monthly-review",
+  "name": "Monthly review",
+  "description": "Review project portfolio, areas, resources, and goals at monthly cadence.",
+  "version": "1.0",
+  "nodes": [
+    {
+      "id": "summarize-month",
+      "label": "Summarize month",
+      "description": "Summarize major outputs, decisions, changes, and unresolved tensions from the month.",
+      "artifact": {
+        "type": "monthly-summary",
+        "description": "Narrative summary of the month.",
+        "required": true,
+        "tags": ["second-brain", "review", "monthly"]
+      }
+    },
+    {
+      "id": "review-portfolio",
+      "label": "Review portfolio",
+      "description": "Review active projects and areas for alignment, overcommitment, and stale commitments.",
+      "artifact": {
+        "type": "portfolio-review",
+        "description": "Monthly project and area portfolio review.",
+        "required": true,
+        "tags": ["second-brain", "project", "area"]
+      }
+    },
+    {
+      "id": "promote-resources",
+      "label": "Promote resources",
+      "description": "Identify reusable notes, briefs, and references that should become resource bucket material.",
+      "artifact": {
+        "type": "resource-review",
+        "description": "Resources to promote, merge, prune, or revisit.",
+        "required": true,
+        "tags": ["second-brain", "resource"]
+      }
+    },
+    {
+      "id": "choose-month-focus",
+      "label": "Choose month focus",
+      "description": "Choose the next month's priorities, constraints, and explicit not-now list.",
+      "artifact": {
+        "type": "monthly-plan",
+        "description": "Next month focus and planning decisions.",
+        "required": true,
+        "tags": ["second-brain", "review", "plan"]
+      }
+    },
+    {
+      "id": "finalize-review",
+      "label": "Finalize review",
+      "description": "Finalize the monthly review artifact and update tasks or memories with durable decisions.",
+      "artifact": {
+        "type": "finalized-artifact-ref",
+        "description": "Reference to finalized monthly review and updates made.",
+        "required": true,
+        "tags": ["second-brain", "artifact", "memory", "tasks"]
+      }
+    }
+  ],
+  "edges": [
+    { "from": "summarize-month", "to": "review-portfolio" },
+    { "from": "review-portfolio", "to": "promote-resources" },
+    { "from": "promote-resources", "to": "choose-month-focus" },
+    { "from": "choose-month-focus", "to": "finalize-review" }
+  ]
+}

@@ -1,0 +1,69 @@
+{
+  "id": "process-inbox",
+  "name": "Process inbox",
+  "description": "Turn uncategorized captures into tasks, memories, artifacts, or PARA bucket placements.",
+  "version": "1.0",
+  "nodes": [
+    {
+      "id": "collect-inbox",
+      "label": "Collect inbox",
+      "description": "Gather uncategorized notes, links, files, and reminders that need routing.",
+      "artifact": {
+        "type": "inbox-batch",
+        "description": "Batch of inbox items to process.",
+        "required": true,
+        "tags": ["second-brain", "inbox"]
+      }
+    },
+    {
+      "id": "triage-items",
+      "label": "Triage items",
+      "description": "For each item, decide delete, defer, delegate, task, memory, artifact, or reference.",
+      "artifact": {
+        "type": "inbox-triage",
+        "description": "Triage decision for each inbox item.",
+        "required": true,
+        "tags": ["second-brain", "inbox", "triage"]
+      }
+    },
+    {
+      "id": "assign-buckets",
+      "label": "Assign buckets",
+      "description": "Assign retained items to concrete PARA buckets using para:<bucket>/<slug> tags.",
+      "artifact": {
+        "type": "taxonomy-validation",
+        "description": "PARA bucket assignment for retained inbox items.",
+        "required": true,
+        "tags": ["second-brain", "taxonomy"]
+      }
+    },
+    {
+      "id": "create-outputs",
+      "label": "Create outputs",
+      "description": "Create tasks, memories, or artifacts for retained items; discard or archive the rest.",
+      "artifact": {
+        "type": "inbox-output-summary",
+        "description": "Created tasks, memories, artifacts, and discarded items.",
+        "required": true,
+        "tags": ["second-brain", "tasks", "memory", "artifact"]
+      }
+    },
+    {
+      "id": "close-batch",
+      "label": "Close batch",
+      "description": "Confirm the inbox batch is empty or only contains intentionally deferred items.",
+      "artifact": {
+        "type": "inbox-closeout",
+        "description": "Closeout note for the processed inbox batch.",
+        "required": true,
+        "tags": ["second-brain", "inbox"]
+      }
+    }
+  ],
+  "edges": [
+    { "from": "collect-inbox", "to": "triage-items" },
+    { "from": "triage-items", "to": "assign-buckets" },
+    { "from": "assign-buckets", "to": "create-outputs" },
+    { "from": "create-outputs", "to": "close-batch" }
+  ]
+}
