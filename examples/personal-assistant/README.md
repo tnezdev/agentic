@@ -163,7 +163,8 @@ On first `agentic run`, the local runtime creates `.agentic/runtime/local/runtim
 - Container execution
 - Model calls, browsing, credentials, approvals, or tool execution
 - Automatic mutation of the continuity/open-loop fixture after a wrap
-- Interactive Pi mode; that is a future harness/runtime concern
+- Live service integrations or automatic fixture updates from a real assistant
+  session
 
 ## Dogfooding Loop
 
@@ -171,9 +172,10 @@ To dogfood this example, let the content drive the first run and watch for frict
 
 1. Run `agentic run` from inside the example, or `agentic run examples/personal-assistant` from the repo root.
 2. Inspect the workflow-run id and run-packet artifact id printed by the runtime.
-3. If you are testing a real harness, rerun with `--harness pi`.
-4. Confirm the harness creates a durable `session-brief` artifact rather than leaving the briefing only in a transcript.
-5. End the test with `wrap-session` and confirm it creates a durable `session-wrap` artifact with a next-session pointer.
-6. Patch only the friction you observed in the loop.
+3. If you are testing a real one-shot harness, rerun with `--harness pi`.
+4. If you want to keep talking after the turn is prepared, rerun with `--harness pi --interactive`.
+5. Confirm the harness creates a durable `session-brief` artifact rather than leaving the briefing only in a transcript.
+6. End the test with `wrap-session` and confirm it creates a durable `session-wrap` artifact with a next-session pointer.
+7. Patch only the friction you observed in the loop.
 
 Good findings are not just better prose. They are places where the primitive boundaries feel wrong, missing, or too ceremonial.

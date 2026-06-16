@@ -27,7 +27,8 @@ https://pi.dev/, not Raspberry Pi. `pi` is not a public runtime target.
   If no target is provided, ready task metadata (`persona` and `workflow`) is used
   before falling back to an unambiguous workspace default.
 - `run --harness pi` also invokes the Pi CLI as the local harness driver after
-  the Agentic run packet is prepared.
+  the Agentic run packet is prepared. Add `--interactive` when you want to land
+  in a live Pi terminal session instead of one-shot print mode.
 - `status` reports whether the local runtime glue has been initialized and
   summarizes the latest invocation.
 
@@ -38,10 +39,16 @@ session model into Agentic core.
 
 ## Pi Harness Mode
 
-Chosen integration mode for the first Pi bridge: CLI print mode.
+Default integration mode for the first Pi bridge: CLI print mode.
 
 ```bash
 agentic run <workspace-or-workflow> --harness pi
+```
+
+For conversational assistant-style starts, attach the terminal to Pi instead:
+
+```bash
+agentic run <workspace-or-workflow> --harness pi --interactive
 ```
 
 You can also make Pi the default harness for this runtime target with config:
@@ -59,8 +66,10 @@ enabled, `agentic run`:
 2. Writes generated Pi prompt files beside the invocation JSON:
    `.agentic/runtime/local/invocations/<id>.pi-system.md` and
    `.agentic/runtime/local/invocations/<id>.pi-user.md`.
-3. Invokes `pi --print --mode text --session-id <invocation-id> --session-dir
-   .agentic/runtime/local/pi-sessions ...` from the target workspace.
+3. Invokes Pi from the target workspace. Print mode uses `pi --print --mode text
+   --session-id <invocation-id> --session-dir .agentic/runtime/local/pi-sessions
+   ...`; interactive mode drops `--print --mode text` and inherits the current
+   terminal stdio.
 4. Records `harness_ref: { provider: "pi", id: "<invocation-id>" }` on the
    invocation.
 
@@ -87,13 +96,14 @@ pi_command = "/path/to/pi"
 
 - Pi must be installed on `PATH`; the local runtime does not depend on a Pi npm
   SDK.
-- The integration relies on Pi CLI guarantees for `--print`, `--mode text`,
-  `--session-id`, `--session-dir`, `--name`, `--append-system-prompt`, and
-  `@file` prompt inputs.
+- The integration relies on Pi CLI guarantees for `--session-id`,
+  `--session-dir`, `--name`, `--append-system-prompt`, and `@file` prompt inputs;
+  print mode also relies on `--print` and `--mode text`.
 - Agentic does not parse Pi transcripts or continue Pi sessions itself. The
   invocation id is reused as the Pi session id so the reference is deterministic.
-- Pi mode may call a model and use tools. Prepare-only mode remains the default
-  so `agentic run` is safe as an inspectable setup step.
+- Pi mode may call a model and use tools. Interactive mode attaches your terminal
+  to Pi until that process exits. Prepare-only mode remains the default so
+  `agentic run` is safe as an inspectable setup step.
 
 Non-goals for this skeleton: daemon/service mode, scheduling, cloud-provider
 code, model/tool execution inside Agentic core, and a session primitive.

@@ -122,7 +122,11 @@ async function writeFakePi(binDir: string): Promise<string> {
     `#!/bin/sh
 printf '%s\n' "$@" > "$PI_ARGS_FILE"
 printf '%s\n' "$PWD" > "$PI_CWD_FILE"
-printf 'fake pi completed\n'
+if [ -n "$PI_STDOUT_FILE" ]; then
+  printf 'fake pi completed\n' > "$PI_STDOUT_FILE"
+else
+  printf 'fake pi completed\n'
+fi
 `,
   )
   await chmod(path, 0o755)
@@ -392,6 +396,7 @@ describe("local runtime package", () => {
     expect(data["harness"]).toEqual({ provider: "pi", id: invocationId })
     expect(data["harness_result"]).toMatchObject({
       provider: "pi",
+      mode: "print",
       session_id: invocationId,
       session_dir: ".agentic/runtime/local/pi-sessions",
       system_prompt_path: `.agentic/runtime/local/invocations/${invocationId}.pi-system.md`,
@@ -470,6 +475,84 @@ describe("local runtime package", () => {
     )
     expect(body).toContain("Provider: pi")
     expect(body).toContain(`Session id: ${invocationId}`)
+  })
+
+  it("can attach Pi as an interactive local harness", async () => {
+    await writeSecondBrainWorkspace(tmpDir)
+    await runtime.commands.init!(ctx, { args: [], flags: {} })
+
+    const binDir = join(tmpDir, "bin")
+    const piArgsFile = join(tmpDir, "pi-args.txt")
+    const piCwdFile = join(tmpDir, "pi-cwd.txt")
+    const piStdoutFile = join(tmpDir, "pi-stdout.txt")
+    await writeFakePi(binDir)
+
+    const result = await runtime.commands.run!({
+      ...ctx,
+      env: {
+        PATH: `${binDir}:${process.env.PATH ?? ""}`,
+        PI_ARGS_FILE: piArgsFile,
+        PI_CWD_FILE: piCwdFile,
+        PI_STDOUT_FILE: piStdoutFile,
+      },
+    }, {
+      target: "research-loop",
+      args: [],
+      flags: { harness: "pi", interactive: true },
+    })
+    const data = dataOf(result)
+    const invocationId = data["invocation_id"] as string
+
+    expect(result?.summary).toContain("through Pi session")
+    expect(data["harness_result"]).toMatchObject({
+      provider: "pi",
+      mode: "interactive",
+      session_id: invocationId,
+      session_dir: ".agentic/runtime/local/pi-sessions",
+      system_prompt_path: `.agentic/runtime/local/invocations/${invocationId}.pi-system.md`,
+      user_prompt_path: `.agentic/runtime/local/invocations/${invocationId}.pi-user.md`,
+      exit_code: 0,
+      stdout: "",
+      stderr: "",
+    })
+
+    const piArgs = (await readFile(piArgsFile, "utf-8")).split("\n")
+    expect(piArgs).not.toContain("--print")
+    expect(piArgs).not.toContain("--mode")
+    expect(piArgs).not.toContain("text")
+    expect(piArgs).toContain("--session-id")
+    expect(piArgs).toContain(invocationId)
+    expect(piArgs).toContain("--session-dir")
+    expect(piArgs).toContain(join(tmpDir, ".agentic", "runtime", "local", "pi-sessions"))
+    expect(piArgs).toContain("--append-system-prompt")
+    expect(piArgs).toContain(join(
+      tmpDir,
+      ".agentic",
+      "runtime",
+      "local",
+      "invocations",
+      `${invocationId}.pi-system.md`,
+    ))
+    expect(piArgs).toContain(`@${join(
+      tmpDir,
+      ".agentic",
+      "runtime",
+      "local",
+      "invocations",
+      `${invocationId}.pi-user.md`,
+    )}`)
+    expect((await readFile(piCwdFile, "utf-8")).trim().endsWith(tmpDir)).toBe(true)
+    expect(await readFile(piStdoutFile, "utf-8")).toBe("fake pi completed\n")
+  })
+
+  it("requires the Pi harness for interactive mode", async () => {
+    await writeSecondBrainWorkspace(tmpDir)
+
+    await expect(runtime.commands.run!(ctx, {
+      target: "research-loop",
+      args: [],
+      flags: { interactive: true },
+    })).rejects.toThrow("requires `--harness pi`")
   })
 
   it("records failed invocations after a run starts", async () => {

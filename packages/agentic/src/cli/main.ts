@@ -73,7 +73,7 @@ type Parsed = {
   flags: Record<string, string | true>
 }
 
-const BOOLEAN_FLAGS = new Set(["json", "dry-run", "help", "wide"])
+const BOOLEAN_FLAGS = new Set(["json", "dry-run", "help", "wide", "interactive"])
 
 function parseArgs(argv: string[]): Parsed {
   const positional: string[] = []

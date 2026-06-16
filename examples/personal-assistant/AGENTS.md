@@ -57,6 +57,14 @@ If Pi is installed and you want the local runtime to hand this prepared turn to 
 agentic run examples/personal-assistant --harness pi
 ```
 
+For a conversational handoff, add `--interactive`; Agentic prepares the same
+invocation, workflow run, artifact, and Pi prompt files, then attaches the
+terminal to Pi:
+
+```bash
+agentic run examples/personal-assistant --harness pi --interactive
+```
+
 If the installed `agentic` binary is unavailable while working from this repo, use:
 
 ```bash

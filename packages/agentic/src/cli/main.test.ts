@@ -67,7 +67,7 @@ async function writeRuntimePackage(baseDir: string, source?: string): Promise<vo
     }),
     run: async (ctx, args) => ({
       summary: "ran local target",
-      data: { target: args.target, args: args.args, json: ctx.json },
+      data: { target: args.target, args: args.args, flags: args.flags, json: ctx.json },
     }),
     status: async () => ({
       summary: "runtime ready",
@@ -291,6 +291,25 @@ describe("CLI", () => {
     expect(result.result.data.target).toBe("inbox-review")
     expect(result.result.data.args).toEqual(["extra"])
     expect(result.result.data.json).toBe(true)
+  })
+
+  it("parses interactive as a boolean runtime flag", async () => {
+    await writeRuntimePackage(tmpDir)
+
+    const result = (await runJson(
+      ...base,
+      "run",
+      "inbox-review",
+      "--interactive",
+      "extra",
+    )) as {
+      status: string
+      result: { data: { args: string[]; flags: Record<string, string | true> } }
+    }
+
+    expect(result.status).toBe("delegated")
+    expect(result.result.data.args).toEqual(["extra"])
+    expect(result.result.data.flags.interactive).toBe(true)
   })
 
   it("top-level run delegates to the default runtime", async () => {

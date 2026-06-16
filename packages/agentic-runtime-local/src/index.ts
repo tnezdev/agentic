@@ -74,6 +74,7 @@ type LocalRunContext = {
 
 type PiHarnessResult = {
   provider: "pi"
+  mode: "print" | "interactive"
   session_id: string
   session_dir: string
   system_prompt_path: string
@@ -243,6 +244,10 @@ function resolveHarness(ctx: RuntimeContext, args: RuntimeRunArgs): LocalHarness
 
 function piCommand(ctx: RuntimeContext, args: RuntimeRunArgs): string {
   return stringFlag(args.flags, "pi-command") ?? stringRuntimeConfig(ctx, "pi_command") ?? "pi"
+}
+
+function piInteractive(args: RuntimeRunArgs): boolean {
+  return args.flags["interactive"] === true
 }
 
 async function resolveRunTarget(
@@ -689,6 +694,53 @@ async function runProcess(
   })
 }
 
+async function runInteractiveProcess(
+  command: string,
+  args: string[],
+  options: {
+    cwd: string
+    env: NodeJS.ProcessEnv
+  },
+): Promise<{ exit_code: number; stdout: string; stderr: string }> {
+  return new Promise((resolveProcess, rejectProcess) => {
+    const child = spawn(command, args, {
+      cwd: options.cwd,
+      env: options.env,
+      stdio: "inherit",
+    })
+
+    child.on("error", rejectProcess)
+    child.on("close", (code) => {
+      resolveProcess({ exit_code: code ?? 0, stdout: "", stderr: "" })
+    })
+  })
+}
+
+function piHarnessArgs(run: LocalRunContext, mode: "print" | "interactive"): string[] {
+  const harnessRef = run.harness_ref
+  if (harnessRef === undefined) {
+    throw new Error("Pi harness requested without a harness reference.")
+  }
+
+  const sessionDir = piSessionsDirFor(run.target.workspace_root)
+  const systemPromptPath = piSystemPromptPathFor(run.target.workspace_root, run.invocation_id)
+  const userPromptPath = piUserPromptPathFor(run.target.workspace_root, run.invocation_id)
+  const args = [
+    "--session-dir",
+    sessionDir,
+    "--session-id",
+    harnessRef.id,
+    "--name",
+    `Agentic ${run.graph.id}`,
+    "--append-system-prompt",
+    systemPromptPath,
+    `@${userPromptPath}`,
+  ]
+
+  if (mode === "interactive") return args
+  return ["--print", "--mode", "text", ...args]
+}
+
 async function runPiHarness(
   ctx: RuntimeContext,
   args: RuntimeRunArgs,
@@ -708,27 +760,16 @@ async function runPiHarness(
   await writeFile(userPromptPath, renderPiUserPrompt(run), "utf-8")
 
   const sessionDir = piSessionsDirFor(run.target.workspace_root)
-  const result = await runProcess(
-    piCommand(ctx, args),
-    [
-      "--print",
-      "--mode",
-      "text",
-      "--session-dir",
-      sessionDir,
-      "--session-id",
-      harnessRef.id,
-      "--name",
-      `Agentic ${run.graph.id}`,
-      "--append-system-prompt",
-      systemPromptPath,
-      `@${userPromptPath}`,
-    ],
-    {
-      cwd: run.target.workspace_root,
-      env: { ...process.env, ...ctx.env },
-    },
-  )
+  const mode = piInteractive(args) ? "interactive" : "print"
+  const command = piCommand(ctx, args)
+  const commandArgs = piHarnessArgs(run, mode)
+  const processOptions = {
+    cwd: run.target.workspace_root,
+    env: { ...process.env, ...ctx.env },
+  }
+  const result = mode === "interactive"
+    ? await runInteractiveProcess(command, commandArgs, processOptions)
+    : await runProcess(command, commandArgs, processOptions)
 
   if (result.exit_code !== 0) {
     const detail = result.stderr.trim() || result.stdout.trim() || `exit code ${result.exit_code}`
@@ -737,6 +778,7 @@ async function runPiHarness(
 
   return {
     provider: "pi",
+    mode,
     session_id: harnessRef.id,
     session_dir: pathRelative(run.target.workspace_root, sessionDir),
     system_prompt_path: pathRelative(run.target.workspace_root, systemPromptPath),
@@ -914,6 +956,9 @@ async function runLocalRuntime(
 ): Promise<RuntimeCommandResult> {
   const target = await resolveRunTarget(ctx, args)
   const harness = resolveHarness(ctx, args)
+  if (harness === "none" && piInteractive(args)) {
+    throw new Error('`--interactive` requires `--harness pi` or runtime config `harness = "pi"`.')
+  }
   if (!(await hasAgenticWorkspace(target.workspace_root))) {
     throw new Error(`No Agentic workspace found at ${target.workspace_root}.`)
   }
