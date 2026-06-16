@@ -25,5 +25,5 @@ means https://pi.dev/, not Raspberry Pi. `pi` is not a public runtime target.
   `local-runtime-run` artifact as the durable run packet.
 - `status` reports whether the local runtime glue has been initialized.
 
-Non-goals for this skeleton: daemon/service mode, scheduling, Cloudflare code,
-model/tool execution, and a session primitive.
+Non-goals for this skeleton: daemon/service mode, scheduling, cloud-provider
+code, model/tool execution, and a session primitive.

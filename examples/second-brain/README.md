@@ -18,21 +18,81 @@ In this example:
 
 The host harness still owns model calls, tool execution, browsing, credentials, approvals, scheduling, and user communication.
 
-## Try It
+## Run It Locally
 
 From the repo root:
 
 ```bash
-bun src/cli/main.ts persona activate researcher --base-dir examples/second-brain
-bun src/cli/main.ts skill run research-brief --base-dir examples/second-brain
-bun src/cli/main.ts workflow list --base-dir examples/second-brain
-bun src/cli/main.ts task next --base-dir examples/second-brain
-bun src/cli/main.ts artifact list --base-dir examples/second-brain
+agentic runtime init local --base-dir examples/second-brain
+agentic runtime run examples/second-brain
 ```
 
-After installing the package, replace `bun src/cli/main.ts` with `agentic`.
+That is the current runnable path for this example. It uses the public runtime
+target, `local`, and the repo-local `agentic` shim discovers
+`packages/agentic-runtime-local` from this checkout.
+
+You can also run the workflow explicitly from inside the example workspace:
+
+```bash
+agentic runtime init local --base-dir .
+agentic runtime run research-loop --base-dir .
+```
+
+The local runtime does not browse, call a model, or complete the research for
+you. It prepares the workspace for harness execution by loading the selected
+persona, skills, ready task, and workflow; creating a workflow run; starting the
+entry node; and writing a finalized `local-runtime-run` artifact as the durable
+run packet.
+
+After `runtime run`, inspect the IDs printed in the command output:
+
+```bash
+agentic workflow status <workflow-run-id> --base-dir examples/second-brain
+agentic artifact read <artifact-id> --base-dir examples/second-brain
+agentic artifact inspect <artifact-id> --base-dir examples/second-brain
+```
+
+Those commands are also written into the run-packet artifact with an absolute
+`--base-dir`, so the packet remains pasteable from anywhere.
+
+Running the example creates local state under `.agentic/runtime/`,
+`.agentic/runs/`, and `.agentic/artifacts/`. Use a throwaway copy if you want to
+keep a repository checkout clean.
+
+## Inspect The Primitives
+
+To inspect the same pieces manually without preparing a runtime run, use:
+
+```bash
+agentic persona activate researcher --base-dir examples/second-brain
+agentic skill run research-brief --base-dir examples/second-brain
+agentic workflow list --base-dir examples/second-brain
+agentic task next --base-dir examples/second-brain
+agentic artifact list --base-dir examples/second-brain
+```
+
+If you need to bypass the repo-local shim, use
+`bun packages/agentic/src/cli/main.ts` from the repo root.
 
 Agent harnesses should start with [`AGENTS.md`](AGENTS.md). It contains the minimal bootstrap instructions for when and how to call Agentic primitives inside this workspace.
+
+## Package Starter Path
+
+The packaged user story this example is proving is:
+
+```bash
+bun add @tnezdev/agentic
+agentic init --example second-brain
+
+bun add -d @tnezdev/agentic-runtime-local
+agentic runtime add local
+agentic runtime init local
+agentic runtime run research-loop
+```
+
+`agentic init --example second-brain` is the intended starter command for a
+future packaged example. Until that scaffold exists, this repository directory
+is the runnable source of truth.
 
 ## How The Pieces Work Together
 
@@ -156,6 +216,26 @@ Finalization means the artifact is durable output for this research pass. It doe
 | `.agentic/workflows/*.json` | Workflow | Research, project, review, archive, and inbox operating loops |
 | `.agentic/tasks/*.json` | Tasks | A real ready task seeded with an example research question |
 | `.agentic/artifacts/*` | Artifact | A finalized sample brief showing the target output |
+
+After `agentic runtime init local`, the local runtime also creates
+`.agentic/runtime/local/runtime.json` plus a `targets/` directory. After
+`agentic runtime run`, it creates a workflow run and a finalized
+`local-runtime-run` artifact. Those are runtime outputs, not starter content.
+
+## What Is Not Included Yet
+
+- Daemon or service mode
+- Scheduling
+- Cloud-hosted or other remote deployment
+- External artifact storage or sync
+- Model calls, browsing, credentials, approvals, or tool execution
+
+Pi may power the local runtime under the hood later, but users should choose the
+public `local` runtime target, not `runtime pi`.
+
+This is the runnable slice of the broader second-brain example direction tracked
+in [#100](https://github.com/tnezdev/agentic/issues/100). This README documents
+the current local loop rather than duplicating that roadmap.
 
 ## Dogfooding Loop
 

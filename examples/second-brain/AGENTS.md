@@ -31,6 +31,18 @@ agentic skill run research-brief --base-dir examples/second-brain
 
 If this workspace has a user-provided memory adapter or seeded user memories, recall relevant context as well. This public example does not ship with memory records.
 
+To let the local runtime prepare the turn instead of manually stepping through
+each primitive, run from the repository root:
+
+```bash
+agentic runtime init local --base-dir examples/second-brain
+agentic runtime run examples/second-brain
+```
+
+The runtime uses the public `local` target. It prepares a workflow run and a
+finalized `local-runtime-run` artifact for inspection; it still does not browse,
+call a model, or complete the research on its own.
+
 If the installed `agentic` binary is unavailable while working from this repo, use:
 
 ```bash
