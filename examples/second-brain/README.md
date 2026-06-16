@@ -41,8 +41,8 @@ agentic runtime run research-loop --base-dir .
 The local runtime does not browse, call a model, or complete the research for
 you. It prepares the workspace for harness execution by loading the selected
 persona, skills, ready task, and workflow; creating a workflow run; starting the
-entry node; and writing a finalized `local-runtime-run` artifact as the durable
-run packet.
+entry node; recording a runtime invocation; and writing a finalized
+`local-runtime-run` artifact as the durable run packet.
 
 After `runtime run`, inspect the IDs printed in the command output:
 
@@ -56,8 +56,10 @@ Those commands are also written into the run-packet artifact with an absolute
 `--base-dir`, so the packet remains pasteable from anywhere.
 
 Running the example creates local state under `.agentic/runtime/`,
-`.agentic/runs/`, and `.agentic/artifacts/`. Use a throwaway copy if you want to
-keep a repository checkout clean.
+`.agentic/runs/`, and `.agentic/artifacts/`. Runtime invocation records live in
+`.agentic/runtime/local/invocations/`; they link the runtime command to the
+workflow run and artifact without storing a model transcript. Use a throwaway
+copy if you want to keep a repository checkout clean.
 
 ## Inspect The Primitives
 
@@ -219,9 +221,10 @@ Finalization means the artifact is durable output for this research pass. It doe
 | `.agentic/artifacts/*` | Artifact | A finalized sample brief showing the target output |
 
 After `agentic runtime init local`, the local runtime also creates
-`.agentic/runtime/local/runtime.json` plus a `targets/` directory. After
-`agentic runtime run`, it creates a workflow run and a finalized
-`local-runtime-run` artifact. Those are runtime outputs, not starter content.
+`.agentic/runtime/local/runtime.json` plus `targets/` and `invocations/`
+directories. After `agentic runtime run`, it creates an invocation record, a
+workflow run, and a finalized `local-runtime-run` artifact. Those are runtime
+outputs, not starter content.
 
 ## What Is Not Included Yet
 

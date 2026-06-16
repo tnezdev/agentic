@@ -1,4 +1,4 @@
-import { access, mkdir, readFile, stat, writeFile } from "node:fs/promises"
+import { access, mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises"
 import { join, relative, resolve } from "node:path"
 import {
   FilesystemArtifactAdapter,
@@ -20,6 +20,7 @@ import type {
   RuntimeCommandResult,
   RuntimeContext,
   RuntimeInitArgs,
+  RuntimeInvocation,
   RuntimeRunArgs,
   RuntimeStatusArgs,
 } from "@tnezdev/agentic/runtime"
@@ -29,13 +30,18 @@ const PACKAGE_NAME = "@tnezdev/agentic-runtime-local"
 const STATE_VERSION = 1
 const RUNTIME_DIR = join(".agentic", "runtime", RUNTIME_NAME)
 const TARGETS_DIR = "targets"
+const INVOCATIONS_DIR = "invocations"
 const STATE_FILE = "runtime.json"
+const ULID_ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
+const TIME_LEN = 10
+const RANDOM_LEN = 16
 
 type LocalRuntimeState = {
   version: typeof STATE_VERSION
   runtime: typeof RUNTIME_NAME
   package_name: typeof PACKAGE_NAME
   targets_dir: typeof TARGETS_DIR
+  invocations_dir: typeof INVOCATIONS_DIR
 }
 
 type LocalRunTarget = {
@@ -52,7 +58,58 @@ type LocalRunContext = {
   task?: Task | undefined
   workflow_run_id: string
   artifact_id: string
+  invocation_id: string
 }
+
+function encodeTime(now: number, len: number): string {
+  let out = ""
+  for (let i = len - 1; i >= 0; i--) {
+    const mod = now % 32
+    out = ULID_ALPHABET[mod]! + out
+    now = (now - mod) / 32
+  }
+  return out
+}
+
+function randomChars(len: number): string {
+  const bytes = new Uint8Array(len)
+  crypto.getRandomValues(bytes)
+  let out = ""
+  for (let i = 0; i < len; i++) {
+    out += ULID_ALPHABET[bytes[i]! % 32]
+  }
+  return out
+}
+
+function incrementBase32(s: string): string {
+  const chars = s.split("")
+  for (let i = chars.length - 1; i >= 0; i--) {
+    const idx = ULID_ALPHABET.indexOf(chars[i]!)
+    if (idx < 31) {
+      chars[i] = ULID_ALPHABET[idx + 1]!
+      return chars.join("")
+    }
+    chars[i] = "0"
+  }
+  return randomChars(chars.length)
+}
+
+function createUlidFactory(): () => string {
+  let lastTime = 0
+  let lastRandom = ""
+  return function ulid(): string {
+    const now = Date.now()
+    if (now === lastTime) {
+      lastRandom = incrementBase32(lastRandom)
+    } else {
+      lastTime = now
+      lastRandom = randomChars(RANDOM_LEN)
+    }
+    return encodeTime(now, TIME_LEN) + lastRandom
+  }
+}
+
+const createInvocationId = createUlidFactory()
 
 function runtimeDirFor(workspaceRoot: string): string {
   return join(workspaceRoot, RUNTIME_DIR)
@@ -68,6 +125,18 @@ function targetsDirFor(workspaceRoot: string): string {
 
 function targetsDir(ctx: RuntimeContext): string {
   return targetsDirFor(ctx.workspace_root)
+}
+
+function invocationsDirFor(workspaceRoot: string): string {
+  return join(runtimeDirFor(workspaceRoot), INVOCATIONS_DIR)
+}
+
+function invocationsDir(ctx: RuntimeContext): string {
+  return invocationsDirFor(ctx.workspace_root)
+}
+
+function invocationPathFor(workspaceRoot: string, invocationId: string): string {
+  return join(invocationsDirFor(workspaceRoot), `${invocationId}.json`)
 }
 
 function statePathFor(workspaceRoot: string): string {
@@ -246,6 +315,7 @@ async function createRunPacketArtifact(
   const tags = new Set<string>([
     "runtime",
     "local",
+    `invocation:${run.invocation_id}`,
     `workflow:${run.graph.id}`,
   ])
 
@@ -297,6 +367,11 @@ This is not a model transcript and does not claim the workflow's research work i
 
 - Workflow: ${run.graph.id} (${run.graph.name})
 - Workflow version: ${run.graph.version}
+- Runtime invocation id: ${run.invocation_id}
+- Runtime invocation path: ${pathRelative(
+    run.target.workspace_root,
+    invocationPathFor(run.target.workspace_root, run.invocation_id),
+  )}
 - Workflow run id: ${run.workflow_run_id}
 - Artifact id: ${run.artifact_id}
 
@@ -327,11 +402,94 @@ function shellQuote(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`
 }
 
+function invocationTarget(args: RuntimeRunArgs, target: LocalRunTarget): string | undefined {
+  return args.target ?? target.workflow_id ?? target.workspace_label
+}
+
+async function writeInvocation(
+  workspaceRoot: string,
+  invocation: RuntimeInvocation,
+): Promise<RuntimeInvocation> {
+  await mkdir(invocationsDirFor(workspaceRoot), { recursive: true })
+  await writeFile(
+    invocationPathFor(workspaceRoot, invocation.id),
+    `${JSON.stringify(invocation, null, 2)}\n`,
+    "utf-8",
+  )
+  return invocation
+}
+
+async function createInvocation(
+  args: RuntimeRunArgs,
+  target: LocalRunTarget,
+): Promise<RuntimeInvocation> {
+  return writeInvocation(target.workspace_root, {
+    id: createInvocationId(),
+    runtime: RUNTIME_NAME,
+    runtime_package: PACKAGE_NAME,
+    target: invocationTarget(args, target),
+    workspace_root: target.workspace_root,
+    status: "running",
+    started_at: new Date().toISOString(),
+    artifact_ids: [],
+  })
+}
+
+async function completeInvocation(
+  invocation: RuntimeInvocation,
+  run: LocalRunContext,
+): Promise<RuntimeInvocation> {
+  return writeInvocation(run.target.workspace_root, {
+    ...invocation,
+    status: "completed",
+    ended_at: new Date().toISOString(),
+    workflow_run_id: run.workflow_run_id,
+    artifact_ids: [run.artifact_id],
+  })
+}
+
+async function failInvocation(
+  invocation: RuntimeInvocation,
+  err: unknown,
+): Promise<RuntimeInvocation> {
+  const message = err instanceof Error ? err.message : String(err)
+  return writeInvocation(invocation.workspace_root, {
+    ...invocation,
+    status: "failed",
+    ended_at: new Date().toISOString(),
+    error: message,
+  })
+}
+
+async function listInvocations(workspaceRoot: string): Promise<RuntimeInvocation[]> {
+  let entries: string[]
+  try {
+    entries = await readdir(invocationsDirFor(workspaceRoot))
+  } catch {
+    return []
+  }
+
+  const invocations: RuntimeInvocation[] = []
+  for (const entry of entries) {
+    if (!entry.endsWith(".json")) continue
+    try {
+      invocations.push(
+        JSON.parse(
+          await readFile(join(invocationsDirFor(workspaceRoot), entry), "utf-8"),
+        ) as RuntimeInvocation,
+      )
+    } catch {
+      // Ignore malformed records so status remains usable for repair.
+    }
+  }
+  return invocations.sort((a, b) => b.started_at.localeCompare(a.started_at))
+}
+
 async function prepareLocalRun(
   ctx: RuntimeContext,
-  args: RuntimeRunArgs,
+  target: LocalRunTarget,
+  invocation: RuntimeInvocation,
 ): Promise<LocalRunContext> {
-  const target = await resolveRunTarget(ctx, args)
   if (!(await hasAgenticWorkspace(target.workspace_root))) {
     throw new Error(`No Agentic workspace found at ${target.workspace_root}.`)
   }
@@ -360,6 +518,7 @@ async function prepareLocalRun(
     task: task ?? undefined,
     workflow_run_id: workflowRun.run_id,
     artifact_id: "pending",
+    invocation_id: invocation.id,
   }
   await createRunPacketArtifact(ctx, run)
 
@@ -375,6 +534,7 @@ async function prepareLocalRun(
       reason: "Local runtime prepared this workflow target for harness execution.",
       metadata: {
         runtime: RUNTIME_NAME,
+        invocation_id: invocation.id,
         artifact_id: run.artifact_id,
       },
     })
@@ -397,8 +557,10 @@ async function initLocalRuntime(
 ): Promise<RuntimeCommandResult> {
   const dir = runtimeDir(ctx)
   const targetDir = targetsDir(ctx)
+  const invocationDir = invocationsDir(ctx)
   const path = statePath(ctx)
   await mkdir(targetDir, { recursive: true })
+  await mkdir(invocationDir, { recursive: true })
 
   const existing = await readState(ctx)
   const created = existing === undefined
@@ -408,6 +570,7 @@ async function initLocalRuntime(
       runtime: RUNTIME_NAME,
       package_name: PACKAGE_NAME,
       targets_dir: TARGETS_DIR,
+      invocations_dir: INVOCATIONS_DIR,
     }
     await writeFile(path, `${JSON.stringify(state, null, 2)}\n`, "utf-8")
   }
@@ -422,6 +585,7 @@ async function initLocalRuntime(
       config_dir: workspaceRelative(ctx, dir),
       state_path: workspaceRelative(ctx, path),
       targets_dir: workspaceRelative(ctx, targetDir),
+      invocations_dir: workspaceRelative(ctx, invocationDir),
     },
   }
 }
@@ -430,11 +594,35 @@ async function runLocalRuntime(
   ctx: RuntimeContext,
   args: RuntimeRunArgs,
 ): Promise<RuntimeCommandResult> {
-  const run = await prepareLocalRun(ctx, args)
+  const target = await resolveRunTarget(ctx, args)
+  if (!(await hasAgenticWorkspace(target.workspace_root))) {
+    throw new Error(`No Agentic workspace found at ${target.workspace_root}.`)
+  }
+  if (!(await pathExists(statePathFor(target.workspace_root)))) {
+    throw new Error(
+      `Local runtime is not initialized for ${target.workspace_root}. Run \`agentic runtime init local --base-dir ${target.workspace_label}\` first.`,
+    )
+  }
+
+  const invocation = await createInvocation(args, target)
+  let run: LocalRunContext
+
+  try {
+    run = await prepareLocalRun(ctx, target, invocation)
+    await completeInvocation(invocation, run)
+  } catch (err) {
+    await failInvocation(invocation, err)
+    throw err
+  }
 
   return {
     summary: `Prepared local Agentic run for ${run.graph.id} and wrote artifact ${run.artifact_id}.`,
     data: {
+      invocation_id: invocation.id,
+      invocation_path: pathRelative(
+        ctx.workspace_root,
+        invocationPathFor(run.target.workspace_root, invocation.id),
+      ),
       target: args.target ?? run.graph.id,
       args: args.args,
       workspace: pathRelative(ctx.workspace_root, run.target.workspace_root),
@@ -457,6 +645,8 @@ async function statusLocalRuntime(
   _args: RuntimeStatusArgs,
 ): Promise<RuntimeCommandResult> {
   const initialized = await pathExists(statePath(ctx))
+  const invocations = await listInvocations(ctx.workspace_root)
+  const lastInvocation = invocations[0]
   return {
     summary: initialized
       ? "Local Agentic runtime glue is initialized."
@@ -466,6 +656,17 @@ async function statusLocalRuntime(
       state_path: workspaceRelative(ctx, statePath(ctx)),
       targets_dir: workspaceRelative(ctx, targetsDir(ctx)),
       targets_dir_exists: await dirExists(targetsDir(ctx)),
+      invocations_dir: workspaceRelative(ctx, invocationsDir(ctx)),
+      invocation_count: invocations.length,
+      last_invocation: lastInvocation === undefined ? null : {
+        id: lastInvocation.id,
+        target: lastInvocation.target,
+        status: lastInvocation.status,
+        started_at: lastInvocation.started_at,
+        ended_at: lastInvocation.ended_at,
+        workflow_run_id: lastInvocation.workflow_run_id,
+        artifact_ids: lastInvocation.artifact_ids,
+      },
     },
   }
 }

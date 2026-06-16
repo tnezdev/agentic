@@ -433,6 +433,29 @@ export type RuntimeCommandResult = {
   data?: unknown
 }
 
+export type RuntimeInvocationStatus = "running" | "completed" | "failed"
+
+export type RuntimeInvocationHarnessRef = {
+  provider: string
+  id: string
+  uri?: string | undefined
+}
+
+export type RuntimeInvocation = {
+  id: string
+  runtime: string
+  runtime_package: string
+  target?: string | undefined
+  workspace_root: string
+  status: RuntimeInvocationStatus
+  started_at: string
+  ended_at?: string | undefined
+  workflow_run_id?: string | undefined
+  artifact_ids: string[]
+  harness_ref?: RuntimeInvocationHarnessRef | undefined
+  error?: string | undefined
+}
+
 export type RuntimeCommandHandler<TArgs> = (
   ctx: RuntimeContext,
   args: TArgs,

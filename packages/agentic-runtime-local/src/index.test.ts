@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test"
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises"
 import { dirname, join } from "node:path"
 import { tmpdir } from "node:os"
 import type { RuntimeContext } from "@tnezdev/agentic/runtime"
@@ -149,6 +149,7 @@ describe("local runtime package", () => {
       runtime: "local",
       package_name: "@tnezdev/agentic-runtime-local",
       targets_dir: "targets",
+      invocations_dir: "invocations",
     })
   })
 
@@ -188,9 +189,12 @@ describe("local runtime package", () => {
     const data = dataOf(result)
     const artifactId = data["artifact_id"] as string
     const workflowRunId = data["workflow_run_id"] as string
+    const invocationId = data["invocation_id"] as string
 
     expect(result?.summary).toContain("Prepared local Agentic run")
     expect(data).toMatchObject({
+      invocation_id: invocationId,
+      invocation_path: `.agentic/runtime/local/invocations/${invocationId}.json`,
       target: "research-loop",
       initialized: true,
       workflow_id: "research-loop",
@@ -207,6 +211,7 @@ describe("local runtime package", () => {
     )
     expect(meta.type).toBe("local-runtime-run")
     expect(meta.finalized).toBe(true)
+    expect(meta.tags).toContain(`invocation:${invocationId}`)
     expect(meta.tags).toContain("workflow:research-loop")
 
     const body = await readFile(
@@ -215,8 +220,29 @@ describe("local runtime package", () => {
     )
     expect(body).toContain(artifactId)
     expect(body).toContain(workflowRunId)
+    expect(body).toContain(invocationId)
+    expect(body).toContain(`.agentic/runtime/local/invocations/${invocationId}.json`)
     expect(body).toContain("Research lightweight reading queue practices")
     expect(body).toContain(`--base-dir '${tmpDir}'`)
+
+    const invocation = JSON.parse(
+      await readFile(
+        join(tmpDir, ".agentic", "runtime", "local", "invocations", `${invocationId}.json`),
+        "utf-8",
+      ),
+    )
+    expect(invocation).toMatchObject({
+      id: invocationId,
+      runtime: "local",
+      runtime_package: "@tnezdev/agentic-runtime-local",
+      target: "research-loop",
+      workspace_root: tmpDir,
+      status: "completed",
+      workflow_run_id: workflowRunId,
+      artifact_ids: [artifactId],
+    })
+    expect(typeof invocation.started_at).toBe("string")
+    expect(typeof invocation.ended_at).toBe("string")
 
     const workflowRun = JSON.parse(
       await readFile(join(tmpDir, ".agentic", "runs", `${workflowRunId}.json`), "utf-8"),
@@ -228,9 +254,57 @@ describe("local runtime package", () => {
       to_status: "in_progress",
       identity: "local-runtime",
       metadata: {
+        invocation_id: invocationId,
         artifact_id: artifactId,
       },
     })
+
+    const status = await runtime.commands.status!(ctx, { args: [], flags: {} })
+    expect(status?.data).toMatchObject({
+      invocation_count: 1,
+      last_invocation: {
+        id: invocationId,
+        status: "completed",
+        workflow_run_id: workflowRunId,
+        artifact_ids: [artifactId],
+      },
+    })
+  })
+
+  it("records failed invocations after a run starts", async () => {
+    await writeSecondBrainWorkspace(tmpDir)
+    await runtime.commands.init!(ctx, { args: [], flags: {} })
+    await rm(join(tmpDir, ".agentic", "skills", "research-brief"), {
+      recursive: true,
+      force: true,
+    })
+
+    await expect(runtime.commands.run!(ctx, {
+      target: "research-loop",
+      args: [],
+      flags: {},
+    })).rejects.toThrow('Skill "research-brief"')
+
+    const files = await readdir(join(tmpDir, ".agentic", "runtime", "local", "invocations"))
+    expect(files).toHaveLength(1)
+
+    const invocation = JSON.parse(
+      await readFile(
+        join(tmpDir, ".agentic", "runtime", "local", "invocations", files[0]!),
+        "utf-8",
+      ),
+    )
+    expect(invocation).toMatchObject({
+      runtime: "local",
+      runtime_package: "@tnezdev/agentic-runtime-local",
+      target: "research-loop",
+      workspace_root: tmpDir,
+      status: "failed",
+      artifact_ids: [],
+    })
+    expect(invocation.error).toContain('Skill "research-brief"')
+    expect(typeof invocation.started_at).toBe("string")
+    expect(typeof invocation.ended_at).toBe("string")
   })
 
   it("can run a nested Agentic workspace target", async () => {

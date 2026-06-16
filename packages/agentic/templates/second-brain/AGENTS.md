@@ -32,7 +32,7 @@ agentic runtime init local --base-dir .
 agentic runtime run research-loop --base-dir .
 ```
 
-The runtime uses the public `local` target. It prepares a workflow run and a finalized `local-runtime-run` artifact for inspection; it still does not browse, call a model, or complete the research on its own.
+The runtime uses the public `local` target. It records a runtime invocation, prepares a workflow run, and writes a finalized `local-runtime-run` artifact for inspection; it still does not browse, call a model, or complete the research on its own.
 
 ## Boundary
 
