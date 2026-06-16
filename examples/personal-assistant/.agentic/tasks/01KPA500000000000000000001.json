@@ -1,0 +1,39 @@
+{
+  "id": "01KPA500000000000000000001",
+  "description": "START HERE: Start a personal assistant session for Alex, synthesize a briefing from fixture artifacts, and inspect the durable session brief.",
+  "status": "ready",
+  "tags": [
+    "personal-assistant",
+    "onboarding",
+    "example"
+  ],
+  "annotations": [
+    {
+      "text": "First run from the repo root: `agentic run examples/personal-assistant`. Add `--harness pi` only when you want Pi to execute the prepared turn.",
+      "timestamp": "2026-06-16T13:00:00.000Z"
+    },
+    {
+      "text": "What this demonstrates: durable profile + policy + continuity + recent sessions + open loops -> session-start workflow -> durable briefing -> concise next-step decision.",
+      "timestamp": "2026-06-16T13:00:00.000Z"
+    }
+  ],
+  "created_at": "2026-06-16T13:00:00.000Z",
+  "updated_at": "2026-06-16T13:00:00.000Z",
+  "metadata": {
+    "persona": "assistant",
+    "skill": "session-brief",
+    "workflow": "session-start",
+    "input_artifacts": [
+      "01KPA500000000000000000010",
+      "01KPA500000000000000000070",
+      "01KPA500000000000000000020",
+      "01KPA500000000000000000030",
+      "01KPA500000000000000000040",
+      "01KPA500000000000000000050"
+    ],
+    "sample_output_artifact": "01KPA500000000000000000060",
+    "wrap_skill": "wrap-session",
+    "wrap_workflow": "session-wrap",
+    "sample_wrap_artifact": "01KPA500000000000000000080"
+  }
+}

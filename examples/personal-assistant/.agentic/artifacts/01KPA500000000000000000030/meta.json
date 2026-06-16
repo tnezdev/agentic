@@ -1,0 +1,15 @@
+{
+  "id": "01KPA500000000000000000030",
+  "type": "recent-session",
+  "title": "Recent Sessions Snapshot",
+  "body_ref": "01KPA500000000000000000030/v1.md",
+  "version": 1,
+  "finalized": true,
+  "tags": [
+    "personal-assistant",
+    "sessions",
+    "example"
+  ],
+  "created_at": "2026-06-16T13:00:00.000Z",
+  "updated_at": "2026-06-16T13:00:00.000Z"
+}

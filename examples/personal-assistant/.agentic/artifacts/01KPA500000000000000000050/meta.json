@@ -1,0 +1,15 @@
+{
+  "id": "01KPA500000000000000000050",
+  "type": "workspace-context",
+  "title": "Example Workspace Context",
+  "body_ref": "01KPA500000000000000000050/v1.md",
+  "version": 1,
+  "finalized": true,
+  "tags": [
+    "personal-assistant",
+    "workspace",
+    "example"
+  ],
+  "created_at": "2026-06-16T13:00:00.000Z",
+  "updated_at": "2026-06-16T13:00:00.000Z"
+}

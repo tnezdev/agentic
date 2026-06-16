@@ -1,0 +1,93 @@
+{
+  "id": "session-start",
+  "name": "Personal assistant session start",
+  "description": "Reconstruct assistant context from durable artifacts and produce a startup briefing.",
+  "version": "1.0",
+  "nodes": [
+    {
+      "id": "load-profile",
+      "label": "Load profile",
+      "description": "Read the user profile and assistant operating expectations before interpreting any other context.",
+      "artifact": {
+        "type": "profile-review",
+        "description": "Notes on the user's working style, trust boundary, preferences, and assistant expectations.",
+        "required": true,
+        "tags": ["personal-assistant", "profile"]
+      }
+    },
+    {
+      "id": "read-policy",
+      "label": "Read operating policy",
+      "description": "Read source, live-access, privacy, and persistence rules so the briefing does not overclaim what the harness checked.",
+      "artifact": {
+        "type": "policy-review",
+        "description": "Summary of allowed sources, live-access limits, and persistence expectations for this session.",
+        "required": true,
+        "tags": ["personal-assistant", "policy"]
+      }
+    },
+    {
+      "id": "read-continuity",
+      "label": "Read continuity",
+      "description": "Read the continuity brief as the base picture of current projects, open gates, and loose threads.",
+      "artifact": {
+        "type": "continuity-review",
+        "description": "Compact summary of the continuity brief and any known stale areas to verify against recent sessions.",
+        "required": true,
+        "tags": ["personal-assistant", "continuity"]
+      }
+    },
+    {
+      "id": "inspect-recent-sessions",
+      "label": "Inspect recent sessions",
+      "description": "Read recent session notes and layer fresher corrections over the continuity brief.",
+      "artifact": {
+        "type": "recent-session-review",
+        "description": "Fresh facts, corrections, and next-session pointers from recent session notes.",
+        "required": true,
+        "tags": ["personal-assistant", "sessions"]
+      }
+    },
+    {
+      "id": "check-open-loops",
+      "label": "Check open loops",
+      "description": "Classify open loops into ready work, blocked work, waiting items, and decisions needing the user.",
+      "artifact": {
+        "type": "open-loop-review",
+        "description": "Open loop classification with blockers and recommended handling.",
+        "required": true,
+        "tags": ["personal-assistant", "tasks"]
+      }
+    },
+    {
+      "id": "synthesize-briefing",
+      "label": "Synthesize briefing",
+      "description": "Write a durable session-brief artifact with current picture, last session, open work, user-needed items, and recommended next step.",
+      "artifact": {
+        "type": "session-brief",
+        "description": "Startup briefing suitable for future recall without the transcript.",
+        "required": true,
+        "tags": ["personal-assistant", "briefing"]
+      }
+    },
+    {
+      "id": "decide-next-step",
+      "label": "Decide next step",
+      "description": "If a work target is clear, begin it; otherwise ask one concise question about what to work on next.",
+      "artifact": {
+        "type": "next-step",
+        "description": "Chosen next action, user question, or handoff note derived from the briefing.",
+        "required": false,
+        "tags": ["personal-assistant", "handoff"]
+      }
+    }
+  ],
+  "edges": [
+    { "from": "load-profile", "to": "read-policy" },
+    { "from": "read-policy", "to": "read-continuity" },
+    { "from": "read-continuity", "to": "inspect-recent-sessions" },
+    { "from": "inspect-recent-sessions", "to": "check-open-loops" },
+    { "from": "check-open-loops", "to": "synthesize-briefing" },
+    { "from": "synthesize-briefing", "to": "decide-next-step" }
+  ]
+}

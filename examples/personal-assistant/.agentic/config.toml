@@ -1,0 +1,12 @@
+# Agentic configuration for the personal-assistant example.
+
+adapter = "filesystem"
+
+[memory]
+dir = ".agentic/memory"
+default_tier = "L1"
+dream_depth = "3"
+
+[workflow]
+graphs_dir = ".agentic/workflows"
+runs_dir = ".agentic/runs"

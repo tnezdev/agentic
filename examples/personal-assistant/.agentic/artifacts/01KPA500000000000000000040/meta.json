@@ -1,0 +1,15 @@
+{
+  "id": "01KPA500000000000000000040",
+  "type": "open-loops",
+  "title": "Alex Open Loops",
+  "body_ref": "01KPA500000000000000000040/v1.md",
+  "version": 1,
+  "finalized": true,
+  "tags": [
+    "personal-assistant",
+    "tasks",
+    "example"
+  ],
+  "created_at": "2026-06-16T13:00:00.000Z",
+  "updated_at": "2026-06-16T13:00:00.000Z"
+}

@@ -1,0 +1,15 @@
+{
+  "id": "01KPA500000000000000000060",
+  "type": "session-brief",
+  "title": "Sample Session Brief",
+  "body_ref": "01KPA500000000000000000060/v1.md",
+  "version": 1,
+  "finalized": true,
+  "tags": [
+    "personal-assistant",
+    "briefing",
+    "example"
+  ],
+  "created_at": "2026-06-16T13:00:00.000Z",
+  "updated_at": "2026-06-16T13:00:00.000Z"
+}

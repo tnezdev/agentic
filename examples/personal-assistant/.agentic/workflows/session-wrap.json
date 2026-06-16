@@ -1,0 +1,69 @@
+{
+  "id": "session-wrap",
+  "name": "Personal assistant session wrap",
+  "description": "Close a personal assistant session by preserving durable outcomes and next-session continuity.",
+  "version": "1.0",
+  "nodes": [
+    {
+      "id": "collect-outcomes",
+      "label": "Collect outcomes",
+      "description": "Identify artifacts, workflow runs, decisions, and task changes produced during the session.",
+      "artifact": {
+        "type": "session-outcome-review",
+        "description": "Compact list of session outputs and changed durable state.",
+        "required": true,
+        "tags": ["personal-assistant", "wrap"]
+      }
+    },
+    {
+      "id": "separate-signal",
+      "label": "Separate signal",
+      "description": "Distinguish durable facts from transcript noise and discard details that do not help future resumption.",
+      "artifact": {
+        "type": "durable-signal-review",
+        "description": "Facts worth carrying forward, with transcript-only details omitted.",
+        "required": true,
+        "tags": ["personal-assistant", "continuity"]
+      }
+    },
+    {
+      "id": "update-open-loops",
+      "label": "Update open loops",
+      "description": "Classify remaining work into ready, blocked, waiting, and needs-user categories.",
+      "artifact": {
+        "type": "open-loop-update",
+        "description": "Updated open-loop classification and any user-needed decisions.",
+        "required": true,
+        "tags": ["personal-assistant", "tasks"]
+      }
+    },
+    {
+      "id": "write-wrap-note",
+      "label": "Write wrap note",
+      "description": "Write a durable session-wrap artifact with what happened, decisions, durable changes, open loops, and next-session pointer.",
+      "artifact": {
+        "type": "session-wrap",
+        "description": "Final wrap note suitable as the freshest input to the next session-start run.",
+        "required": true,
+        "tags": ["personal-assistant", "wrap"]
+      }
+    },
+    {
+      "id": "prepare-next-start",
+      "label": "Prepare next start",
+      "description": "Make the next start obvious: name the first artifact or task the assistant should inspect next time.",
+      "artifact": {
+        "type": "next-session-pointer",
+        "description": "Single recommended starting point for the next assistant session.",
+        "required": false,
+        "tags": ["personal-assistant", "handoff"]
+      }
+    }
+  ],
+  "edges": [
+    { "from": "collect-outcomes", "to": "separate-signal" },
+    { "from": "separate-signal", "to": "update-open-loops" },
+    { "from": "update-open-loops", "to": "write-wrap-note" },
+    { "from": "write-wrap-note", "to": "prepare-next-start" }
+  ]
+}
