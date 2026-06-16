@@ -10,7 +10,7 @@
   ],
   "annotations": [
     {
-      "text": "First run from this workspace: `agentic runtime init local --base-dir .`, then `agentic runtime run research-loop --base-dir .`. Add `--harness pi` to the second command only when you want Pi to execute the prepared turn.",
+      "text": "First run from this workspace: `agentic run`. Add `--harness pi` only when you want Pi to execute the prepared turn.",
       "timestamp": "2026-06-05T16:00:00.000Z"
     },
     {

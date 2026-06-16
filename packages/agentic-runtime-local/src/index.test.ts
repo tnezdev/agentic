@@ -80,6 +80,41 @@ Write a concise durable brief.
   )
 }
 
+async function writeStewardPersonaAndWorkflow(baseDir: string): Promise<void> {
+  await writeText(
+    join(baseDir, ".agentic", "personas", "second-brain-steward.md"),
+    `---
+name: second-brain-steward
+description: Activate when reviewing second-brain tasks and artifacts
+memory_tags: [second-brain, stewardship]
+skills: []
+task_filter:
+  tags: [stewardship]
+  status: ready
+workflow: weekly-review
+---
+
+# Steward
+
+Review durable Agentic state.
+`,
+  )
+  await writeText(
+    join(baseDir, ".agentic", "workflows", "weekly-review.json"),
+    JSON.stringify(
+      {
+        id: "weekly-review",
+        name: "Weekly review",
+        version: "1.0",
+        nodes: [{ id: "review", label: "Review" }],
+        edges: [],
+      },
+      null,
+      2,
+    ),
+  )
+}
+
 async function writeFakePi(binDir: string): Promise<string> {
   const path = join(binDir, "pi")
   await writeText(
@@ -182,19 +217,58 @@ describe("local runtime package", () => {
     })
   })
 
-  it("requires local runtime init before running", async () => {
+  it("auto-initializes local runtime glue before running", async () => {
     await writeSecondBrainWorkspace(tmpDir)
 
-    await expect(runtime.commands.run!(ctx, {
+    const result = await runtime.commands.run!(ctx, {
       target: "research-loop",
       args: [],
       flags: {},
-    })).rejects.toThrow("Local runtime is not initialized")
+    })
+
+    expect(result?.summary).toContain("Prepared local Agentic run")
+    const state = JSON.parse(
+      await readFile(join(tmpDir, ".agentic", "runtime", "local", "runtime.json"), "utf-8"),
+    )
+    expect(state.runtime).toBe("local")
+  })
+
+  it("uses ready task metadata for no-arg run selection", async () => {
+    await writeSecondBrainWorkspace(tmpDir)
+    await writeStewardPersonaAndWorkflow(tmpDir)
+
+    const taskPath = join(tmpDir, ".agentic", "tasks", `${TASK_ID}.json`)
+    const task = JSON.parse(await readFile(taskPath, "utf-8")) as Record<string, unknown>
+    task.metadata = { persona: "researcher", workflow: "research-loop" }
+    await writeFile(taskPath, `${JSON.stringify(task, null, 2)}\n`, "utf-8")
+
+    const result = await runtime.commands.run!(ctx, {
+      args: [],
+      flags: {},
+    })
+    const data = dataOf(result)
+
+    expect(data).toMatchObject({
+      workflow_id: "research-loop",
+      persona: "researcher",
+      task: {
+        id: TASK_ID,
+      },
+    })
+  })
+
+  it("fails clearly when no-arg run is ambiguous", async () => {
+    await writeSecondBrainWorkspace(tmpDir)
+    await writeStewardPersonaAndWorkflow(tmpDir)
+
+    await expect(runtime.commands.run!(ctx, {
+      args: [],
+      flags: {},
+    })).rejects.toThrow("multiple personas are available")
   })
 
   it("prepares a workflow run and writes an inspectable artifact", async () => {
     await writeSecondBrainWorkspace(tmpDir)
-    await runtime.commands.init!(ctx, { args: [], flags: {} })
 
     const result = await runtime.commands.run!(ctx, {
       target: "research-loop",

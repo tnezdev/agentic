@@ -291,24 +291,57 @@ function taskQueryWithoutStatus(
   return Object.keys(filtered).length > 0 ? filtered : undefined
 }
 
+function taskMetadataString(task: Task | undefined, key: string): string | undefined {
+  const value = task?.metadata?.[key]
+  return typeof value === "string" && value.length > 0 ? value : undefined
+}
+
 function selectPersona(
   refs: PersonaRef[],
   workflowId: string | undefined,
+  personaName: string | undefined,
 ): PersonaRef | undefined {
+  if (personaName !== undefined) {
+    const match = refs.find((ref) => ref.name === personaName)
+    if (match === undefined) {
+      const available = refs.map((ref) => ref.name).sort().join(", ") || "none"
+      throw new Error(
+        `Persona target "${personaName}" was not found. Available personas: ${available}.`,
+      )
+    }
+    return match
+  }
+
   if (workflowId !== undefined) {
-    const workflowMatch = refs.find((ref) => ref.workflow === workflowId)
-    if (workflowMatch !== undefined) return workflowMatch
+    const workflowMatches = refs.filter((ref) => ref.workflow === workflowId)
+    if (workflowMatches.length === 1) return workflowMatches[0]
+    if (workflowMatches.length > 1) {
+      throw new Error(
+        `Multiple personas target workflow "${workflowId}". Add task metadata.persona or run an explicit persona-aware harness.`,
+      )
+    }
   }
   if (refs.length === 1) return refs[0]
-  return refs.find((ref) => ref.workflow !== undefined) ?? refs[0]
+
+  const workflowRefs = refs.filter((ref) => ref.workflow !== undefined)
+  if (workflowRefs.length === 1) return workflowRefs[0]
+  if (refs.length > 1) {
+    const available = refs.map((ref) => ref.name).sort().join(", ")
+    throw new Error(
+      `No persona target was provided and multiple personas are available: ${available}. Add task metadata.persona or run \`agentic run <workflow-id>\`.`,
+    )
+  }
+
+  return refs[0]
 }
 
 async function loadSelectedPersona(
   workspaceRoot: string,
   workflowId: string | undefined,
+  personaName: string | undefined,
 ): Promise<PersonaFile | undefined> {
   const personas = new FilesystemPersonaAdapter(workspaceRoot)
-  const selected = selectPersona(await personas.listPersonas(), workflowId)
+  const selected = selectPersona(await personas.listPersonas(), workflowId, personaName)
   if (selected === undefined) return undefined
 
   const persona = await personas.loadPersona(selected.name)
@@ -760,13 +793,21 @@ async function prepareLocalRun(
     )
   }
 
-  const persona = await loadSelectedPersona(target.workspace_root, target.workflow_id)
+  const taskAdapter = new FilesystemTaskAdapter(target.workspace_root)
+  const taskDriven = target.workflow_id === undefined
+  const task = taskDriven
+    ? await taskAdapter.nextReadyTask()
+    : undefined
+  const workflowId = target.workflow_id ?? taskMetadataString(task ?? undefined, "workflow")
+  const personaName = taskDriven ? taskMetadataString(task ?? undefined, "persona") : undefined
+  const persona = await loadSelectedPersona(target.workspace_root, workflowId, personaName)
   const activatedPersona = activateLocalRunPersona(target, persona)
   const workflows = new FilesystemWorkflowAdapter(target.workspace_root)
-  const graph = await resolveWorkflow(workflows, target.workflow_id, persona, target.workspace_root)
+  const graph = await resolveWorkflow(workflows, workflowId, persona, target.workspace_root)
   const skills = await loadPersonaSkills(target.workspace_root, persona)
-  const taskAdapter = new FilesystemTaskAdapter(target.workspace_root)
-  const task = await taskAdapter.nextReadyTask(taskQueryWithoutStatus(persona?.task_filter))
+  const selectedTask = taskDriven
+    ? task
+    : await taskAdapter.nextReadyTask(taskQueryWithoutStatus(persona?.task_filter))
   const workflowRun = await workflows.createRun(
     graph.id,
     `local runtime run: ${graph.id}`,
@@ -778,7 +819,7 @@ async function prepareLocalRun(
     persona,
     activated_persona: activatedPersona,
     skills,
-    task: task ?? undefined,
+    task: selectedTask ?? undefined,
     workflow_run_id: workflowRun.run_id,
     artifact_id: "pending",
     invocation_id: invocation.id,
@@ -808,26 +849,29 @@ async function prepareLocalRun(
   return run
 }
 
-async function readState(ctx: RuntimeContext): Promise<LocalRuntimeState | undefined> {
+async function readStateFor(workspaceRoot: string): Promise<LocalRuntimeState | undefined> {
   try {
-    return JSON.parse(await readFile(statePath(ctx), "utf-8")) as LocalRuntimeState
+    return JSON.parse(await readFile(statePathFor(workspaceRoot), "utf-8")) as LocalRuntimeState
   } catch {
     return undefined
   }
 }
 
-async function initLocalRuntime(
-  ctx: RuntimeContext,
-  _args: RuntimeInitArgs,
-): Promise<RuntimeCommandResult> {
-  const dir = runtimeDir(ctx)
-  const targetDir = targetsDir(ctx)
-  const invocationDir = invocationsDir(ctx)
-  const path = statePath(ctx)
+async function ensureLocalRuntimeState(workspaceRoot: string): Promise<{
+  created: boolean
+  dir: string
+  path: string
+  targetDir: string
+  invocationDir: string
+}> {
+  const dir = runtimeDirFor(workspaceRoot)
+  const targetDir = targetsDirFor(workspaceRoot)
+  const invocationDir = invocationsDirFor(workspaceRoot)
+  const path = statePathFor(workspaceRoot)
   await mkdir(targetDir, { recursive: true })
   await mkdir(invocationDir, { recursive: true })
 
-  const existing = await readState(ctx)
+  const existing = await readStateFor(workspaceRoot)
   const created = existing === undefined
   if (created) {
     const state: LocalRuntimeState = {
@@ -840,17 +884,26 @@ async function initLocalRuntime(
     await writeFile(path, `${JSON.stringify(state, null, 2)}\n`, "utf-8")
   }
 
+  return { created, dir, path, targetDir, invocationDir }
+}
+
+async function initLocalRuntime(
+  ctx: RuntimeContext,
+  _args: RuntimeInitArgs,
+): Promise<RuntimeCommandResult> {
+  const state = await ensureLocalRuntimeState(ctx.workspace_root)
+
   return {
-    summary: created
+    summary: state.created
       ? "Initialized local Agentic runtime glue."
       : "Local Agentic runtime glue is already initialized.",
     data: {
       initialized: true,
-      created,
-      config_dir: workspaceRelative(ctx, dir),
-      state_path: workspaceRelative(ctx, path),
-      targets_dir: workspaceRelative(ctx, targetDir),
-      invocations_dir: workspaceRelative(ctx, invocationDir),
+      created: state.created,
+      config_dir: workspaceRelative(ctx, state.dir),
+      state_path: workspaceRelative(ctx, state.path),
+      targets_dir: workspaceRelative(ctx, state.targetDir),
+      invocations_dir: workspaceRelative(ctx, state.invocationDir),
     },
   }
 }
@@ -864,11 +917,7 @@ async function runLocalRuntime(
   if (!(await hasAgenticWorkspace(target.workspace_root))) {
     throw new Error(`No Agentic workspace found at ${target.workspace_root}.`)
   }
-  if (!(await pathExists(statePathFor(target.workspace_root)))) {
-    throw new Error(
-      `Local runtime is not initialized for ${target.workspace_root}. Run \`agentic runtime init local --base-dir ${target.workspace_label}\` first.`,
-    )
-  }
+  await ensureLocalRuntimeState(target.workspace_root)
 
   const invocation = await createInvocation(args, target, harness)
   let run: LocalRunContext | undefined

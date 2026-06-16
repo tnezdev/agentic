@@ -5,8 +5,7 @@ Local runtime package for Agentic workspaces.
 The public runtime target is `local`:
 
 ```bash
-agentic runtime add local
-agentic runtime init local
+agentic run
 agentic runtime status local
 ```
 
@@ -24,7 +23,9 @@ https://pi.dev/, not Raspberry Pi. `pi` is not a public runtime target.
 - `run` resolves a workspace/workflow target, loads the matching persona, skills,
   ready task, and workflow, records a runtime invocation, creates a workflow run,
   and writes a finalized `local-runtime-run` artifact as the durable run packet.
-  By default this is prepare-only.
+  It initializes local runtime glue on first run. By default this is prepare-only.
+  If no target is provided, ready task metadata (`persona` and `workflow`) is used
+  before falling back to an unambiguous workspace default.
 - `run --harness pi` also invokes the Pi CLI as the local harness driver after
   the Agentic run packet is prepared.
 - `status` reports whether the local runtime glue has been initialized and
@@ -40,7 +41,7 @@ session model into Agentic core.
 Chosen integration mode for the first Pi bridge: CLI print mode.
 
 ```bash
-agentic runtime run <workspace-or-workflow> --harness pi
+agentic run <workspace-or-workflow> --harness pi
 ```
 
 You can also make Pi the default harness for this runtime target with config:
@@ -51,7 +52,7 @@ harness = "pi"
 ```
 
 The local runtime still owns the public command and target name. When Pi is
-enabled, `runtime run`:
+enabled, `agentic run`:
 
 1. Prepares the same Agentic invocation record, workflow run, and run-packet
    artifact as prepare-only mode.
@@ -71,7 +72,7 @@ reference and durable primitive IDs.
 The Pi command can be overridden for local development:
 
 ```bash
-agentic runtime run research-loop --harness pi --pi-command /path/to/pi
+agentic run research-loop --harness pi --pi-command /path/to/pi
 ```
 
 or with runtime config:
@@ -92,7 +93,7 @@ pi_command = "/path/to/pi"
 - Agentic does not parse Pi transcripts or continue Pi sessions itself. The
   invocation id is reused as the Pi session id so the reference is deterministic.
 - Pi mode may call a model and use tools. Prepare-only mode remains the default
-  so `agentic runtime run` is safe as an inspectable setup step.
+  so `agentic run` is safe as an inspectable setup step.
 
 Non-goals for this skeleton: daemon/service mode, scheduling, cloud-provider
 code, model/tool execution inside Agentic core, and a session primitive.

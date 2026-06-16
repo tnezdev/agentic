@@ -145,6 +145,7 @@ const commands: Record<string, Command> = {
   "capability show": capabilityShowCommand,
   "capability validate": capabilityValidateCommand,
   runtime: runtimeHelpCommand,
+  run: runtimeRunCommand,
   "runtime help": runtimeHelpCommand,
   "runtime list": runtimeListCommand,
   "runtime add": runtimeAddCommand,
@@ -159,6 +160,7 @@ const USAGE = `Usage: agentic <command> [args] [flags]
 
 Commands:
   init [--example second-brain]       Scaffold .agentic/ directory
+  run [target]                        Run current workspace with default runtime
 
   memory remember <content>           Store a new memory
   memory recall [query]               Query memories

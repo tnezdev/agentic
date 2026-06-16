@@ -21,18 +21,18 @@ The host harness still owns model calls, tool execution, browsing, credentials, 
 
 ## Quick Smoke Test
 
-This example is meant to be self-guided by its own second-brain content. Start
-from the repo root and ask the workspace what is ready:
+This example is meant to be self-guided by its own second-brain content. From
+the repo root, run the example:
 
 ```bash
-agentic task next --base-dir examples/second-brain
+agentic run examples/second-brain
 ```
 
-Then let the local runtime prepare that turn:
+Or from inside the example workspace:
 
 ```bash
-agentic runtime init local --base-dir examples/second-brain
-agentic runtime run examples/second-brain
+cd examples/second-brain
+agentic run
 ```
 
 The runtime prints a workflow-run id and a run-packet artifact id. Inspect those
@@ -48,27 +48,32 @@ memorize artifact ids, persona names, or workflow internals first.
 
 ## Run It Locally
 
-The local runtime uses the public runtime target, `local`, and the repo-local
+`agentic run` delegates to the default runtime target, `local`. The repo-local
 `agentic` shim discovers `packages/agentic-runtime-local` from this checkout.
-It does not browse, call a model, or complete the research for you. It prepares
-the workspace for harness execution by loading the selected persona, skills,
-ready task, and workflow; creating a workflow run; starting the entry node;
-recording a runtime invocation; and writing a finalized `local-runtime-run`
-artifact as the durable run packet.
+The local runtime initializes its glue state on first run. It does not browse,
+call a model, or complete the research for you. It prepares the workspace for
+harness execution by loading the selected persona, skills, ready task, and
+workflow; creating a workflow run; starting the entry node; recording a runtime
+invocation; and writing a finalized `local-runtime-run` artifact as the durable
+run packet.
 
 If Pi is installed and you want the local runtime to hand the prepared turn to a
 real harness, rerun the second command with an explicit harness flag:
 
 ```bash
-agentic runtime run examples/second-brain --harness pi
+agentic run examples/second-brain --harness pi
 ```
 
 You can also run the workflow explicitly from inside the example workspace:
 
 ```bash
-agentic runtime init local --base-dir .
-agentic runtime run research-loop --base-dir .
+agentic run research-loop
 ```
+
+When a workspace has more than one persona or workflow, `agentic run` uses the
+ready task's `metadata.persona` and `metadata.workflow` fields when present. If
+there is no explicit target and no unambiguous task metadata, it fails with a
+clear prompt to provide a workflow target instead of guessing.
 
 Running the example creates local state under `.agentic/runtime/`,
 `.agentic/runs/`, and `.agentic/artifacts/`. Runtime invocation records live in
@@ -116,12 +121,9 @@ The packaged user story this example is proving is:
 ```bash
 bun add @tnezdev/agentic
 agentic init --example second-brain
-agentic task next
 
 bun add -d @tnezdev/agentic-runtime-local
-agentic runtime add local
-agentic runtime init local
-agentic runtime run research-loop
+agentic run
 ```
 
 `agentic init --example second-brain` scaffolds a starter workspace with the
@@ -265,11 +267,11 @@ Finalization means the artifact is durable output for this research pass. It doe
 | `.agentic/tasks/*.json` | Tasks | A ready `START HERE` task that drives the dogfood path |
 | `.agentic/artifacts/*` | Artifact | Inbox captures, a reading queue snapshot, and a finalized sample brief |
 
-After `agentic runtime init local`, the local runtime also creates
+On first `agentic run`, the local runtime creates
 `.agentic/runtime/local/runtime.json` plus `targets/` and `invocations/`
-directories. After `agentic runtime run`, it creates an invocation record, a
-workflow run, and a finalized `local-runtime-run` artifact. Those are runtime
-outputs, not starter content.
+directories. Each run creates an invocation record, a workflow run, and a
+finalized `local-runtime-run` artifact. Those are runtime outputs, not starter
+content.
 
 ## What Is Not Included Yet
 
@@ -290,15 +292,11 @@ the current local loop rather than duplicating that roadmap.
 
 To dogfood this example, let the content drive the first run and watch for friction.
 
-1. Run `agentic task next` and read the `START HERE` task.
-2. Inspect the artifacts named by the task.
-3. Activate the persona and skill named by the task.
-4. Start or inspect a `research-loop` workflow run.
-5. Do the research using whatever tools the harness provides.
-6. Create or update a `research-brief` artifact.
-7. Validate that the artifact has a `para:<bucket>/<slug>` tag.
-8. Finalize the artifact.
-9. Mark the task done and add the stewardship follow-up task the seed asks for.
+1. Run `agentic run` from inside the example, or `agentic run examples/second-brain` from the repo root.
+2. Inspect the workflow-run id and run-packet artifact id printed by the runtime.
+3. If you are testing a real harness, rerun with `--harness pi`.
+4. Confirm the harness creates durable artifacts or tasks rather than leaving the result only in a transcript.
+5. Mark the task done and add the stewardship follow-up task the seed asks for.
 
 Good dogfood findings are not just better answers. They are also places where the primitive boundaries feel wrong, missing, or too ceremonial.
 

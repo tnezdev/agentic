@@ -8,13 +8,10 @@ This directory is an Agentic second-brain research workspace. Agentic provides t
 
 ## Start Here
 
-For a first smoke test, ask the workspace what is ready and let the local runtime
-prepare the turn:
+For a first smoke test, let the local runtime prepare the turn:
 
 ```bash
-agentic task next --base-dir .
-agentic runtime init local --base-dir .
-agentic runtime run research-loop --base-dir .
+agentic run
 ```
 
 For a manual harness turn, show the seeded task and activate the researcher
@@ -46,11 +43,12 @@ agentic skill run steward-review --base-dir .
 ```
 
 The runtime uses the public `local` target. It records a runtime invocation, prepares a workflow run, and writes a finalized `local-runtime-run` artifact for inspection; it still does not browse, call a model, or complete the research on its own.
+It initializes local runtime glue on first run.
 
 If Pi is installed and you want the local runtime to hand this prepared turn to a harness, keep the public target and add the harness flag:
 
 ```bash
-agentic runtime run research-loop --base-dir . --harness pi
+agentic run --harness pi
 ```
 
 ## Boundary

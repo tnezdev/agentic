@@ -10,7 +10,7 @@
   ],
   "annotations": [
     {
-      "text": "First run from the repo root: `agentic runtime init local --base-dir examples/second-brain`, then `agentic runtime run examples/second-brain`. Add `--harness pi` to the second command only when you want Pi to execute the prepared turn.",
+      "text": "First run from the repo root: `agentic run examples/second-brain`. Add `--harness pi` only when you want Pi to execute the prepared turn.",
       "timestamp": "2026-06-05T16:00:00.000Z"
     },
     {

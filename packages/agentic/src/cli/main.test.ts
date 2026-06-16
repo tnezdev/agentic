@@ -293,6 +293,19 @@ describe("CLI", () => {
     expect(result.result.data.json).toBe(true)
   })
 
+  it("top-level run delegates to the default runtime", async () => {
+    await writeRuntimePackage(tmpDir)
+
+    const result = (await runJson(...base, "run")) as {
+      status: string
+      result: { data: { args: string[]; json: boolean } }
+    }
+
+    expect(result.status).toBe("delegated")
+    expect(result.result.data.args).toEqual([])
+    expect(result.result.data.json).toBe(true)
+  })
+
   it("runtime init passes opaque runtime config to the package", async () => {
     await writeRuntimePackage(tmpDir)
     await mkdir(join(tmpDir, ".agentic"), { recursive: true })

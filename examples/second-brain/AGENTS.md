@@ -14,13 +14,10 @@ examples/second-brain
 
 ## Start Here
 
-For a first smoke test, ask the workspace what is ready and let the local runtime
-prepare the turn:
+For a first smoke test, let the local runtime prepare the turn:
 
 ```bash
-agentic task next --base-dir examples/second-brain
-agentic runtime init local --base-dir examples/second-brain
-agentic runtime run examples/second-brain
+agentic run examples/second-brain
 ```
 
 For a manual harness turn, show the seeded task and activate the researcher
@@ -53,7 +50,8 @@ agentic skill run steward-review --base-dir examples/second-brain
 
 The runtime uses the public `local` target. It prepares a workflow run and a
 finalized `local-runtime-run` artifact for inspection; it still does not browse,
-call a model, or complete the research on its own.
+call a model, or complete the research on its own. It initializes local runtime
+glue on first run.
 
 When using the checked-in repository example, treat runtime output as local
 dogfood state. Do not commit generated `.agentic/runtime/`, `.agentic/runs/`, or
@@ -65,7 +63,7 @@ If Pi is installed and you want the local runtime to hand this prepared turn to 
 harness, keep the public target and add the harness flag:
 
 ```bash
-agentic runtime run examples/second-brain --harness pi
+agentic run examples/second-brain --harness pi
 ```
 
 If the installed `agentic` binary is unavailable while working from this repo, use:
