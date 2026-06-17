@@ -155,6 +155,59 @@ async function writeMinimalInspectBundle(workspace: string): Promise<string> {
   return bundleRoot
 }
 
+async function writeMinimalEvalBundle(
+  workspace: string,
+  evals: Array<{ id: string; data: Record<string, unknown> }> = [defaultEvalDeclaration()],
+): Promise<string> {
+  const bundleRoot = join(workspace, ".agentic")
+  await mkdir(join(bundleRoot, "evals"), { recursive: true })
+  await mkdir(join(bundleRoot, "fixtures"), { recursive: true })
+  await writeJson(join(bundleRoot, "agentic.json"), {
+    schema_version: "agentic-next.example.v0",
+    name: "eval-demo",
+    version: "0.1.0",
+    description: "Eval demo bundle.",
+    state: { adapter: "filesystem", dir: ".agentic/.data" },
+    principals: [{ id: "service:test" }],
+    prompts: [],
+    skills: [],
+    artifacts: [],
+    actions: [],
+    capabilities: [],
+    hooks: [],
+    surfaces: [],
+    schedules: [],
+    integrations: [],
+    policies: [],
+    deploy: [],
+    evals: evals.map((entry) => ({ id: entry.id, path: `evals/${entry.id}.json` })),
+    fixtures: [{ id: "fixture-001", path: "fixtures/fixture-001.json" }],
+  })
+  for (const entry of evals) {
+    await writeJson(join(bundleRoot, "evals", `${entry.id}.json`), entry.data)
+  }
+  await writeJson(join(bundleRoot, "fixtures", "fixture-001.json"), { id: "fixture-001" })
+  return bundleRoot
+}
+
+function defaultEvalDeclaration(overrides: Record<string, unknown> = {}): { id: string; data: Record<string, unknown> } {
+  return {
+    id: "smoke",
+    data: {
+      id: "smoke",
+      kind: "eval_declaration",
+      fixture: "fixture-001",
+      expect: {
+        artifacts: ["case-packet", "approval-request"],
+        actions: ["surface.receive", "external.handoff"],
+        approval_required: "external.handoff",
+        external_write_executed: false,
+      },
+      ...overrides,
+    },
+  }
+}
+
 async function writeInspectRuntimeState(workspace: string): Promise<void> {
   const runDir = join(workspace, ".agentic", ".data", "runs", "run-001")
   await mkdir(join(runDir, "actions"), { recursive: true })
@@ -166,6 +219,31 @@ async function writeInspectRuntimeState(workspace: string): Promise<void> {
   await writeJson(join(runDir, "actions", "a2.json"), { id: "a2", status: "approval_required" })
   await writeJson(join(runDir, "artifacts", "art1.json"), { id: "art1", type: "case-packet" })
   await writeJson(join(runDir, "artifacts", "approval1.json"), { id: "approval1", type: "approval-request" })
+}
+
+async function writeEvalRuntimeState(
+  workspace: string,
+  runId = "run-001",
+  options: { latestRunId?: string | undefined; includeApprovalArtifact?: boolean | undefined } = {},
+): Promise<void> {
+  const runDir = join(workspace, ".agentic", ".data", "runs", runId)
+  await mkdir(join(runDir, "actions"), { recursive: true })
+  await mkdir(join(runDir, "artifacts"), { recursive: true })
+  await writeJson(join(workspace, ".agentic", ".data", "latest.json"), { run_id: options.latestRunId ?? runId })
+  await writeJson(join(runDir, "actions", "a1.json"), {
+    id: "a1",
+    type: "surface.receive",
+    status: "completed",
+  })
+  await writeJson(join(runDir, "actions", "a2.json"), {
+    id: "a2",
+    type: "external.handoff",
+    status: "approval_required",
+  })
+  await writeJson(join(runDir, "artifacts", "art1.json"), { id: "art1", type: "case-packet" })
+  if (options.includeApprovalArtifact !== false) {
+    await writeJson(join(runDir, "artifacts", "approval1.json"), { id: "approval1", type: "approval-request" })
+  }
 }
 
 async function writeUnknownTriggerBundle(workspace: string): Promise<void> {
@@ -225,6 +303,7 @@ describe("CLI", () => {
     const { stdout, exitCode } = await run("--help")
     expect(exitCode).toBe(0)
     expect(stdout).toContain("Usage: agentic")
+    expect(stdout).toContain("eval [path]")
     expect(stdout).toContain("inspect [path]")
     expect(stdout).toContain("validate [path]")
     expect(stdout).toContain("runtime list")
@@ -477,6 +556,164 @@ describe("CLI", () => {
       expect(result.state).toBeNull()
       expect(result.errors[0]?.field).toBe("bundle")
       expect(result.errors[0]?.message).toContain("Missing bundle manifest")
+    })
+  })
+
+  describe("eval", () => {
+    it("evaluates a matching local run", async () => {
+      await writeMinimalEvalBundle(tmpDir)
+      await writeEvalRuntimeState(tmpDir)
+
+      const result = (await runJson(...base, "eval")) as {
+        ok: boolean
+        command: string
+        root: string
+        bundle: { name: string; version: string; schema_version: string } | null
+        state: { run_id: string; run_path: string } | null
+        evals: Array<{ id: string; ok: boolean; fixture: string | null; checks: Array<{ name: string; ok: boolean }> }>
+        errors: unknown[]
+      }
+
+      expect(result.ok).toBe(true)
+      expect(result.command).toBe("eval")
+      expect(result.root).toBe(join(tmpDir, ".agentic"))
+      expect(result.bundle?.name).toBe("eval-demo")
+      expect(result.state?.run_id).toBe("run-001")
+      expect(result.state?.run_path).toBe(join(tmpDir, ".agentic", ".data", "runs", "run-001"))
+      expect(result.evals).toHaveLength(1)
+      expect(result.evals[0]?.id).toBe("smoke")
+      expect(result.evals[0]?.ok).toBe(true)
+      expect(result.evals[0]?.fixture).toBe("fixture-001")
+      expect(result.evals[0]?.checks.map((check) => check.name)).toEqual([
+        "artifacts",
+        "actions",
+        "approval_required",
+        "external_write_executed",
+      ])
+      expect(result.evals[0]?.checks.every((check) => check.ok)).toBe(true)
+      expect(result.errors).toEqual([])
+    })
+
+    it("selects one eval with --eval", async () => {
+      await writeMinimalEvalBundle(tmpDir, [
+        defaultEvalDeclaration(),
+        {
+          id: "strict",
+          data: {
+            id: "strict",
+            kind: "eval_declaration",
+            fixture: "fixture-001",
+            expect: { artifacts: ["missing-artifact"] },
+          },
+        },
+      ])
+      await writeEvalRuntimeState(tmpDir)
+
+      const result = (await runJson(...base, "eval", "--eval", "smoke")) as {
+        ok: boolean
+        evals: Array<{ id: string; ok: boolean }>
+      }
+
+      expect(result.ok).toBe(true)
+      expect(result.evals).toEqual([expect.objectContaining({ id: "smoke", ok: true })])
+    })
+
+    it("selects an explicit run with --run", async () => {
+      await writeMinimalEvalBundle(tmpDir)
+      await writeEvalRuntimeState(tmpDir, "run-001", { includeApprovalArtifact: false })
+      await writeEvalRuntimeState(tmpDir, "run-002", { latestRunId: "run-001" })
+
+      const result = (await runJson(...base, "eval", "--run", "run-002")) as {
+        ok: boolean
+        state: { run_id: string } | null
+      }
+
+      expect(result.ok).toBe(true)
+      expect(result.state?.run_id).toBe("run-002")
+    })
+
+    it("exits 1 with a structured envelope when local runtime state is missing", async () => {
+      await writeMinimalEvalBundle(tmpDir)
+
+      const { stdout, exitCode } = await run("--json", ...base, "eval")
+      expect(exitCode).toBe(1)
+      const result = JSON.parse(stdout) as {
+        ok: boolean
+        command: string
+        state: null
+        errors: Array<{ field: string; message: string }>
+      }
+
+      expect(result.ok).toBe(false)
+      expect(result.command).toBe("eval")
+      expect(result.state).toBeNull()
+      expect(result.errors[0]?.field).toBe("state")
+      expect(result.errors[0]?.message).toContain("no local runtime state found")
+    })
+
+    it("fails when an expected artifact type is missing", async () => {
+      await writeMinimalEvalBundle(tmpDir)
+      await writeEvalRuntimeState(tmpDir, "run-001", { includeApprovalArtifact: false })
+
+      const { stdout, exitCode } = await run("--json", ...base, "eval")
+      expect(exitCode).toBe(1)
+      const result = JSON.parse(stdout) as {
+        ok: boolean
+        evals: Array<{
+          ok: boolean
+          checks: Array<{ name: string; ok: boolean; missing?: string[] }>
+          errors: Array<{ field: string; message: string }>
+        }>
+      }
+      const artifactsCheck = result.evals[0]?.checks.find((check) => check.name === "artifacts")
+
+      expect(result.ok).toBe(false)
+      expect(result.evals[0]?.ok).toBe(false)
+      expect(artifactsCheck?.ok).toBe(false)
+      expect(artifactsCheck?.missing).toEqual(["approval-request"])
+      expect(result.evals[0]?.errors[0]?.field).toBe("evals.smoke.expect.artifacts")
+    })
+
+    it("fails with a structured envelope for an unknown eval id", async () => {
+      await writeMinimalEvalBundle(tmpDir)
+      await writeEvalRuntimeState(tmpDir)
+
+      const { stdout, exitCode } = await run("--json", ...base, "eval", "--eval", "missing")
+      expect(exitCode).toBe(1)
+      const result = JSON.parse(stdout) as {
+        ok: boolean
+        evals: unknown[]
+        errors: Array<{ field: string; message: string }>
+      }
+
+      expect(result.ok).toBe(false)
+      expect(result.evals).toEqual([])
+      expect(result.errors[0]?.field).toBe("eval")
+      expect(result.errors[0]?.message).toContain("unknown eval declaration: missing")
+    })
+
+    it("fails malformed eval declarations with field-specific errors", async () => {
+      await writeMinimalEvalBundle(tmpDir, [
+        defaultEvalDeclaration({
+          expect: {
+            artifacts: "case-packet",
+            external_write_executed: false,
+          },
+        }),
+      ])
+      await writeEvalRuntimeState(tmpDir)
+
+      const { stdout, exitCode } = await run("--json", ...base, "eval")
+      expect(exitCode).toBe(1)
+      const result = JSON.parse(stdout) as {
+        ok: boolean
+        evals: Array<{ ok: boolean; errors: Array<{ field: string; message: string }> }>
+      }
+
+      expect(result.ok).toBe(false)
+      expect(result.evals[0]?.ok).toBe(false)
+      expect(result.evals[0]?.errors.some((error) => error.field === "evals.smoke.expect.artifacts")).toBe(true)
+      expect(result.evals[0]?.errors.some((error) => error.field === "evals.smoke.expect.external_write_executed")).toBe(true)
     })
   })
 

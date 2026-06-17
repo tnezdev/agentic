@@ -731,6 +731,48 @@ export type AgenticInspectResult = {
   warnings: AgenticInspectMessage[]
 }
 
+export type AgenticEvalMessage = {
+  field: string
+  message: string
+}
+
+export type AgenticEvalCheck = {
+  name: "artifacts" | "actions" | "approval_required" | "external_write_executed"
+  ok: boolean
+  expected: string[] | string | boolean
+  actual: string[] | string | boolean | null
+  missing?: string[] | undefined
+}
+
+export type AgenticEvalCaseResult = {
+  id: string
+  ok: boolean
+  fixture: string | null
+  checks: AgenticEvalCheck[]
+  errors: AgenticEvalMessage[]
+}
+
+export type AgenticEvalResult = {
+  command: "eval"
+  ok: boolean
+  root: string
+  manifest_path: string | null
+  bundle: {
+    name: string
+    version: string
+    schema_version: string
+  } | null
+  state: {
+    adapter: string
+    dir: string
+    run_id: string
+    run_path: string
+  } | null
+  evals: AgenticEvalCaseResult[]
+  errors: AgenticEvalMessage[]
+  warnings: AgenticEvalMessage[]
+}
+
 export function formatAgenticValidate(result: AgenticValidateResult): string {
   const subject = result.bundle === null
     ? result.root
@@ -800,6 +842,41 @@ export function formatAgenticInspect(result: AgenticInspectResult): string {
   return lines.join("\n")
 }
 
+export function formatAgenticEval(result: AgenticEvalResult): string {
+  const subject = result.bundle === null
+    ? result.root
+    : `${result.bundle.name}@${result.bundle.version}`
+  const lines = [`${subject}: eval ${result.ok ? "passed" : "failed"}`, `root: ${result.root}`]
+
+  if (result.state !== null) lines.push(`run: ${result.state.run_id}`)
+
+  if (result.evals.length > 0) {
+    lines.push("evals:")
+    lines.push(...result.evals.map((entry) => `  - ${formatAgenticEvalCase(entry)}`))
+  }
+
+  if (result.ok) {
+    const checks = result.evals.flatMap((entry) => entry.checks.map((check) => formatAgenticEvalCheck(check)))
+    if (checks.length > 0) {
+      lines.push("checks:")
+      lines.push(...checks.map((line) => `  - ${line}`))
+    }
+  }
+
+  const errors = result.errors.concat(result.evals.flatMap((entry) => entry.errors))
+  if (errors.length > 0) {
+    lines.push("errors:")
+    lines.push(...errors.map((error) => `  - ${error.field}: ${error.message}`))
+  }
+
+  if (result.warnings.length > 0) {
+    lines.push("warnings:")
+    lines.push(...result.warnings.map((warning) => `  - ${warning.field}: ${warning.message}`))
+  }
+
+  return lines.join("\n")
+}
+
 function formatAgenticInspectSection(section: AgenticInspectInventorySection): string {
   const ids = formatAgenticInspectIds(section.entries.map((entry) => entry.id))
   return ids === "" ? `${section.name}: ${section.count}` : `${section.name}: ${section.count} (${ids})`
@@ -828,6 +905,23 @@ function formatAgenticValidateCheck(check: AgenticValidateCheck): string {
     return `${label}: ${check.status} (${check.surfaces ?? 0} ${plural("surface", check.surfaces ?? 0)}, ${check.schedules ?? 0} ${plural("schedule", check.schedules ?? 0)}, ${check.hooks ?? 0} ${plural("hook", check.hooks ?? 0)})`
   }
   return `${label}: ${check.status}`
+}
+
+function formatAgenticEvalCase(entry: AgenticEvalCaseResult): string {
+  const passed = entry.checks.filter((check) => check.ok).length
+  const failed = entry.checks.length - passed
+  if (entry.ok) return `${entry.id}: passed (${entry.checks.length} ${plural("check", entry.checks.length)})`
+  if (entry.checks.length === 0) return `${entry.id}: failed`
+  return `${entry.id}: failed (${passed} passed, ${failed} failed)`
+}
+
+function formatAgenticEvalCheck(check: AgenticEvalCheck): string {
+  const label = check.name.replace(/_/g, " ")
+  const status = check.ok ? "passed" : "failed"
+  if (Array.isArray(check.expected) && Array.isArray(check.actual)) {
+    return `${label}: ${status} (${check.expected.length} expected, ${check.actual.length} found)`
+  }
+  return `${label}: ${status} (${String(check.expected)})`
 }
 
 function plural(word: string, count: number): string {
