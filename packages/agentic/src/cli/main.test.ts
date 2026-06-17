@@ -128,6 +128,46 @@ async function writeJson(path: string, value: unknown): Promise<void> {
   await writeFile(path, `${JSON.stringify(value, null, 2)}\n`, "utf-8")
 }
 
+async function writeMinimalInspectBundle(workspace: string): Promise<string> {
+  const bundleRoot = join(workspace, ".agentic")
+  await mkdir(bundleRoot, { recursive: true })
+  await writeJson(join(bundleRoot, "agentic.json"), {
+    schema_version: "agentic-next.example.v0",
+    name: "inspect-demo",
+    version: "0.1.0",
+    description: "Inspect demo bundle.",
+    state: { adapter: "filesystem", dir: ".agentic/.data" },
+    principals: [{ id: "service:test" }],
+    prompts: [],
+    skills: [],
+    artifacts: [],
+    actions: [],
+    capabilities: [],
+    hooks: [],
+    surfaces: [],
+    schedules: [],
+    integrations: [],
+    policies: [],
+    deploy: [],
+    evals: [],
+    fixtures: [],
+  })
+  return bundleRoot
+}
+
+async function writeInspectRuntimeState(workspace: string): Promise<void> {
+  const runDir = join(workspace, ".agentic", ".data", "runs", "run-001")
+  await mkdir(join(runDir, "actions"), { recursive: true })
+  await mkdir(join(runDir, "artifacts"), { recursive: true })
+  await writeJson(join(workspace, ".agentic", ".data", "latest.json"), { run_id: "run-001" })
+  await writeFile(join(runDir, "actions.jsonl"), "", "utf-8")
+  await writeFile(join(runDir, "summary.md"), "# Summary\n", "utf-8")
+  await writeJson(join(runDir, "actions", "a1.json"), { id: "a1", status: "completed" })
+  await writeJson(join(runDir, "actions", "a2.json"), { id: "a2", status: "approval_required" })
+  await writeJson(join(runDir, "artifacts", "art1.json"), { id: "art1", type: "case-packet" })
+  await writeJson(join(runDir, "artifacts", "approval1.json"), { id: "approval1", type: "approval-request" })
+}
+
 async function writeUnknownTriggerBundle(workspace: string): Promise<void> {
   const bundleRoot = join(workspace, ".agentic")
   await mkdir(join(bundleRoot, "schedules"), { recursive: true })
@@ -185,6 +225,7 @@ describe("CLI", () => {
     const { stdout, exitCode } = await run("--help")
     expect(exitCode).toBe(0)
     expect(stdout).toContain("Usage: agentic")
+    expect(stdout).toContain("inspect [path]")
     expect(stdout).toContain("validate [path]")
     expect(stdout).toContain("runtime list")
   })
@@ -277,6 +318,165 @@ describe("CLI", () => {
       expect(triggerCheck?.status).toBe("failed")
       expect(result.errors.some((error) => error.field === "schedules[0].proposes.action")).toBe(true)
       expect(result.errors.some((error) => error.message === "unknown action: missing.action")).toBe(true)
+    })
+  })
+
+  describe("inspect", () => {
+    it("inspects the agentic-next workspace path", async () => {
+      const result = (await runJson("inspect", AGENTIC_NEXT)) as {
+        ok: boolean
+        command: string
+        root: string
+        bundle: { name: string; version: string; schema_version: string; description: string } | null
+        inventory: {
+          sections: Array<{
+            name: string
+            kind: string
+            count: number
+            entries: Array<{ id: string; path: string; locator: string; bytes?: number }>
+          }>
+          totals: { sections: number; entries: number; markdown_entries: number; data_entries: number }
+        } | null
+        state: { adapter: string; dir: string } | null
+        errors: unknown[]
+      }
+
+      if (result.bundle === null || result.inventory === null || result.state === null) {
+        throw new Error("inspect did not return loaded bundle details")
+      }
+      const sections = new Map(result.inventory.sections.map((section) => [section.name, section]))
+
+      expect(result.ok).toBe(true)
+      expect(result.command).toBe("inspect")
+      expect(result.root).toBe(join(AGENTIC_NEXT, ".agentic"))
+      expect(result.bundle.name).toBe("regulated-case-review")
+      expect(result.bundle.version).toBe("0.1.0-experimental")
+      expect(result.inventory.totals.sections).toBe(13)
+      expect(result.inventory.totals.markdown_entries).toBe(5)
+      expect(sections.get("prompts")?.count).toBe(2)
+      expect(sections.get("prompts")?.entries[0]?.bytes).toBeGreaterThan(0)
+      expect(sections.get("actions")?.entries.map((entry) => entry.id)).toContain("surface.receive")
+      expect(result.state.adapter).toBe("filesystem")
+      expect(result.state.dir).toBe(join(AGENTIC_NEXT, ".agentic", ".data"))
+      expect(result.errors).toEqual([])
+    })
+
+    it("inspects a direct bundle root", async () => {
+      const bundleRoot = join(AGENTIC_NEXT, ".agentic")
+      const result = (await runJson("inspect", bundleRoot)) as {
+        ok: boolean
+        root: string
+        manifest_path: string | null
+      }
+
+      expect(result.ok).toBe(true)
+      expect(result.root).toBe(bundleRoot)
+      expect(result.manifest_path).toBe(join(bundleRoot, "agentic.yaml"))
+    })
+
+    it("inspects the base-dir workspace with no positional path", async () => {
+      const result = (await runJson(
+        "--base-dir",
+        AGENTIC_NEXT,
+        "inspect",
+      )) as { ok: boolean; root: string }
+
+      expect(result.ok).toBe(true)
+      expect(result.root).toBe(join(AGENTIC_NEXT, ".agentic"))
+    })
+
+    it("treats missing local runtime state as inspectable", async () => {
+      await writeMinimalInspectBundle(tmpDir)
+
+      const result = (await runJson(...base, "inspect")) as {
+        ok: boolean
+        state: {
+          dir: string
+          exists: boolean
+          latest: unknown
+          runs: { count: number; entries: unknown[] }
+          totals: { actions: number; artifacts: number }
+        } | null
+      }
+
+      if (result.state === null) throw new Error("inspect did not return state details")
+      expect(result.ok).toBe(true)
+      expect(result.state.dir).toBe(join(tmpDir, ".agentic", ".data"))
+      expect(result.state.exists).toBe(false)
+      expect(result.state.latest).toBeNull()
+      expect(result.state.runs.count).toBe(0)
+      expect(result.state.runs.entries).toEqual([])
+      expect(result.state.totals.actions).toBe(0)
+      expect(result.state.totals.artifacts).toBe(0)
+    })
+
+    it("summarizes local runtime state when present", async () => {
+      await writeMinimalInspectBundle(tmpDir)
+      await writeInspectRuntimeState(tmpDir)
+
+      const result = (await runJson(...base, "inspect")) as {
+        ok: boolean
+        state: {
+          exists: boolean
+          latest: { run_id?: unknown } | null
+          runs: {
+            count: number
+            entries: Array<{ id: string; summary_path: string | null; action_log_path: string | null }>
+          }
+          totals: {
+            actions: number
+            completed_actions: number
+            denied_actions: number
+            approval_required_actions: number
+            artifacts: number
+            approval_request_artifacts: number
+          }
+        } | null
+        warnings: unknown[]
+      }
+
+      if (result.state === null) throw new Error("inspect did not return state details")
+      const run = result.state.runs.entries[0]
+
+      expect(result.ok).toBe(true)
+      expect(result.state.exists).toBe(true)
+      expect(result.state.latest?.run_id).toBe("run-001")
+      expect(result.state.runs.count).toBe(1)
+      expect(run?.id).toBe("run-001")
+      expect(run?.summary_path).toBe(join(tmpDir, ".agentic", ".data", "runs", "run-001", "summary.md"))
+      expect(run?.action_log_path).toBe(join(tmpDir, ".agentic", ".data", "runs", "run-001", "actions.jsonl"))
+      expect(result.state.totals.actions).toBe(2)
+      expect(result.state.totals.completed_actions).toBe(1)
+      expect(result.state.totals.denied_actions).toBe(0)
+      expect(result.state.totals.approval_required_actions).toBe(1)
+      expect(result.state.totals.artifacts).toBe(2)
+      expect(result.state.totals.approval_request_artifacts).toBe(1)
+      expect(result.warnings).toEqual([])
+    })
+
+    it("exits 1 with a JSON envelope when the manifest is missing", async () => {
+      await mkdir(join(tmpDir, ".agentic"), { recursive: true })
+
+      const { stdout, exitCode } = await run("--json", ...base, "inspect")
+      expect(exitCode).toBe(1)
+      const result = JSON.parse(stdout) as {
+        ok: boolean
+        root: string
+        manifest_path: string | null
+        bundle: null
+        inventory: null
+        state: null
+        errors: Array<{ field: string; message: string }>
+      }
+
+      expect(result.ok).toBe(false)
+      expect(result.root).toBe(join(tmpDir, ".agentic"))
+      expect(result.manifest_path).toBeNull()
+      expect(result.bundle).toBeNull()
+      expect(result.inventory).toBeNull()
+      expect(result.state).toBeNull()
+      expect(result.errors[0]?.field).toBe("bundle")
+      expect(result.errors[0]?.message).toContain("Missing bundle manifest")
     })
   })
 

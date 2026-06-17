@@ -1,9 +1,6 @@
-import { existsSync } from "node:fs"
-import { isAbsolute, join, resolve } from "node:path"
 import { validateActionGatewayDeclarations } from "../../action-gateway/helpers.js"
 import { validateArtifactDeclaration } from "../../artifact/contracts.js"
 import {
-  AGENTIC_BUNDLE_MANIFEST_FILENAMES,
   loadAgenticBundle,
   loadAgenticBundleManifest,
   type LoadedAgenticBundle,
@@ -22,6 +19,7 @@ import {
   type AgenticValidateError,
   type AgenticValidateResult,
 } from "../format.js"
+import { resolveBundleRoot } from "../bundle-root.js"
 import { output } from "../output.js"
 
 type ValidationResult =
@@ -67,28 +65,6 @@ async function validateBundle(root: string): Promise<AgenticValidateResult> {
   appendTriggerValidation(result, bundle)
   result.valid = result.errors.length === 0
   return result
-}
-
-function resolveBundleRoot(baseDir: string, subject: string | undefined): string {
-  const base = resolve(baseDir)
-  if (subject === undefined) {
-    const workspaceBundle = join(base, ".agentic")
-    if (hasBundleManifest(workspaceBundle)) return workspaceBundle
-    if (hasBundleManifest(base)) return base
-    if (existsSync(workspaceBundle)) return workspaceBundle
-    return base
-  }
-
-  const target = isAbsolute(subject) ? resolve(subject) : resolve(base, subject)
-  if (hasBundleManifest(target)) return target
-
-  const workspaceBundle = join(target, ".agentic")
-  if (hasBundleManifest(workspaceBundle) || existsSync(workspaceBundle)) return workspaceBundle
-  return target
-}
-
-function hasBundleManifest(dir: string): boolean {
-  return AGENTIC_BUNDLE_MANIFEST_FILENAMES.some((filename) => existsSync(join(dir, filename)))
 }
 
 function baseResult(

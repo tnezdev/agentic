@@ -38,6 +38,8 @@ import type {
   CapabilityDef,
   RuntimeCommandOutput,
   RuntimeListOutput,
+  AgenticBundleSectionName,
+  JsonObject,
 } from "../types.js"
 
 
@@ -649,6 +651,86 @@ export type AgenticValidateResult = {
   warnings: AgenticValidateError[]
 }
 
+export type AgenticInspectMessage = {
+  field: string
+  message: string
+}
+
+export type AgenticInspectInventoryEntry = {
+  id: string
+  path: string
+  locator: string
+  bytes?: number | undefined
+}
+
+export type AgenticInspectInventorySection = {
+  name: AgenticBundleSectionName
+  kind: "markdown" | "data"
+  count: number
+  entries: AgenticInspectInventoryEntry[]
+}
+
+export type AgenticInspectRunState = {
+  id: string
+  path: string
+  summary_path: string | null
+  action_log_path: string | null
+  actions: {
+    count: number
+    completed: number
+    denied: number
+    approval_required: number
+  }
+  artifacts: {
+    count: number
+    approval_requests: number
+  }
+}
+
+export type AgenticInspectState = {
+  adapter: string
+  dir: string
+  exists: boolean
+  latest: JsonObject | null
+  runs: {
+    count: number
+    entries: AgenticInspectRunState[]
+  }
+  totals: {
+    actions: number
+    completed_actions: number
+    denied_actions: number
+    approval_required_actions: number
+    artifacts: number
+    approval_request_artifacts: number
+  }
+}
+
+export type AgenticInspectResult = {
+  command: "inspect"
+  ok: boolean
+  root: string
+  manifest_path: string | null
+  bundle: {
+    name: string
+    version: string
+    schema_version: string
+    description: string
+  } | null
+  inventory: {
+    sections: AgenticInspectInventorySection[]
+    totals: {
+      sections: number
+      entries: number
+      markdown_entries: number
+      data_entries: number
+    }
+  } | null
+  state: AgenticInspectState | null
+  errors: AgenticInspectMessage[]
+  warnings: AgenticInspectMessage[]
+}
+
 export function formatAgenticValidate(result: AgenticValidateResult): string {
   const subject = result.bundle === null
     ? result.root
@@ -668,6 +750,70 @@ export function formatAgenticValidate(result: AgenticValidateResult): string {
   }
 
   return lines.join("\n")
+}
+
+export function formatAgenticInspect(result: AgenticInspectResult): string {
+  const subject = result.bundle === null
+    ? result.root
+    : `${result.bundle.name}@${result.bundle.version}`
+  const lines = [`${subject}${result.ok ? "" : ": inspect failed"}`, `root: ${result.root}`]
+
+  if (result.manifest_path !== null) lines.push(`manifest: ${result.manifest_path}`)
+
+  if (result.inventory !== null) {
+    lines.push("inventory:")
+    lines.push(...result.inventory.sections.map((section) => `  - ${formatAgenticInspectSection(section)}`))
+  }
+
+  if (result.state !== null) {
+    lines.push("state:")
+    lines.push(`  adapter: ${result.state.adapter}`)
+    lines.push(`  dir: ${result.state.dir}`)
+    lines.push(`  exists: ${result.state.exists ? "yes" : "no"}`)
+    if (result.state.exists) {
+      const latestRun = result.state.latest?.run_id
+      if (typeof latestRun === "string") lines.push(`  latest_run: ${latestRun}`)
+      lines.push(`  runs: ${result.state.runs.count}`)
+      lines.push(
+        `  actions: ${result.state.totals.actions} (completed ${result.state.totals.completed_actions}, approval_required ${result.state.totals.approval_required_actions}, denied ${result.state.totals.denied_actions})`,
+      )
+      lines.push(
+        `  artifacts: ${result.state.totals.artifacts} (approval_request ${result.state.totals.approval_request_artifacts})`,
+      )
+    }
+  }
+
+  if (result.warnings.length > 0) {
+    lines.push("warnings:")
+    lines.push(...formatAgenticInspectMessages(result.warnings))
+  }
+
+  if (!result.ok) {
+    lines.push("errors:")
+    if (result.errors.length === 0) {
+      lines.push("  - unknown inspection failure")
+    } else {
+      lines.push(...formatAgenticInspectMessages(result.errors))
+    }
+  }
+
+  return lines.join("\n")
+}
+
+function formatAgenticInspectSection(section: AgenticInspectInventorySection): string {
+  const ids = formatAgenticInspectIds(section.entries.map((entry) => entry.id))
+  return ids === "" ? `${section.name}: ${section.count}` : `${section.name}: ${section.count} (${ids})`
+}
+
+function formatAgenticInspectIds(ids: string[]): string {
+  if (ids.length === 0) return ""
+  const shown = ids.slice(0, 8)
+  const remaining = ids.length - shown.length
+  return remaining === 0 ? shown.join(", ") : `${shown.join(", ")}, ... +${remaining} more`
+}
+
+function formatAgenticInspectMessages(messages: AgenticInspectMessage[]): string[] {
+  return messages.map((message) => `  - ${message.field}: ${message.message}`)
 }
 
 function formatAgenticValidateCheck(check: AgenticValidateCheck): string {
