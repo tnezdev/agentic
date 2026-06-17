@@ -31,7 +31,7 @@ The bundle models a synthetic regulated case-review flow:
 - `capabilities/handoff.release.yaml` requires authenticated reviewer approval before external write effects.
 - The runner records `approval_required` instead of accepting agent text as approval.
 
-`run.ts` routes each proposed action through an example-local action gateway. The gateway resolves the action declaration, checks principal/data-class/effect/capability/integration policy, computes a stable action digest, executes only allowed local callbacks, and creates an `approval-request` artifact for approval-gated actions.
+`run.ts` routes each proposed action through the runtime-local action gateway and narrow Agentic ports for artifact reads/draft writes plus action request/status. A harness adapter could expose those ports as model-facing tools, but the example keeps the boundary high-level: runtime-bound handlers still own demo artifact writes and effects. The gateway resolves the action declaration, checks principal/data-class/effect/capability/integration policy, computes a stable action digest, executes only allowed runtime-bound callbacks, and creates an `approval-request` artifact for approval-gated actions.
 
 No model is called. No external system is contacted. The point is to inspect whether the bundle/runtime boundary feels right.
 

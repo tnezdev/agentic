@@ -530,6 +530,51 @@ export type ActionGatewayEvent = {
   decision?: ActionDecision | undefined
 }
 
+export type ReadArtifactRequest = {
+  artifact_id: ArtifactId
+  version?: number | undefined
+}
+
+export type ReadArtifactResult<TArtifact = ArtifactMetadata> = {
+  artifact: TArtifact
+  body: JsonValue
+}
+
+export type WriteDraftArtifactMode = "iterate" | "replace"
+
+export type WriteDraftArtifactRequest = {
+  artifact_id?: ArtifactId | undefined
+  type?: string | undefined
+  title?: string | undefined
+  body: JsonValue
+  tags?: string[] | undefined
+  derived_from?: ArtifactId | undefined
+  mode?: WriteDraftArtifactMode | undefined
+}
+
+export type WriteDraftArtifactResult<TArtifact = ArtifactRecord> = {
+  artifact: TArtifact
+}
+
+export type RequestActionRequest = ActionProposal
+
+export type RequestActionResult = {
+  action: ActionRecord
+  status: ActionStatus
+  output_artifact_ids: ArtifactId[]
+  approval_request_artifact_id?: ArtifactId | undefined
+  approval_request?: ApprovalRequest | undefined
+}
+
+export type CheckActionStatusRequest = {
+  action_id: string
+}
+
+export type CheckActionStatusResult = {
+  action: ActionRecord
+  approval_request?: ApprovalRequest | undefined
+}
+
 // ---------------------------------------------------------------------------
 // Runtime package CLI types
 //

@@ -25,17 +25,28 @@ import type {
   ActionProposal,
   ActionRecord,
   ActionStatus,
+  ArtifactAdapter,
   ArtifactMetadata,
+  ArtifactRecord,
   ApprovalRequest,
+  CheckActionStatusRequest,
+  CheckActionStatusResult,
   GraphDef,
   JsonObject,
+  JsonValue,
   Persona,
   PersonaFile,
   PersonaRef,
+  ReadArtifactRequest,
+  ReadArtifactResult,
   ResolvedActionProposal,
+  RequestActionRequest,
+  RequestActionResult,
   Skill,
   Task,
   TaskQuery,
+  WriteDraftArtifactRequest,
+  WriteDraftArtifactResult,
 } from "@tnezdev/agentic"
 import type {
   AgenticRuntimePackage,
@@ -143,7 +154,9 @@ export type LocalApprovalRequestArtifactInput = {
 export type LocalActionGatewayStore<TArtifact extends LocalActionGatewayArtifact> = {
   nextId(prefix: string): string
   recordAction(input: Omit<ActionRecord, "created_at" | "completed_at">): Promise<ActionRecord>
+  readAction?(actionId: string): Promise<ActionRecord | undefined>
   writeApprovalRequest(input: LocalApprovalRequestArtifactInput): Promise<TArtifact>
+  readApprovalRequest?(actionId: string): Promise<ApprovalRequest | undefined>
 }
 
 export type LocalActionExecutionResult<TArtifact extends LocalActionGatewayArtifact> = ActionExecutionResult & {
@@ -164,12 +177,128 @@ export type LocalActionGatewayOptions = {
   approvalExpiresAt?: () => string
 }
 
+export type LocalArtifactPort<TReadArtifact = ArtifactMetadata, TWriteArtifact = ArtifactRecord> = {
+  readArtifact(input: ReadArtifactRequest): Promise<ReadArtifactResult<TReadArtifact>>
+  writeDraftArtifact(input: WriteDraftArtifactRequest): Promise<WriteDraftArtifactResult<TWriteArtifact>>
+}
+
+export type LocalAgenticPortsOptions<TArtifact extends LocalActionGatewayArtifact> = {
+  handlers?: Partial<Record<string, LocalActionHandler<TArtifact>>> | undefined
+}
+
+export function createFilesystemArtifactPort(
+  artifacts: ArtifactAdapter,
+): LocalArtifactPort<ArtifactMetadata, ArtifactRecord> {
+  return {
+    async readArtifact(input) {
+      const artifact = await artifacts.inspect(input.artifact_id)
+      return {
+        artifact,
+        body: await artifacts.read(input.artifact_id, { version: input.version }),
+      }
+    },
+    async writeDraftArtifact(input) {
+      const body = artifactPortBodyToString(input.body)
+      if (input.artifact_id !== undefined) {
+        const mode = input.mode ?? "iterate"
+        if (mode !== "iterate" && mode !== "replace") {
+          throw new Error('writeDraftArtifact mode must be "iterate" or "replace".')
+        }
+        return {
+          artifact: await artifacts.write(input.artifact_id, { body, mode }),
+        }
+      }
+
+      const type = requiredPortString(input.type, "type")
+      const title = requiredPortString(input.title, "title")
+      const createInput: {
+        type: string
+        title: string
+        body: string
+        tags?: string[] | undefined
+        derived_from?: string | undefined
+      } = { type, title, body }
+      if (input.tags !== undefined) createInput.tags = input.tags
+      if (input.derived_from !== undefined) createInput.derived_from = input.derived_from
+      return {
+        artifact: await artifacts.create(createInput),
+      }
+    },
+  }
+}
+
+export class LocalAgenticPorts<
+  TActionArtifact extends LocalActionGatewayArtifact,
+  TReadArtifact = ArtifactMetadata,
+  TWriteArtifact = ArtifactRecord,
+> {
+  constructor(
+    readonly gateway: LocalActionGateway<TActionArtifact>,
+    readonly artifacts: LocalArtifactPort<TReadArtifact, TWriteArtifact>,
+    readonly options: LocalAgenticPortsOptions<TActionArtifact> = {},
+  ) {}
+
+  async readArtifact(input: ReadArtifactRequest): Promise<ReadArtifactResult<TReadArtifact>> {
+    return this.artifacts.readArtifact(input)
+  }
+
+  async writeDraftArtifact(
+    input: WriteDraftArtifactRequest,
+  ): Promise<WriteDraftArtifactResult<TWriteArtifact>> {
+    return this.artifacts.writeDraftArtifact(input)
+  }
+
+  async requestAction(input: RequestActionRequest): Promise<RequestActionResult> {
+    return this.gateway.requestAction(input, this.options.handlers?.[input.type])
+  }
+
+  async checkActionStatus(input: CheckActionStatusRequest): Promise<CheckActionStatusResult> {
+    return this.gateway.checkActionStatus(input)
+  }
+}
+
 export class LocalActionGateway<TArtifact extends LocalActionGatewayArtifact> {
+  #actions = new Map<string, ActionRecord>()
+  #approvalRequests = new Map<string, ApprovalRequest>()
+
   constructor(
     readonly declarations: LocalActionGatewayDeclarations,
     readonly store: LocalActionGatewayStore<TArtifact>,
     readonly options: LocalActionGatewayOptions = {},
   ) {}
+
+  async requestAction(
+    proposal: RequestActionRequest,
+    execute?: LocalActionHandler<TArtifact> | undefined,
+  ): Promise<RequestActionResult> {
+    const result = await this.submit(proposal, execute)
+    const output: RequestActionResult = {
+      action: result.action,
+      status: result.action.status,
+      output_artifact_ids: result.action.output_artifact_ids ?? [],
+    }
+    if (result.approval_request_artifact !== undefined) {
+      output.approval_request_artifact_id = result.approval_request_artifact.id
+    }
+    const approvalRequest = await this.readApprovalRequest(result.action.id)
+    if (approvalRequest !== undefined) output.approval_request = approvalRequest
+    return output
+  }
+
+  async checkActionStatus(input: CheckActionStatusRequest): Promise<CheckActionStatusResult> {
+    const storedAction = this.store.readAction === undefined
+      ? undefined
+      : await this.store.readAction(input.action_id)
+    const action = storedAction ?? this.#actions.get(input.action_id)
+    if (action === undefined) {
+      throw new Error(`Action not found: ${input.action_id}`)
+    }
+
+    const output: CheckActionStatusResult = { action }
+    const approvalRequest = await this.readApprovalRequest(input.action_id)
+    if (approvalRequest !== undefined) output.approval_request = approvalRequest
+    return output
+  }
 
   async submit(
     proposal: ActionProposal,
@@ -255,6 +384,7 @@ export class LocalActionGateway<TArtifact extends LocalActionGatewayArtifact> {
       approver_rule: policy.required_approval,
       expires_at: this.options.approvalExpiresAt?.() ?? isoInHours(24),
     })
+    this.#approvalRequests.set(proposal.id, approvalRequest)
     const approvalProposal: ActionProposal = {
       type: "approval.request",
       principal: "service:agentic-runtime",
@@ -312,8 +442,27 @@ export class LocalActionGateway<TArtifact extends LocalActionGatewayArtifact> {
     if (proposal.effects.length > 0) input.effects = proposal.effects
     if (payload !== undefined) input.payload = payload
 
-    return this.store.recordAction(input)
+    const action = await this.store.recordAction(input)
+    this.#actions.set(action.id, action)
+    return action
   }
+
+  private async readApprovalRequest(actionId: string): Promise<ApprovalRequest | undefined> {
+    const stored = this.store.readApprovalRequest === undefined
+      ? undefined
+      : await this.store.readApprovalRequest(actionId)
+    return stored ?? this.#approvalRequests.get(actionId)
+  }
+}
+
+function artifactPortBodyToString(body: JsonValue): string {
+  if (typeof body === "string") return body
+  return `${JSON.stringify(body, null, 2)}\n`
+}
+
+function requiredPortString(value: string | undefined, field: string): string {
+  if (typeof value === "string" && value.trim() !== "") return value
+  throw new Error(`writeDraftArtifact requires ${field} when artifact_id is omitted.`)
 }
 
 function encodeTime(now: number, len: number): string {

@@ -9,9 +9,19 @@ import type {
   ActionRecord,
   JsonObject,
   JsonValue,
+  ReadArtifactRequest,
+  ReadArtifactResult,
+  RequestActionResult,
+  WriteDraftArtifactRequest,
+  WriteDraftArtifactResult,
 } from "../../packages/agentic/src/index.ts"
 import { parseYaml } from "../../packages/agentic/src/workflow/yaml.ts"
-import { LocalActionGateway, type LocalActionGatewayDeclarations } from "../../packages/agentic-runtime-local/src/index.ts"
+import {
+  LocalActionGateway,
+  LocalAgenticPorts,
+  type LocalActionGatewayDeclarations,
+  type LocalArtifactPort,
+} from "../../packages/agentic-runtime-local/src/index.ts"
 
 type BundleRef = {
   id: string
@@ -96,6 +106,8 @@ type DemoResult = {
   actions: Pick<ActionRecord, "id" | "type" | "status" | "capability">[]
   artifacts: Pick<ArtifactRecord, "id" | "type" | "title" | "status">[]
 }
+
+type DemoAgenticPorts = LocalAgenticPorts<ArtifactRecord, ArtifactRecord, ArtifactRecord>
 
 const EXAMPLE_ROOT = dirname(fileURLToPath(import.meta.url))
 const BUNDLE_ROOT = join(EXAMPLE_ROOT, ".agentic")
@@ -227,6 +239,10 @@ function displayPath(path: string): string {
   return relative(process.cwd(), path) || "."
 }
 
+function artifactIdPrefix(type: string): string {
+  return `art_${type.replace(/[^a-z0-9]+/gi, "_").replace(/^_|_$/g, "")}`
+}
+
 class DemoRuntime {
   readonly runId: string
   readonly stateDir: string
@@ -262,16 +278,65 @@ class DemoRuntime {
     return `${prefix}_${String(this.#sequence).padStart(4, "0")}`
   }
 
-  async writeArtifact(input: Omit<ArtifactRecord, "version" | "finalized" | "created_at">): Promise<ArtifactRecord> {
+  async writeArtifact(
+    input: Omit<ArtifactRecord, "version" | "finalized" | "created_at"> & { finalized?: boolean | undefined },
+  ): Promise<ArtifactRecord> {
     const artifact: ArtifactRecord = {
       ...input,
       version: 1,
-      finalized: true,
+      finalized: input.finalized ?? true,
       created_at: new Date().toISOString(),
     }
     this.artifacts.push(artifact)
     await writeJson(join(this.artifactDir, `${artifact.id}.json`), artifact)
     return artifact
+  }
+
+  async readArtifact(input: ReadArtifactRequest): Promise<ReadArtifactResult<ArtifactRecord>> {
+    const artifact = this.artifacts.find((entry) => entry.id === input.artifact_id)
+    if (artifact === undefined) throw new Error(`Artifact not found: ${input.artifact_id}`)
+    if (input.version !== undefined && input.version !== artifact.version) {
+      throw new Error(`Artifact ${input.artifact_id} version ${input.version} not found`)
+    }
+    return { artifact, body: artifact.body }
+  }
+
+  async writeDraftArtifact(
+    input: WriteDraftArtifactRequest,
+  ): Promise<WriteDraftArtifactResult<ArtifactRecord>> {
+    if (input.artifact_id !== undefined) {
+      const existing = this.artifacts.find((entry) => entry.id === input.artifact_id)
+      if (existing === undefined) throw new Error(`Artifact not found: ${input.artifact_id}`)
+      if (existing.finalized) throw new Error(`Artifact ${input.artifact_id} is finalized and cannot be written`)
+      const mode = input.mode ?? "iterate"
+      if (mode !== "iterate" && mode !== "replace") {
+        throw new Error('writeDraftArtifact mode must be "iterate" or "replace".')
+      }
+      existing.body = objectValue(input.body)
+      if (mode === "iterate") existing.version += 1
+      await writeJson(join(this.artifactDir, `${existing.id}.json`), existing)
+      return { artifact: existing }
+    }
+
+    const type = stringValue(input.type)
+    const title = stringValue(input.title)
+    if (type === undefined) throw new Error("writeDraftArtifact requires type when artifact_id is omitted.")
+    if (title === undefined) throw new Error("writeDraftArtifact requires title when artifact_id is omitted.")
+    const body = objectValue(input.body)
+    const draft: Omit<ArtifactRecord, "version" | "finalized" | "created_at"> & { finalized?: boolean | undefined } = {
+      id: this.nextId(artifactIdPrefix(type)),
+      type,
+      title,
+      status: "draft",
+      data_class: stringValue(body.data_class) ?? "unknown",
+      tags: input.tags ?? [],
+      body,
+      created_by_action_id: "port:writeDraftArtifact",
+      finalized: false,
+    }
+    if (input.derived_from !== undefined) draft.derived_from = [input.derived_from]
+    const artifact = await this.writeArtifact(draft)
+    return { artifact }
   }
 
   async recordAction(input: Omit<ActionRecord, "created_at" | "completed_at">): Promise<ActionRecord> {
@@ -415,6 +480,21 @@ function requireArtifact(artifacts: ArtifactRecord[], type: string): ArtifactRec
   return artifact
 }
 
+async function readOutputArtifacts(
+  ports: DemoAgenticPorts,
+  result: RequestActionResult,
+): Promise<ReadArtifactResult<ArtifactRecord>[]> {
+  const reads: ReadArtifactResult<ArtifactRecord>[] = []
+  for (const artifactId of result.output_artifact_ids) {
+    reads.push(await ports.readArtifact({ artifact_id: artifactId }))
+  }
+  return reads
+}
+
+function requireReadArtifact(reads: ReadArtifactResult<ArtifactRecord>[], type: string): ArtifactRecord {
+  return requireArtifact(reads.map((read) => read.artifact), type)
+}
+
 async function runCaseReviewDemo(options: { clean: boolean }): Promise<DemoResult> {
   const bundle = await loadBundle()
   const stateDir = resolve(EXAMPLE_ROOT, bundle.manifest.state.dir)
@@ -446,7 +526,60 @@ async function runCaseReviewDemo(options: { clean: boolean }): Promise<DemoResul
   const casePacket = objectValue(requestFixture.case_packet)
   const dataClass = stringValue(casePacket.data_class) ?? "unknown"
 
-  const receiveResult = await gateway.submit({
+  const artifactPort: LocalArtifactPort<ArtifactRecord, ArtifactRecord> = {
+    readArtifact: (input) => runtime.readArtifact(input),
+    writeDraftArtifact: (input) => runtime.writeDraftArtifact(input),
+  }
+  let packetArtifact: ArtifactRecord | undefined
+  let validationArtifact: ArtifactRecord | undefined
+  const ports = new LocalAgenticPorts(gateway, artifactPort, {
+    handlers: {
+      "surface.receive": async ({ action_id }) => {
+        const requestArtifact = await runtime.writeArtifact({
+          id: runtime.nextId("art_case_review_request"),
+          type: "case-review-request",
+          title: `Case review request ${stringValue(requestFixture.request_id) ?? "unknown"}`,
+          status: "received",
+          data_class: dataClass,
+          tags: ["case-review", "surface:case-intake-api"],
+          body: requestFixture,
+          source: { surface: surface.id, fixture: "case-request-001" },
+          created_by_action_id: action_id,
+        })
+        const packet = await runtime.writeArtifact({
+          id: runtime.nextId("art_case_packet"),
+          type: "case-packet",
+          title: `Case packet ${stringValue(casePacket.case_id) ?? "unknown"}`,
+          status: "intake_ready",
+          data_class: dataClass,
+          tags: ["case-review", "queued-for-validation"],
+          body: casePacket,
+          source: { surface: surface.id, fixture: "case-request-001" },
+          derived_from: [requestArtifact.id],
+          created_by_action_id: action_id,
+        })
+        return { artifacts: [requestArtifact, packet] }
+      },
+      "case.validate": async ({ action_id }) => {
+        if (packetArtifact === undefined) throw new Error("case.validate ran before case-packet was available.")
+        const validationResult = validateCase(packetArtifact.body, guidelineFixture)
+        const validation = await runtime.writeArtifact({
+          id: runtime.nextId("art_validation_result"),
+          type: "validation-result",
+          title: `Validation result for ${stringValue(casePacket.case_id) ?? packetArtifact.id}`,
+          status: stringValue(validationResult.status) ?? "unknown",
+          data_class: dataClass,
+          tags: ["case-review", "validation", `status:${stringValue(validationResult.status) ?? "unknown"}`],
+          body: validationResult,
+          derived_from: [packetArtifact.id],
+          created_by_action_id: action_id,
+        })
+        return { artifacts: [validation] }
+      },
+    },
+  })
+
+  const receiveResult = await ports.requestAction({
     type: "surface.receive",
     principal: stringValue(surface.principal) ?? "service:demo-api",
     data_class: dataClass,
@@ -455,36 +588,12 @@ async function runCaseReviewDemo(options: { clean: boolean }): Promise<DemoResul
       route: stringValue(surface.route) ?? "unknown",
       fixture: "case-request-001",
     },
-  }, async ({ action_id }) => {
-    const requestArtifact = await runtime.writeArtifact({
-      id: runtime.nextId("art_case_review_request"),
-      type: "case-review-request",
-      title: `Case review request ${stringValue(requestFixture.request_id) ?? "unknown"}`,
-      status: "received",
-      data_class: dataClass,
-      tags: ["case-review", "surface:case-intake-api"],
-      body: requestFixture,
-      source: { surface: surface.id, fixture: "case-request-001" },
-      created_by_action_id: action_id,
-    })
-    const packetArtifact = await runtime.writeArtifact({
-      id: runtime.nextId("art_case_packet"),
-      type: "case-packet",
-      title: `Case packet ${stringValue(casePacket.case_id) ?? "unknown"}`,
-      status: "intake_ready",
-      data_class: dataClass,
-      tags: ["case-review", "queued-for-validation"],
-      body: casePacket,
-      source: { surface: surface.id, fixture: "case-request-001" },
-      derived_from: [requestArtifact.id],
-      created_by_action_id: action_id,
-    })
-    return { artifacts: [requestArtifact, packetArtifact] }
   })
-  requireArtifact(receiveResult.artifacts, "case-review-request")
-  const packetArtifact = requireArtifact(receiveResult.artifacts, "case-packet")
+  const receivedArtifacts = await readOutputArtifacts(ports, receiveResult)
+  requireReadArtifact(receivedArtifacts, "case-review-request")
+  packetArtifact = requireReadArtifact(receivedArtifacts, "case-packet")
 
-  await gateway.submit({
+  await ports.requestAction({
     type: "schedule.tick",
     principal: stringValue(schedule.principal) ?? "service:nightly-scheduler",
     data_class: dataClass,
@@ -496,7 +605,7 @@ async function runCaseReviewDemo(options: { clean: boolean }): Promise<DemoResul
     },
   })
 
-  const validateResult = await gateway.submit({
+  const validateResult = await ports.requestAction({
     type: "case.validate",
     principal: "agent:case-reviewer",
     data_class: dataClass,
@@ -504,27 +613,13 @@ async function runCaseReviewDemo(options: { clean: boolean }): Promise<DemoResul
     payload: {
       guideline_fixture: "guideline-excerpt",
     },
-  }, async ({ action_id }) => {
-    const validationResult = validateCase(packetArtifact.body, guidelineFixture)
-    const validationArtifact = await runtime.writeArtifact({
-      id: runtime.nextId("art_validation_result"),
-      type: "validation-result",
-      title: `Validation result for ${stringValue(casePacket.case_id) ?? packetArtifact.id}`,
-      status: stringValue(validationResult.status) ?? "unknown",
-      data_class: dataClass,
-      tags: ["case-review", "validation", `status:${stringValue(validationResult.status) ?? "unknown"}`],
-      body: validationResult,
-      derived_from: [packetArtifact.id],
-      created_by_action_id: action_id,
-    })
-    return { artifacts: [validationArtifact] }
   })
-  if (validateResult.action.status !== "completed") {
+  if (validateResult.status !== "completed") {
     throw new Error(validateResult.action.policy?.reason ?? "Case validation was not allowed.")
   }
-  const validationArtifact = requireArtifact(validateResult.artifacts, "validation-result")
+  validationArtifact = requireReadArtifact(await readOutputArtifacts(ports, validateResult), "validation-result")
 
-  await gateway.submit({
+  await ports.requestAction({
     type: "hook.run",
     principal: "service:agentic-runtime",
     data_class: dataClass,
@@ -543,16 +638,21 @@ async function runCaseReviewDemo(options: { clean: boolean }): Promise<DemoResul
     artifact_ids: [packetArtifact.id, validationArtifact.id],
     message: "Synthetic validation findings are ready for reviewer handoff.",
   }
-  const handoffResult = await gateway.submit({
+  const handoffResult = await ports.requestAction({
     type: "external.handoff",
     principal: "agent:case-reviewer",
     data_class: dataClass,
     input_artifact_ids: [packetArtifact.id, validationArtifact.id],
     payload: handoffPayload,
   })
-  const approvalRequestArtifact = handoffResult.approval_request_artifact
-  if (handoffResult.action.status !== "approval_required" || approvalRequestArtifact === undefined) {
+  const handoffStatus = await ports.checkActionStatus({ action_id: handoffResult.action.id })
+  const approvalRequestArtifactId = handoffResult.approval_request_artifact_id
+  if (handoffStatus.action.status !== "approval_required" || approvalRequestArtifactId === undefined) {
     throw new Error("Demo expected handoff.release to require approval.")
+  }
+  const approvalRequestArtifact = await ports.readArtifact({ artifact_id: approvalRequestArtifactId })
+  if (approvalRequestArtifact.artifact.type !== "approval-request") {
+    throw new Error("Demo expected an approval-request artifact.")
   }
 
   const latest: DemoResult = {
@@ -561,7 +661,7 @@ async function runCaseReviewDemo(options: { clean: boolean }): Promise<DemoResul
     summary_path: displayPath(runtime.summaryPath),
     latest_path: displayPath(runtime.latestPath),
     approval_required_action_id: handoffResult.action.id,
-    approval_request_artifact_id: approvalRequestArtifact.id,
+    approval_request_artifact_id: approvalRequestArtifact.artifact.id,
     actions: runtime.actions.map(summarizeAction),
     artifacts: runtime.artifacts.map((artifact) => ({
       id: artifact.id,

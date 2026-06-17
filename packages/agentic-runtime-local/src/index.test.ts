@@ -2,9 +2,15 @@ import { describe, it, expect, beforeEach, afterEach } from "bun:test"
 import { chmod, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises"
 import { dirname, join } from "node:path"
 import { tmpdir } from "node:os"
-import type { ActionRecord, ApprovalRequest } from "@tnezdev/agentic"
+import { FilesystemArtifactAdapter, type ActionRecord, type ApprovalRequest } from "@tnezdev/agentic"
 import type { RuntimeContext } from "@tnezdev/agentic/runtime"
-import { LocalActionGateway, runtime, type LocalActionGatewayStore } from "./index.js"
+import {
+  createFilesystemArtifactPort,
+  LocalActionGateway,
+  LocalAgenticPorts,
+  runtime,
+  type LocalActionGatewayStore,
+} from "./index.js"
 
 const TASK_ID = "01KTC500000000000000000001"
 const PROFILE_ARTIFACT_ID = "01KAC500000000000000000001"
@@ -310,13 +316,13 @@ describe("local action gateway", () => {
     data_boundary: { allowed_data_classes: ["synthetic_regulated_demo"] },
   }
 
-  it("records approval-required actions and exact approval request artifacts", async () => {
+  it("records approval-required requestAction results and exact approval request artifacts", async () => {
     const { actions, artifacts, store } = createGatewayStore()
     const gateway = new LocalActionGateway(declarations, store, {
       approvalExpiresAt: () => "2026-06-18T00:00:00.000Z",
     })
 
-    const result = await gateway.submit({
+    const result = await gateway.requestAction({
       type: "external.handoff",
       principal: "agent:case-reviewer",
       data_class: "synthetic_regulated_demo",
@@ -325,8 +331,15 @@ describe("local action gateway", () => {
     })
 
     expect(result.action.status).toBe("approval_required")
+    expect(result.status).toBe("approval_required")
     expect(result.action.digest).toHaveLength(64)
-    expect(result.approval_request_artifact?.type).toBe("approval-request")
+    expect(result.approval_request_artifact_id).toBe(artifacts[0]?.id)
+    expect(result.approval_request).toMatchObject({
+      action_id: result.action.id,
+      action_digest: result.action.digest,
+      capability: "handoff.release",
+      status: "pending",
+    })
     expect(actions.map((action) => action.type)).toEqual(["approval.request", "external.handoff"])
     expect(artifacts).toHaveLength(1)
     expect(artifacts[0]!.body).toMatchObject({
@@ -335,6 +348,44 @@ describe("local action gateway", () => {
       capability: "handoff.release",
       status: "pending",
     })
+
+    const status = await gateway.checkActionStatus({ action_id: result.action.id })
+    expect(status.action).toEqual(result.action)
+    expect(status.approval_request).toEqual(result.approval_request)
+  })
+
+  it("exposes action request and status through the local Agentic ports", async () => {
+    const { store } = createGatewayStore()
+    const gateway = new LocalActionGateway(declarations, store)
+    const ports = new LocalAgenticPorts(gateway, {
+      async readArtifact() {
+        throw new Error("not used")
+      },
+      async writeDraftArtifact() {
+        throw new Error("not used")
+      },
+    }, {
+      handlers: {
+        "case.validate": async () => ({
+          output_artifact_ids: ["art_validation_001"],
+          payload: { status: "passed" },
+        }),
+      },
+    })
+
+    const requested = await ports.requestAction({
+      type: "case.validate",
+      principal: "agent:case-reviewer",
+      data_class: "synthetic_regulated_demo",
+      input_artifact_ids: ["art_packet_001"],
+    })
+
+    expect(requested.status).toBe("completed")
+    expect(requested.output_artifact_ids).toEqual(["art_validation_001"])
+    expect(requested.action.payload).toEqual({ status: "passed" })
+
+    const status = await ports.checkActionStatus({ action_id: requested.action.id })
+    expect(status.action).toEqual(requested.action)
   })
 
   it("does not execute denied action handlers", async () => {
@@ -440,6 +491,35 @@ describe("local runtime package", () => {
       initialized: true,
       targets_dir_exists: true,
     })
+  })
+
+  it("reads and writes draft artifacts through the filesystem artifact port", async () => {
+    const artifacts = new FilesystemArtifactAdapter(tmpDir)
+    const { store } = createGatewayStore()
+    const gateway = new LocalActionGateway({ principals: [], actions: [] }, store)
+    const ports = new LocalAgenticPorts(gateway, createFilesystemArtifactPort(artifacts))
+
+    const created = await ports.writeDraftArtifact({
+      type: "brief",
+      title: "Draft Brief",
+      body: "# Draft Brief\n\nTBD.\n",
+      tags: ["draft"],
+    })
+    expect(created.artifact.finalized).toBe(false)
+    expect(created.artifact.version).toBe(1)
+
+    const read = await ports.readArtifact({ artifact_id: created.artifact.id })
+    expect(read.artifact.title).toBe("Draft Brief")
+    expect(read.body).toBe("# Draft Brief\n\nTBD.\n")
+
+    const updated = await ports.writeDraftArtifact({
+      artifact_id: created.artifact.id,
+      body: "# Draft Brief\n\nReady for review.\n",
+    })
+    expect(updated.artifact.version).toBe(2)
+
+    const reread = await ports.readArtifact({ artifact_id: created.artifact.id })
+    expect(reread.body).toBe("# Draft Brief\n\nReady for review.\n")
   })
 
   it("auto-initializes local runtime glue before running", async () => {

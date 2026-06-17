@@ -188,7 +188,7 @@ The runtime adapter should own enforcement:
 - Executing approved handlers in the appropriate sandbox or provider adapter.
 - Preventing raw artifact-write, external-write, shell, network, or secret-bearing tools from bypassing the gateway.
 
-End users should author declarations and handlers, not reimplement the security-critical membrane. If a host exposes direct effect tools to the model alongside `request_action`, the gateway is decorative rather than protective. Prefer narrow model-facing tools such as `read_artifact`, `request_action`, and `check_action_status`; keep effect execution inside runtime-owned handlers.
+End users should author declarations and handlers, not reimplement the security-critical membrane. If a host exposes direct effect tools to the model alongside the action gateway port, the gateway is decorative rather than protective. Prefer narrow Agentic ports for artifact reads/draft writes and action request/status; harnesses may bind those ports into model-facing tools, but effect execution should stay inside runtime-owned handlers.
 
 ## Capability
 
@@ -384,7 +384,7 @@ model proposes tool/action call
   -> result returns to harness
 ```
 
-In a deployed runtime, broad raw tools such as shell, file write, or direct network should not be exposed to the model unless the surrounding sandbox and policy make that safe. Prefer narrow tools such as `read_artifact`, `request_action`, and `check_action_status`.
+In a deployed runtime, broad raw tools such as shell, file write, or direct network should not be exposed to the model unless the surrounding sandbox and policy make that safe. Prefer narrow Agentic ports for artifact reads/draft writes and action request/status, then let the harness adapter decide how those ports appear to a model.
 
 ## Host Boundary
 
