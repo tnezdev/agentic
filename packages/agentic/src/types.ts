@@ -442,6 +442,79 @@ export type AgenticBundleManifest = {
 }
 
 // ---------------------------------------------------------------------------
+// Surface, schedule, and hook declaration types
+//
+// These are authored bundle declarations. They describe ingress/reaction points
+// and action proposals; runtimes still decide when to fire them and must route
+// every effect through ActionGatewayPort.requestAction.
+// ---------------------------------------------------------------------------
+
+export type ProposedActionRef = {
+  action: string
+  capability?: string | undefined
+  reason?: string | undefined
+}
+
+export type ActionProposalTemplate = ProposedActionRef & {
+  principal?: string | undefined
+  data_class?: string | undefined
+  input_artifact_ids?: string[] | undefined
+  payload?: JsonObject | undefined
+}
+
+export type SurfaceArtifactEmission = {
+  artifact: ArtifactType
+  status?: string | undefined
+  tags?: string[] | undefined
+}
+
+export type SurfaceDeclaration = {
+  id: string
+  kind?: string | undefined
+  surface: string
+  route?: string | undefined
+  principal: string
+  fixture?: string | undefined
+  emits?: SurfaceArtifactEmission[] | undefined
+  proposes: ActionProposalTemplate
+  notes?: string | undefined
+  metadata?: JsonObject | undefined
+}
+
+export type ScheduleArtifactSelector = {
+  artifact: ArtifactType
+  status?: string | undefined
+  tags?: string[] | undefined
+}
+
+export type ScheduleDeclaration = {
+  id: string
+  kind?: string | undefined
+  cron: string
+  timezone?: string | undefined
+  principal: string
+  selects?: ScheduleArtifactSelector | undefined
+  proposes: ActionProposalTemplate
+  notes?: string | undefined
+  metadata?: JsonObject | undefined
+}
+
+export type HookMatchDeclaration = {
+  "artifact.type": ArtifactType
+  "artifact.status"?: string | undefined
+}
+
+export type HookDeclaration = {
+  id: string
+  kind?: string | undefined
+  description?: string | undefined
+  on: HookMatchDeclaration
+  proposes: ActionProposalTemplate
+  policy_note?: string | undefined
+  metadata?: JsonObject | undefined
+}
+
+// ---------------------------------------------------------------------------
 // Action gateway types
 //
 // Action gateways are the portable policy membrane between agent requests and

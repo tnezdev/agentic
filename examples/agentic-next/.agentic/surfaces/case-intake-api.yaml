@@ -4,6 +4,8 @@ surface: api
 route: POST /cases
 principal: service:demo-api
 fixture: case-request-001
+proposes:
+  action: surface.receive
 emits:
   - artifact: case-review-request
     status: received

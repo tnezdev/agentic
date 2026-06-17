@@ -39,6 +39,14 @@ export type {
   AgenticBundleState,
   AgenticPrincipalDeclaration,
   AgenticBundleManifest,
+  ProposedActionRef,
+  ActionProposalTemplate,
+  SurfaceArtifactEmission,
+  SurfaceDeclaration,
+  ScheduleArtifactSelector,
+  ScheduleDeclaration,
+  HookMatchDeclaration,
+  HookDeclaration,
   JsonPrimitive,
   JsonValue,
   JsonObject,
@@ -211,6 +219,18 @@ export {
   loadAgenticBundleMarkdownSection,
   readAuthoredObject,
 } from "./bundle/filesystem.js"
+export type {
+  TriggerDeclarationReferences,
+  TriggerDeclarations,
+  TriggerDeclarationValidationError,
+  TriggerDeclarationValidationResult,
+} from "./bundle/triggers.js"
+export {
+  validateAgenticTriggerDeclarations,
+  validateSurfaceDeclaration,
+  validateScheduleDeclaration,
+  validateHookDeclaration,
+} from "./bundle/triggers.js"
 
 export type {
   ActionGatewayDeclarations,

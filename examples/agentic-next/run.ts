@@ -7,6 +7,8 @@ import type {
   ActionDeclaration,
   ActionIntegrationDeclaration,
   ActionRecord,
+  ArtifactDeclaration,
+  HookDeclaration,
   JsonObject,
   JsonValue,
   LoadedAgenticBundle as LoadedBundle,
@@ -14,11 +16,14 @@ import type {
   ReadArtifactRequest,
   ReadArtifactResult,
   RequestActionResult,
+  ScheduleDeclaration,
+  SurfaceDeclaration,
   WriteDraftArtifactRequest,
   WriteDraftArtifactResult,
 } from "../../packages/agentic/src/index.ts"
 import {
   loadAgenticBundle,
+  validateAgenticTriggerDeclarations,
   validateArtifactData,
   validateArtifactDeclaration,
 } from "../../packages/agentic/src/index.ts"
@@ -86,6 +91,21 @@ function assertValidArtifactDeclarations(bundle: LoadedBundle): void {
       const details = result.errors.map((error) => `${error.field}: ${error.message}`).join("; ")
       throw new Error(`Invalid artifact declaration ${artifact.id}: ${details}`)
     }
+  }
+}
+
+function assertValidTriggerDeclarations(bundle: LoadedBundle): void {
+  const result = validateAgenticTriggerDeclarations({
+    surfaces: bundle.surfaces.map((entry) => entry.data),
+    schedules: bundle.schedules.map((entry) => entry.data),
+    hooks: bundle.hooks.map((entry) => entry.data),
+    artifacts: bundle.artifacts.map((entry) => entry.data as unknown as ArtifactDeclaration),
+    actions: bundle.actions.map((entry) => entry.data as unknown as ActionDeclaration),
+    capabilities: bundle.capabilities.map((entry) => entry.data as unknown as ActionCapabilityDeclaration),
+  })
+  if (!result.valid) {
+    const details = result.errors.map((error) => `${error.field}: ${error.message}`).join("; ")
+    throw new Error(`Invalid trigger declarations: ${details}`)
   }
 }
 
@@ -393,6 +413,7 @@ function requireReadArtifact(reads: ReadArtifactResult<ArtifactRecord>[], type: 
 async function runCaseReviewDemo(options: { clean: boolean }): Promise<DemoResult> {
   const bundle = await loadBundle()
   assertValidArtifactDeclarations(bundle)
+  assertValidTriggerDeclarations(bundle)
   const stateDir = resolve(EXAMPLE_ROOT, bundle.manifest.state.dir)
   if (options.clean) await rm(stateDir, { recursive: true, force: true })
 
@@ -414,9 +435,9 @@ async function runCaseReviewDemo(options: { clean: boolean }): Promise<DemoResul
     }),
   })
 
-  const surface = findLoaded(bundle.surfaces, "case-intake-api", "surface").data
-  const schedule = findLoaded(bundle.schedules, "nightly-qc-sweep", "schedule").data
-  const hook = findLoaded(bundle.hooks, "validation-result.propose-handoff", "hook").data
+  const surface = findLoaded(bundle.surfaces, "case-intake-api", "surface").data as unknown as SurfaceDeclaration
+  const schedule = findLoaded(bundle.schedules, "nightly-qc-sweep", "schedule").data as unknown as ScheduleDeclaration
+  const hook = findLoaded(bundle.hooks, "validation-result.propose-handoff", "hook").data as unknown as HookDeclaration
   const requestFixture = findLoaded(bundle.fixtures, "case-request-001", "fixture").data
   const guidelineFixture = findLoaded(bundle.fixtures, "guideline-excerpt", "fixture").data
   const casePacket = objectValue(requestFixture.case_packet)
@@ -477,12 +498,13 @@ async function runCaseReviewDemo(options: { clean: boolean }): Promise<DemoResul
   })
 
   const receiveResult = await ports.requestAction({
-    type: "surface.receive",
-    principal: stringValue(surface.principal) ?? "service:demo-api",
-    data_class: dataClass,
-    surface: "case-intake-api",
+    type: surface.proposes.action,
+    principal: surface.proposes.principal ?? surface.principal,
+    data_class: surface.proposes.data_class ?? dataClass,
+    surface: surface.id,
+    ...(surface.proposes.capability === undefined ? {} : { capability: surface.proposes.capability }),
     payload: {
-      route: stringValue(surface.route) ?? "unknown",
+      route: surface.route ?? "unknown",
       fixture: "case-request-001",
     },
   })
@@ -503,9 +525,10 @@ async function runCaseReviewDemo(options: { clean: boolean }): Promise<DemoResul
   })
 
   const validateResult = await ports.requestAction({
-    type: "case.validate",
-    principal: "agent:case-reviewer",
-    data_class: dataClass,
+    type: schedule.proposes.action,
+    principal: schedule.proposes.principal ?? "agent:case-reviewer",
+    data_class: schedule.proposes.data_class ?? dataClass,
+    ...(schedule.proposes.capability === undefined ? {} : { capability: schedule.proposes.capability }),
     input_artifact_ids: [packetArtifact.id],
     payload: {
       guideline_fixture: "guideline-excerpt",
@@ -523,8 +546,8 @@ async function runCaseReviewDemo(options: { clean: boolean }): Promise<DemoResul
     hook: "validation-result.propose-handoff",
     input_artifact_ids: [validationArtifact.id],
     payload: {
-      trigger: objectValue(hook.on),
-      proposed_action: objectValue(hook.proposes).action ?? "external.handoff",
+      trigger: hook.on as unknown as JsonObject,
+      proposed_action: hook.proposes.action,
     },
   })
 
@@ -536,9 +559,10 @@ async function runCaseReviewDemo(options: { clean: boolean }): Promise<DemoResul
     message: "Synthetic validation findings are ready for reviewer handoff.",
   }
   const handoffResult = await ports.requestAction({
-    type: "external.handoff",
-    principal: "agent:case-reviewer",
-    data_class: dataClass,
+    type: hook.proposes.action,
+    principal: hook.proposes.principal ?? "agent:case-reviewer",
+    data_class: hook.proposes.data_class ?? dataClass,
+    ...(hook.proposes.capability === undefined ? {} : { capability: hook.proposes.capability }),
     input_artifact_ids: [packetArtifact.id, validationArtifact.id],
     payload: handoffPayload,
   })

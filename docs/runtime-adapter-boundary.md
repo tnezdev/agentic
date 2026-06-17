@@ -33,6 +33,12 @@ type AgenticPorts = ArtifactPort & ActionGatewayPort
 
 These are semantic ports, not model tools. A harness may expose them as tool names such as `read_artifact` or `request_action`, but that mapping belongs outside core Agentic.
 
+## Surfaces, Schedules, And Hooks
+
+Authored `SurfaceDeclaration`, `ScheduleDeclaration`, and `HookDeclaration` records describe when a runtime may propose work. They do not create routes, cron jobs, webhook receivers, queue entries, or hook workers in core Agentic.
+
+The shared `ActionProposalTemplate` names the proposed action and optional capability metadata. A runtime materializes that template into a concrete `ActionProposal` only when the trigger actually fires, binds runtime context such as principal, data class, and artifact ids, then calls `ActionGatewayPort.requestAction`. No surface, schedule, or hook declaration bypasses the gateway.
+
 ## Runtime Adapter Responsibilities
 
 A runtime adapter implementing these ports must:
