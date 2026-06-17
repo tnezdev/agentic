@@ -615,6 +615,80 @@ export function formatCapabilityValidate(result: CapabilityValidateResult): stri
 }
 
 // ---------------------------------------------------------------------------
+// Lifecycle formatters
+// ---------------------------------------------------------------------------
+
+export type AgenticValidateError = {
+  field: string
+  message: string
+}
+
+export type AgenticValidateCheck = {
+  name: "manifest" | "bundle_refs" | "artifacts" | "action_gateway" | "triggers"
+  status: "passed" | "failed"
+  count?: number | undefined
+  actions?: number | undefined
+  capabilities?: number | undefined
+  surfaces?: number | undefined
+  schedules?: number | undefined
+  hooks?: number | undefined
+}
+
+export type AgenticValidateResult = {
+  command: "validate"
+  valid: boolean
+  root: string
+  manifest_path: string | null
+  bundle: {
+    name: string
+    version: string
+    schema_version: string
+  } | null
+  checks: AgenticValidateCheck[]
+  errors: AgenticValidateError[]
+  warnings: AgenticValidateError[]
+}
+
+export function formatAgenticValidate(result: AgenticValidateResult): string {
+  const subject = result.bundle === null
+    ? result.root
+    : `${result.bundle.name}@${result.bundle.version}`
+  const lines = [`${subject}: ${result.valid ? "valid" : "invalid"}`, `root: ${result.root}`]
+
+  if (result.valid) {
+    lines.push("checks:")
+    lines.push(...result.checks.map((check) => `  - ${formatAgenticValidateCheck(check)}`))
+  } else {
+    lines.push("errors:")
+    if (result.errors.length === 0) {
+      lines.push("  - unknown validation failure")
+    } else {
+      lines.push(...result.errors.map((error) => `  - ${error.field}: ${error.message}`))
+    }
+  }
+
+  return lines.join("\n")
+}
+
+function formatAgenticValidateCheck(check: AgenticValidateCheck): string {
+  const label = check.name.replace(/_/g, " ")
+  if (check.name === "artifacts" && check.count !== undefined) {
+    return `${label}: ${check.status} (${check.count})`
+  }
+  if (check.name === "action_gateway") {
+    return `${label}: ${check.status} (${check.actions ?? 0} actions, ${check.capabilities ?? 0} capabilities)`
+  }
+  if (check.name === "triggers") {
+    return `${label}: ${check.status} (${check.surfaces ?? 0} ${plural("surface", check.surfaces ?? 0)}, ${check.schedules ?? 0} ${plural("schedule", check.schedules ?? 0)}, ${check.hooks ?? 0} ${plural("hook", check.hooks ?? 0)})`
+  }
+  return `${label}: ${check.status}`
+}
+
+function plural(word: string, count: number): string {
+  return count === 1 ? word : `${word}s`
+}
+
+// ---------------------------------------------------------------------------
 // Runtime formatters
 // ---------------------------------------------------------------------------
 

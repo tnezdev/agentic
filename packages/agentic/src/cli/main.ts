@@ -67,6 +67,7 @@ import {
   runtimeRunCommand,
   runtimeStatusCommand,
 } from "./commands/runtime.js"
+import { validateCommand } from "./commands/validate.js"
 
 type Parsed = {
   positional: string[]
@@ -106,6 +107,7 @@ function parseArgs(argv: string[]): Parsed {
 
 const commands: Record<string, Command> = {
   init: initCommand,
+  validate: validateCommand,
   "memory remember": rememberCommand,
   "memory recall": recallCommand,
   "memory reinforce": reinforceCommand,
@@ -161,6 +163,7 @@ const USAGE = `Usage: agentic <command> [args] [flags]
 Commands:
   init [--example second-brain]       Scaffold .agentic/ directory
   run [target]                        Run current workspace with default runtime
+  validate [path]                     Validate an Agentic bundle
 
   memory remember <content>           Store a new memory
   memory recall [query]               Query memories

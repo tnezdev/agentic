@@ -4,6 +4,8 @@ import { delimiter, join } from "node:path"
 import { tmpdir } from "node:os"
 
 const CLI = join(import.meta.dir, "main.ts")
+const REPO_ROOT = join(import.meta.dir, "../../../..")
+const AGENTIC_NEXT = join(REPO_ROOT, "examples", "agentic-next")
 
 async function run(
   ...args: string[]
@@ -122,6 +124,44 @@ async function writeRuntimeWorkspacePackage(packagesDir: string): Promise<void> 
   )
 }
 
+async function writeJson(path: string, value: unknown): Promise<void> {
+  await writeFile(path, `${JSON.stringify(value, null, 2)}\n`, "utf-8")
+}
+
+async function writeUnknownTriggerBundle(workspace: string): Promise<void> {
+  const bundleRoot = join(workspace, ".agentic")
+  await mkdir(join(bundleRoot, "schedules"), { recursive: true })
+  await writeJson(join(bundleRoot, "agentic.json"), {
+    schema_version: "agentic-next.example.v0",
+    name: "bad-demo",
+    version: "0.1.0",
+    description: "Bad demo bundle.",
+    state: { adapter: "filesystem", dir: ".agentic/.data" },
+    principals: [{ id: "service:test" }],
+    prompts: [],
+    skills: [],
+    artifacts: [],
+    actions: [],
+    capabilities: [],
+    hooks: [],
+    surfaces: [],
+    schedules: [{ id: "bad-schedule", path: "schedules/bad.json" }],
+    integrations: [],
+    policies: [],
+    deploy: [],
+    evals: [],
+    fixtures: [],
+  })
+  await writeJson(join(bundleRoot, "schedules", "bad.json"), {
+    id: "bad-schedule",
+    cron: "0 3 * * *",
+    principal: "service:test",
+    proposes: {
+      action: "missing.action",
+    },
+  })
+}
+
 describe("CLI", () => {
   let tmpDir: string
   let base: string[]
@@ -145,7 +185,99 @@ describe("CLI", () => {
     const { stdout, exitCode } = await run("--help")
     expect(exitCode).toBe(0)
     expect(stdout).toContain("Usage: agentic")
+    expect(stdout).toContain("validate [path]")
     expect(stdout).toContain("runtime list")
+  })
+
+  describe("validate", () => {
+    it("validates the agentic-next workspace path", async () => {
+      const result = (await runJson("validate", AGENTIC_NEXT)) as {
+        valid: boolean
+        root: string
+        bundle: { name: string; version: string; schema_version: string } | null
+        checks: Array<Record<string, unknown>>
+        errors: unknown[]
+      }
+
+      expect(result.valid).toBe(true)
+      expect(result.root).toBe(join(AGENTIC_NEXT, ".agentic"))
+      expect(result.bundle?.name).toBe("regulated-case-review")
+      expect(result.bundle?.version).toBe("0.1.0-experimental")
+      expect(result.bundle?.schema_version).toBe("agentic-next.example.v0")
+      expect(result.errors).toEqual([])
+      expect(result.checks.map((check) => check.name)).toEqual([
+        "manifest",
+        "bundle_refs",
+        "artifacts",
+        "action_gateway",
+        "triggers",
+      ])
+    })
+
+    it("validates a direct bundle root", async () => {
+      const bundleRoot = join(AGENTIC_NEXT, ".agentic")
+      const result = (await runJson("validate", bundleRoot)) as {
+        valid: boolean
+        root: string
+        manifest_path: string | null
+      }
+
+      expect(result.valid).toBe(true)
+      expect(result.root).toBe(bundleRoot)
+      expect(result.manifest_path).toBe(join(bundleRoot, "agentic.yaml"))
+    })
+
+    it("validates the base-dir workspace with no positional path", async () => {
+      const result = (await runJson(
+        "--base-dir",
+        AGENTIC_NEXT,
+        "validate",
+      )) as { valid: boolean; root: string }
+
+      expect(result.valid).toBe(true)
+      expect(result.root).toBe(join(AGENTIC_NEXT, ".agentic"))
+    })
+
+    it("exits 1 with a JSON envelope when the manifest is missing", async () => {
+      await mkdir(join(tmpDir, ".agentic"), { recursive: true })
+
+      const { stdout, exitCode } = await run("--json", ...base, "validate")
+      expect(exitCode).toBe(1)
+      const result = JSON.parse(stdout) as {
+        valid: boolean
+        root: string
+        manifest_path: string | null
+        bundle: null
+        checks: Array<{ name: string; status: string }>
+        errors: Array<{ field: string; message: string }>
+      }
+
+      expect(result.valid).toBe(false)
+      expect(result.root).toBe(join(tmpDir, ".agentic"))
+      expect(result.manifest_path).toBeNull()
+      expect(result.bundle).toBeNull()
+      expect(result.checks).toEqual([{ name: "manifest", status: "failed" }])
+      expect(result.errors[0]?.field).toBe("bundle")
+      expect(result.errors[0]?.message).toContain("Missing bundle manifest")
+    })
+
+    it("exits 1 and reports unknown trigger actions", async () => {
+      await writeUnknownTriggerBundle(tmpDir)
+
+      const { stdout, exitCode } = await run("--json", ...base, "validate")
+      expect(exitCode).toBe(1)
+      const result = JSON.parse(stdout) as {
+        valid: boolean
+        checks: Array<{ name: string; status: string }>
+        errors: Array<{ field: string; message: string }>
+      }
+      const triggerCheck = result.checks.find((check) => check.name === "triggers")
+
+      expect(result.valid).toBe(false)
+      expect(triggerCheck?.status).toBe("failed")
+      expect(result.errors.some((error) => error.field === "schedules[0].proposes.action")).toBe(true)
+      expect(result.errors.some((error) => error.message === "unknown action: missing.action")).toBe(true)
+    })
   })
 
   it("routes runtime help", async () => {
