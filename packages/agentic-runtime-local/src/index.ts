@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process"
-import { access, mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises"
+import { access, appendFile, mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises"
 import { hostname } from "node:os"
 import { join, relative, resolve } from "node:path"
 import {
@@ -160,6 +160,174 @@ export type LocalActionGatewayStore<TArtifact extends LocalActionGatewayArtifact
   readAction?(actionId: string): Promise<ActionRecord | undefined>
   writeApprovalRequest(input: LocalApprovalRequestArtifactInput): Promise<TArtifact>
   readApprovalRequest?(actionId: string): Promise<ApprovalRequest | undefined>
+}
+
+export type LocalBundleArtifactRecord = LocalActionGatewayArtifact & {
+  title: string
+  status: string
+  version: number
+  finalized: boolean
+  data_class: string
+  tags: string[]
+  body: JsonObject
+  source?: JsonObject | undefined
+  derived_from?: string[] | undefined
+  created_by_action_id: string
+  created_at: string
+}
+
+export type LocalBundleArtifactInput = Omit<
+  LocalBundleArtifactRecord,
+  "version" | "finalized" | "created_at"
+> & {
+  finalized?: boolean | undefined
+}
+
+export type LocalBundleRunLatest = {
+  run_id: string
+} & Record<string, unknown>
+
+export class LocalBundleRunStore {
+  readonly runDir: string
+  readonly artifactDir: string
+  readonly actionDir: string
+  readonly actionLogPath: string
+  readonly summaryPath: string
+  readonly latestPath: string
+  readonly actions: ActionRecord[] = []
+  readonly artifacts: LocalBundleArtifactRecord[] = []
+  #sequence = 0
+
+  constructor(readonly stateDir: string, readonly runId: string) {
+    this.runDir = join(stateDir, "runs", runId)
+    this.artifactDir = join(this.runDir, "artifacts")
+    this.actionDir = join(this.runDir, "actions")
+    this.actionLogPath = join(this.runDir, "actions.jsonl")
+    this.summaryPath = join(this.runDir, "summary.md")
+    this.latestPath = join(stateDir, "latest.json")
+  }
+
+  async init(): Promise<void> {
+    await mkdir(this.artifactDir, { recursive: true })
+    await mkdir(this.actionDir, { recursive: true })
+    await writeFile(this.actionLogPath, "", "utf-8")
+  }
+
+  nextId(prefix: string): string {
+    this.#sequence += 1
+    return `${prefix}_${String(this.#sequence).padStart(4, "0")}`
+  }
+
+  async writeArtifact(input: LocalBundleArtifactInput): Promise<LocalBundleArtifactRecord> {
+    const artifact: LocalBundleArtifactRecord = {
+      ...input,
+      version: 1,
+      finalized: input.finalized ?? true,
+      created_at: new Date().toISOString(),
+    }
+    this.rememberArtifact(artifact)
+    await writeJson(join(this.artifactDir, `${artifact.id}.json`), artifact)
+    return artifact
+  }
+
+  async readArtifact(input: ReadArtifactRequest): Promise<ReadArtifactResult<LocalBundleArtifactRecord>> {
+    const artifact = await this.requireArtifact(input.artifact_id)
+    if (input.version !== undefined && input.version !== artifact.version) {
+      throw new Error(`Artifact ${input.artifact_id} version ${input.version} not found`)
+    }
+    return { artifact, body: artifact.body }
+  }
+
+  async writeDraftArtifact(
+    input: WriteDraftArtifactRequest,
+  ): Promise<WriteDraftArtifactResult<LocalBundleArtifactRecord>> {
+    if (input.artifact_id !== undefined) {
+      const existing = await this.requireArtifact(input.artifact_id)
+      if (existing.finalized) throw new Error(`Artifact ${input.artifact_id} is finalized and cannot be written`)
+      const mode = input.mode ?? "iterate"
+      if (mode !== "iterate" && mode !== "replace") {
+        throw new Error('writeDraftArtifact mode must be "iterate" or "replace".')
+      }
+      existing.body = jsonObjectValue(input.body)
+      if (mode === "iterate") existing.version += 1
+      await writeJson(join(this.artifactDir, `${existing.id}.json`), existing)
+      return { artifact: existing }
+    }
+
+    const type = requiredPortString(input.type, "type")
+    const title = requiredPortString(input.title, "title")
+    const body = jsonObjectValue(input.body)
+    const draft: LocalBundleArtifactInput = {
+      id: this.nextId(bundleArtifactIdPrefix(type)),
+      type,
+      title,
+      status: "draft",
+      data_class: stringJsonValue(body.data_class) ?? "unknown",
+      tags: input.tags ?? [],
+      body,
+      created_by_action_id: "port:writeDraftArtifact",
+      finalized: false,
+    }
+    if (input.derived_from !== undefined) draft.derived_from = [input.derived_from]
+    return { artifact: await this.writeArtifact(draft) }
+  }
+
+  async recordAction(input: Omit<ActionRecord, "created_at" | "completed_at">): Promise<ActionRecord> {
+    const timestamp = new Date().toISOString()
+    const action: ActionRecord = {
+      ...input,
+      created_at: timestamp,
+      completed_at: timestamp,
+    }
+    this.actions.push(action)
+    await writeJson(join(this.actionDir, `${action.id}.json`), action)
+    await appendFile(this.actionLogPath, `${JSON.stringify(action)}\n`, "utf-8")
+    return action
+  }
+
+  async readAction(actionId: string): Promise<ActionRecord | undefined> {
+    const existing = this.actions.find((entry) => entry.id === actionId)
+    if (existing !== undefined) return existing
+    try {
+      const action = JSON.parse(await readFile(join(this.actionDir, `${actionId}.json`), "utf-8")) as ActionRecord
+      this.actions.push(action)
+      return action
+    } catch {
+      return undefined
+    }
+  }
+
+  async writeSummary(markdown: string, latest: LocalBundleRunLatest): Promise<void> {
+    await writeFile(this.summaryPath, markdown, "utf-8")
+    await writeJson(this.latestPath, latest)
+  }
+
+  private rememberArtifact(artifact: LocalBundleArtifactRecord): void {
+    const index = this.artifacts.findIndex((entry) => entry.id === artifact.id)
+    if (index === -1) {
+      this.artifacts.push(artifact)
+    } else {
+      this.artifacts[index] = artifact
+    }
+  }
+
+  private async requireArtifact(artifactId: string): Promise<LocalBundleArtifactRecord> {
+    const existing = this.artifacts.find((entry) => entry.id === artifactId)
+    if (existing !== undefined) return existing
+    try {
+      const artifact = JSON.parse(
+        await readFile(join(this.artifactDir, `${artifactId}.json`), "utf-8"),
+      ) as LocalBundleArtifactRecord
+      this.rememberArtifact(artifact)
+      return artifact
+    } catch {
+      throw new Error(`Artifact not found: ${artifactId}`)
+    }
+  }
+}
+
+export function createLocalBundleRunId(date = new Date()): string {
+  return `run-${date.toISOString().replace(/[:.]/g, "-")}`
 }
 
 export type LocalActionExecutionResult<TArtifact extends LocalActionGatewayArtifact> = ActionExecutionResult & {
@@ -454,6 +622,23 @@ export class LocalActionGateway<TArtifact extends LocalActionGatewayArtifact> im
       : await this.store.readApprovalRequest(actionId)
     return stored ?? this.#approvalRequests.get(actionId)
   }
+}
+
+async function writeJson(path: string, value: unknown): Promise<void> {
+  await writeFile(path, `${JSON.stringify(value, null, 2)}\n`, "utf-8")
+}
+
+function jsonObjectValue(value: JsonValue): JsonObject {
+  if (value !== null && typeof value === "object" && !Array.isArray(value)) return value
+  return {}
+}
+
+function stringJsonValue(value: JsonValue | undefined): string | undefined {
+  return typeof value === "string" ? value : undefined
+}
+
+function bundleArtifactIdPrefix(type: string): string {
+  return `art_${type.replace(/[^a-z0-9]+/gi, "_").replace(/^_|_$/g, "")}`
 }
 
 function artifactPortBodyToString(body: JsonValue): string {

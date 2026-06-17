@@ -1,4 +1,4 @@
-import { appendFile, mkdir, rm, writeFile } from "node:fs/promises"
+import { rm } from "node:fs/promises"
 import { dirname, join, relative, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import type {
@@ -13,13 +13,10 @@ import type {
   JsonValue,
   LoadedAgenticBundle,
   LoadedAgenticBundleData,
-  ReadArtifactRequest,
   ReadArtifactResult,
   RequestActionResult,
   ScheduleDeclaration,
   SurfaceDeclaration,
-  WriteDraftArtifactRequest,
-  WriteDraftArtifactResult,
 } from "../../packages/agentic/src/index.ts"
 import {
   loadAgenticBundle,
@@ -30,25 +27,14 @@ import {
 import {
   LocalActionGateway,
   LocalAgenticPorts,
+  LocalBundleRunStore,
+  createLocalBundleRunId,
+  type LocalBundleArtifactRecord,
   type LocalActionGatewayDeclarations,
   type LocalArtifactPort,
 } from "../../packages/agentic-runtime-local/src/index.ts"
 
-type ArtifactRecord = {
-  id: string
-  type: string
-  title: string
-  status: string
-  version: number
-  finalized: boolean
-  data_class: string
-  tags: string[]
-  body: JsonObject
-  source?: JsonObject
-  derived_from?: string[]
-  created_by_action_id: string
-  created_at: string
-}
+type ArtifactRecord = LocalBundleArtifactRecord
 
 type DemoResult = {
   run_id: string
@@ -65,10 +51,6 @@ type DemoAgenticPorts = LocalAgenticPorts<ArtifactRecord, ArtifactRecord, Artifa
 
 const EXAMPLE_ROOT = dirname(fileURLToPath(import.meta.url))
 const BUNDLE_ROOT = join(EXAMPLE_ROOT, ".agentic")
-
-async function writeJson(path: string, value: unknown): Promise<void> {
-  await writeFile(path, `${JSON.stringify(value, null, 2)}\n`, "utf-8")
-}
 
 async function loadBundle(): Promise<LoadedAgenticBundle> {
   return loadAgenticBundle(BUNDLE_ROOT)
@@ -154,130 +136,8 @@ function stringValue(value: JsonValue | undefined): string | undefined {
   return typeof value === "string" ? value : undefined
 }
 
-function safeTimestamp(date = new Date()): string {
-  return date.toISOString().replace(/[:.]/g, "-")
-}
-
 function displayPath(path: string): string {
   return relative(process.cwd(), path) || "."
-}
-
-function artifactIdPrefix(type: string): string {
-  return `art_${type.replace(/[^a-z0-9]+/gi, "_").replace(/^_|_$/g, "")}`
-}
-
-class DemoRuntime {
-  readonly runId: string
-  readonly stateDir: string
-  readonly runDir: string
-  readonly artifactDir: string
-  readonly actionDir: string
-  readonly actionLogPath: string
-  readonly summaryPath: string
-  readonly latestPath: string
-  readonly actions: ActionRecord[] = []
-  readonly artifacts: ArtifactRecord[] = []
-  #sequence = 0
-
-  constructor(stateDir: string, runId: string) {
-    this.runId = runId
-    this.stateDir = stateDir
-    this.runDir = join(stateDir, "runs", runId)
-    this.artifactDir = join(this.runDir, "artifacts")
-    this.actionDir = join(this.runDir, "actions")
-    this.actionLogPath = join(this.runDir, "actions.jsonl")
-    this.summaryPath = join(this.runDir, "summary.md")
-    this.latestPath = join(stateDir, "latest.json")
-  }
-
-  async init(): Promise<void> {
-    await mkdir(this.artifactDir, { recursive: true })
-    await mkdir(this.actionDir, { recursive: true })
-    await writeFile(this.actionLogPath, "", "utf-8")
-  }
-
-  nextId(prefix: string): string {
-    this.#sequence += 1
-    return `${prefix}_${String(this.#sequence).padStart(4, "0")}`
-  }
-
-  async writeArtifact(
-    input: Omit<ArtifactRecord, "version" | "finalized" | "created_at"> & { finalized?: boolean | undefined },
-  ): Promise<ArtifactRecord> {
-    const artifact: ArtifactRecord = {
-      ...input,
-      version: 1,
-      finalized: input.finalized ?? true,
-      created_at: new Date().toISOString(),
-    }
-    this.artifacts.push(artifact)
-    await writeJson(join(this.artifactDir, `${artifact.id}.json`), artifact)
-    return artifact
-  }
-
-  async readArtifact(input: ReadArtifactRequest): Promise<ReadArtifactResult<ArtifactRecord>> {
-    const artifact = this.artifacts.find((entry) => entry.id === input.artifact_id)
-    if (artifact === undefined) throw new Error(`Artifact not found: ${input.artifact_id}`)
-    if (input.version !== undefined && input.version !== artifact.version) {
-      throw new Error(`Artifact ${input.artifact_id} version ${input.version} not found`)
-    }
-    return { artifact, body: artifact.body }
-  }
-
-  async writeDraftArtifact(
-    input: WriteDraftArtifactRequest,
-  ): Promise<WriteDraftArtifactResult<ArtifactRecord>> {
-    if (input.artifact_id !== undefined) {
-      const existing = this.artifacts.find((entry) => entry.id === input.artifact_id)
-      if (existing === undefined) throw new Error(`Artifact not found: ${input.artifact_id}`)
-      if (existing.finalized) throw new Error(`Artifact ${input.artifact_id} is finalized and cannot be written`)
-      const mode = input.mode ?? "iterate"
-      if (mode !== "iterate" && mode !== "replace") {
-        throw new Error('writeDraftArtifact mode must be "iterate" or "replace".')
-      }
-      existing.body = objectValue(input.body)
-      if (mode === "iterate") existing.version += 1
-      await writeJson(join(this.artifactDir, `${existing.id}.json`), existing)
-      return { artifact: existing }
-    }
-
-    const type = stringValue(input.type)
-    const title = stringValue(input.title)
-    if (type === undefined) throw new Error("writeDraftArtifact requires type when artifact_id is omitted.")
-    if (title === undefined) throw new Error("writeDraftArtifact requires title when artifact_id is omitted.")
-    const body = objectValue(input.body)
-    const draft: Omit<ArtifactRecord, "version" | "finalized" | "created_at"> & { finalized?: boolean | undefined } = {
-      id: this.nextId(artifactIdPrefix(type)),
-      type,
-      title,
-      status: "draft",
-      data_class: stringValue(body.data_class) ?? "unknown",
-      tags: input.tags ?? [],
-      body,
-      created_by_action_id: "port:writeDraftArtifact",
-      finalized: false,
-    }
-    if (input.derived_from !== undefined) draft.derived_from = [input.derived_from]
-    const artifact = await this.writeArtifact(draft)
-    return { artifact }
-  }
-
-  async recordAction(input: Omit<ActionRecord, "created_at" | "completed_at">): Promise<ActionRecord> {
-    const action: ActionRecord = {
-      ...input,
-      created_at: new Date().toISOString(),
-      completed_at: new Date().toISOString(),
-    }
-    this.actions.push(action)
-    await writeJson(join(this.actionDir, `${action.id}.json`), action)
-    await appendFile(this.actionLogPath, `${JSON.stringify(action)}\n`, "utf-8")
-    return action
-  }
-
-  async writeSummary(markdown: string, latest: DemoResult): Promise<void> {
-    await writeFile(this.summaryPath, markdown, "utf-8")
-    await writeJson(this.latestPath, latest)
-  }
 }
 
 function validateCase(packet: JsonObject, guideline: JsonObject): JsonObject {
@@ -318,7 +178,7 @@ function validateCase(packet: JsonObject, guideline: JsonObject): JsonObject {
   }
 }
 
-function renderSummary(bundle: LoadedAgenticBundle, runtime: DemoRuntime, latest: DemoResult): string {
+function renderSummary(bundle: LoadedAgenticBundle, runtime: LocalBundleRunStore, latest: DemoResult): string {
   const inventoryRows = [
     ["prompts", bundle.prompts.map((entry) => entry.id)],
     ["skills", bundle.skills.map((entry) => entry.id)],
@@ -425,7 +285,7 @@ async function runCaseReviewDemo(options: { clean: boolean }): Promise<DemoResul
   const stateDir = resolve(EXAMPLE_ROOT, bundle.manifest.state.dir)
   if (options.clean) await rm(stateDir, { recursive: true, force: true })
 
-  const runtime = new DemoRuntime(stateDir, `run-${safeTimestamp()}`)
+  const runtime = new LocalBundleRunStore(stateDir, createLocalBundleRunId())
   await runtime.init()
   const gateway = new LocalActionGateway<ArtifactRecord>(gatewayDeclarations(bundle), {
     nextId: (prefix) => runtime.nextId(prefix),

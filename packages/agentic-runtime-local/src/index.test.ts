@@ -8,6 +8,7 @@ import {
   createFilesystemArtifactPort,
   LocalActionGateway,
   LocalAgenticPorts,
+  LocalBundleRunStore,
   runtime,
   type LocalActionGatewayStore,
 } from "./index.js"
@@ -408,6 +409,112 @@ describe("local action gateway", () => {
       code: "undeclared_principal",
     })
     expect(executed).toBe(false)
+  })
+})
+
+describe("local bundle run store", () => {
+  let tmpDir: string
+  let store: LocalBundleRunStore
+
+  beforeEach(async () => {
+    tmpDir = await mkdtemp(join(tmpdir(), "agentic-bundle-run-store-test-"))
+    store = new LocalBundleRunStore(join(tmpDir, ".agentic", ".data"), "run-test")
+  })
+
+  afterEach(async () => {
+    await rm(tmpDir, { recursive: true, force: true })
+  })
+
+  it("initializes the inspectable bundle run state layout", async () => {
+    await store.init()
+
+    expect(await readdir(store.runDir)).toContain("actions.jsonl")
+    expect(await readdir(store.runDir)).toContain("actions")
+    expect(await readdir(store.runDir)).toContain("artifacts")
+    expect(await readFile(store.actionLogPath, "utf-8")).toBe("")
+  })
+
+  it("writes artifact records and draft artifact updates", async () => {
+    await store.init()
+
+    const artifact = await store.writeArtifact({
+      id: "art_case_packet_0001",
+      type: "case-packet",
+      title: "Case Packet",
+      status: "intake_ready",
+      data_class: "synthetic_regulated_demo",
+      tags: ["case-review"],
+      body: { case_id: "case-001" },
+      created_by_action_id: "act_surface_receive_0001",
+    })
+    expect(artifact.version).toBe(1)
+    expect(artifact.finalized).toBe(true)
+    expect(typeof artifact.created_at).toBe("string")
+
+    const persisted = JSON.parse(
+      await readFile(join(store.artifactDir, "art_case_packet_0001.json"), "utf-8"),
+    )
+    expect(persisted).toMatchObject({
+      id: "art_case_packet_0001",
+      type: "case-packet",
+      title: "Case Packet",
+      body: { case_id: "case-001" },
+    })
+
+    const draft = await store.writeDraftArtifact({
+      type: "validation-result",
+      title: "Validation Result",
+      body: { data_class: "synthetic_regulated_demo", status: "draft" },
+      tags: ["validation"],
+    })
+    expect(draft.artifact.id).toBe("art_validation_result_0001")
+    expect(draft.artifact.finalized).toBe(false)
+
+    const updated = await store.writeDraftArtifact({
+      artifact_id: draft.artifact.id,
+      body: { data_class: "synthetic_regulated_demo", status: "ready" },
+    })
+    expect(updated.artifact.version).toBe(2)
+    expect((await store.readArtifact({ artifact_id: draft.artifact.id })).body).toEqual({
+      data_class: "synthetic_regulated_demo",
+      status: "ready",
+    })
+  })
+
+  it("records actions, summary markdown, and latest pointer", async () => {
+    await store.init()
+
+    const action = await store.recordAction({
+      id: "act_case_validate_0001",
+      type: "case.validate",
+      status: "completed",
+      principal: "agent:case-reviewer",
+      output_artifact_ids: ["art_validation_result_0001"],
+      payload: { status: "passed" },
+    })
+    expect(action.created_at).toBeString()
+    expect(action.completed_at).toBeString()
+    expect(await store.readAction(action.id)).toEqual(action)
+
+    const actionRecord = JSON.parse(
+      await readFile(join(store.actionDir, "act_case_validate_0001.json"), "utf-8"),
+    )
+    expect(actionRecord).toMatchObject({
+      id: "act_case_validate_0001",
+      type: "case.validate",
+      status: "completed",
+    })
+    expect(await readFile(store.actionLogPath, "utf-8")).toContain("act_case_validate_0001")
+
+    await store.writeSummary("# Summary\n", {
+      run_id: store.runId,
+      run_dir: store.runDir,
+    })
+    expect(await readFile(store.summaryPath, "utf-8")).toBe("# Summary\n")
+    expect(JSON.parse(await readFile(store.latestPath, "utf-8"))).toMatchObject({
+      run_id: "run-test",
+      run_dir: store.runDir,
+    })
   })
 })
 
