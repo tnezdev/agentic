@@ -11,8 +11,8 @@ import type {
   HookDeclaration,
   JsonObject,
   JsonValue,
-  LoadedAgenticBundle as LoadedBundle,
-  LoadedAgenticBundleData as LoadedData,
+  LoadedAgenticBundle,
+  LoadedAgenticBundleData,
   ReadArtifactRequest,
   ReadArtifactResult,
   RequestActionResult,
@@ -70,21 +70,29 @@ async function writeJson(path: string, value: unknown): Promise<void> {
   await writeFile(path, `${JSON.stringify(value, null, 2)}\n`, "utf-8")
 }
 
-async function loadBundle(): Promise<LoadedBundle> {
+async function loadBundle(): Promise<LoadedAgenticBundle> {
   return loadAgenticBundle(BUNDLE_ROOT)
 }
 
-function findLoaded(section: LoadedData[], id: string, kind: string): LoadedData {
+function findLoaded(section: LoadedAgenticBundleData[], id: string, kind: string): LoadedAgenticBundleData {
   const match = section.find((entry) => entry.id === id)
   if (match === undefined) throw new Error(`Missing ${kind} declaration: ${id}`)
   return match
 }
 
-function findOptional(section: LoadedData[], id: string): LoadedData | undefined {
+function findDeclaration<T>(section: LoadedAgenticBundleData[], id: string, kind: string): T {
+  return findLoaded(section, id, kind).data as unknown as T
+}
+
+function findOptional(section: LoadedAgenticBundleData[], id: string): LoadedAgenticBundleData | undefined {
   return section.find((entry) => entry.id === id)
 }
 
-function assertValidArtifactDeclarations(bundle: LoadedBundle): void {
+function declarationData<T>(section: LoadedAgenticBundleData[]): T[] {
+  return section.map((entry) => entry.data as unknown as T)
+}
+
+function assertValidArtifactDeclarations(bundle: LoadedAgenticBundle): void {
   for (const artifact of bundle.artifacts) {
     const result = validateArtifactDeclaration(artifact.data, `artifacts.${artifact.id}`)
     if (!result.valid) {
@@ -94,14 +102,14 @@ function assertValidArtifactDeclarations(bundle: LoadedBundle): void {
   }
 }
 
-function assertValidTriggerDeclarations(bundle: LoadedBundle): void {
+function assertValidTriggerDeclarations(bundle: LoadedAgenticBundle): void {
   const result = validateAgenticTriggerDeclarations({
     surfaces: bundle.surfaces.map((entry) => entry.data),
     schedules: bundle.schedules.map((entry) => entry.data),
     hooks: bundle.hooks.map((entry) => entry.data),
-    artifacts: bundle.artifacts.map((entry) => entry.data as unknown as ArtifactDeclaration),
-    actions: bundle.actions.map((entry) => entry.data as unknown as ActionDeclaration),
-    capabilities: bundle.capabilities.map((entry) => entry.data as unknown as ActionCapabilityDeclaration),
+    artifacts: declarationData<ArtifactDeclaration>(bundle.artifacts),
+    actions: declarationData<ActionDeclaration>(bundle.actions),
+    capabilities: declarationData<ActionCapabilityDeclaration>(bundle.capabilities),
   })
   if (!result.valid) {
     const details = result.errors.map((error) => `${error.field}: ${error.message}`).join("; ")
@@ -117,14 +125,14 @@ function assertValidArtifactData(value: JsonObject, label: string): void {
   }
 }
 
-function gatewayDeclarations(bundle: LoadedBundle): LocalActionGatewayDeclarations {
+function gatewayDeclarations(bundle: LoadedAgenticBundle): LocalActionGatewayDeclarations {
   const declarations: LocalActionGatewayDeclarations = {
     principals: bundle.manifest.principals
       .map((principal) => stringValue(principal.id))
       .filter((id): id is string => id !== undefined),
-    actions: bundle.actions.map((entry) => entry.data as unknown as ActionDeclaration),
-    capabilities: bundle.capabilities.map((entry) => entry.data as unknown as ActionCapabilityDeclaration),
-    integrations: bundle.integrations.map((entry) => entry.data as unknown as ActionIntegrationDeclaration),
+    actions: declarationData<ActionDeclaration>(bundle.actions),
+    capabilities: declarationData<ActionCapabilityDeclaration>(bundle.capabilities),
+    integrations: declarationData<ActionIntegrationDeclaration>(bundle.integrations),
   }
   const dataBoundary = findOptional(bundle.policies, "data-boundary")?.data
   if (dataBoundary !== undefined) {
@@ -310,7 +318,7 @@ function validateCase(packet: JsonObject, guideline: JsonObject): JsonObject {
   }
 }
 
-function renderSummary(bundle: LoadedBundle, runtime: DemoRuntime, latest: DemoResult): string {
+function renderSummary(bundle: LoadedAgenticBundle, runtime: DemoRuntime, latest: DemoResult): string {
   const inventoryRows = [
     ["prompts", bundle.prompts.map((entry) => entry.id)],
     ["skills", bundle.skills.map((entry) => entry.id)],
@@ -435,13 +443,14 @@ async function runCaseReviewDemo(options: { clean: boolean }): Promise<DemoResul
     }),
   })
 
-  const surface = findLoaded(bundle.surfaces, "case-intake-api", "surface").data as unknown as SurfaceDeclaration
-  const schedule = findLoaded(bundle.schedules, "nightly-qc-sweep", "schedule").data as unknown as ScheduleDeclaration
-  const hook = findLoaded(bundle.hooks, "validation-result.propose-handoff", "hook").data as unknown as HookDeclaration
-  const requestFixture = findLoaded(bundle.fixtures, "case-request-001", "fixture").data
-  const guidelineFixture = findLoaded(bundle.fixtures, "guideline-excerpt", "fixture").data
+  const surface = findDeclaration<SurfaceDeclaration>(bundle.surfaces, "case-intake-api", "surface")
+  const schedule = findDeclaration<ScheduleDeclaration>(bundle.schedules, "nightly-qc-sweep", "schedule")
+  const hook = findDeclaration<HookDeclaration>(bundle.hooks, "validation-result.propose-handoff", "hook")
+  const requestFixtureId = surface.fixture ?? "case-request-001"
+  const requestFixture = findDeclaration<JsonObject>(bundle.fixtures, requestFixtureId, "fixture")
+  const guidelineFixture = findDeclaration<JsonObject>(bundle.fixtures, "guideline-excerpt", "fixture")
   const casePacket = objectValue(requestFixture.case_packet)
-  assertValidArtifactData(casePacket, "fixtures.case-request-001.case_packet")
+  assertValidArtifactData(casePacket, `fixtures.${requestFixtureId}.case_packet`)
   const dataClass = stringValue(casePacket.data_class) ?? "unknown"
 
   const artifactPort: LocalArtifactPort<ArtifactRecord, ArtifactRecord> = {
@@ -459,9 +468,9 @@ async function runCaseReviewDemo(options: { clean: boolean }): Promise<DemoResul
           title: `Case review request ${stringValue(requestFixture.request_id) ?? "unknown"}`,
           status: "received",
           data_class: dataClass,
-          tags: ["case-review", "surface:case-intake-api"],
+          tags: ["case-review", `surface:${surface.id}`],
           body: requestFixture,
-          source: { surface: surface.id, fixture: "case-request-001" },
+          source: { surface: surface.id, fixture: requestFixtureId },
           created_by_action_id: action_id,
         })
         const packet = await runtime.writeArtifact({
@@ -472,7 +481,7 @@ async function runCaseReviewDemo(options: { clean: boolean }): Promise<DemoResul
           data_class: dataClass,
           tags: ["case-review", "queued-for-validation"],
           body: casePacket,
-          source: { surface: surface.id, fixture: "case-request-001" },
+          source: { surface: surface.id, fixture: requestFixtureId },
           derived_from: [requestArtifact.id],
           created_by_action_id: action_id,
         })
@@ -505,7 +514,7 @@ async function runCaseReviewDemo(options: { clean: boolean }): Promise<DemoResul
     ...(surface.proposes.capability === undefined ? {} : { capability: surface.proposes.capability }),
     payload: {
       route: surface.route ?? "unknown",
-      fixture: "case-request-001",
+      fixture: requestFixtureId,
     },
   })
   const receivedArtifacts = await readOutputArtifacts(ports, receiveResult)
@@ -514,12 +523,12 @@ async function runCaseReviewDemo(options: { clean: boolean }): Promise<DemoResul
 
   await ports.requestAction({
     type: "schedule.tick",
-    principal: stringValue(schedule.principal) ?? "service:nightly-scheduler",
+    principal: schedule.principal,
     data_class: dataClass,
-    schedule: "nightly-qc-sweep",
+    schedule: schedule.id,
     input_artifact_ids: [packetArtifact.id],
     payload: {
-      cron: stringValue(schedule.cron) ?? "unknown",
+      cron: schedule.cron,
       selected_artifacts: [packetArtifact.id],
     },
   })
@@ -543,7 +552,7 @@ async function runCaseReviewDemo(options: { clean: boolean }): Promise<DemoResul
     type: "hook.run",
     principal: "service:agentic-runtime",
     data_class: dataClass,
-    hook: "validation-result.propose-handoff",
+    hook: hook.id,
     input_artifact_ids: [validationArtifact.id],
     payload: {
       trigger: hook.on as unknown as JsonObject,
