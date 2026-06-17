@@ -17,6 +17,13 @@ required_fields:
   - laterality
   - report_text
   - attachments
+attachments:
+  required: true
+  roles:
+    - source-image
+  media_types:
+    - application/dicom
+    - image/png
 default_tags:
   - case-review
   - packet

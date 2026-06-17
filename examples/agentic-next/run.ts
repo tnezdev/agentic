@@ -15,6 +15,10 @@ import type {
   WriteDraftArtifactRequest,
   WriteDraftArtifactResult,
 } from "../../packages/agentic/src/index.ts"
+import {
+  validateArtifactData,
+  validateArtifactDeclaration,
+} from "../../packages/agentic/src/index.ts"
 import { parseYaml } from "../../packages/agentic/src/workflow/yaml.ts"
 import {
   LocalActionGateway,
@@ -200,6 +204,24 @@ function findLoaded(section: LoadedData[], id: string, kind: string): LoadedData
 
 function findOptional(section: LoadedData[], id: string): LoadedData | undefined {
   return section.find((entry) => entry.id === id)
+}
+
+function assertValidArtifactDeclarations(bundle: LoadedBundle): void {
+  for (const artifact of bundle.artifacts) {
+    const result = validateArtifactDeclaration(artifact.data, `artifacts.${artifact.id}`)
+    if (!result.valid) {
+      const details = result.errors.map((error) => `${error.field}: ${error.message}`).join("; ")
+      throw new Error(`Invalid artifact declaration ${artifact.id}: ${details}`)
+    }
+  }
+}
+
+function assertValidArtifactData(value: JsonObject, label: string): void {
+  const result = validateArtifactData(value, label)
+  if (!result.valid) {
+    const details = result.errors.map((error) => `${error.field}: ${error.message}`).join("; ")
+    throw new Error(`Invalid artifact data ${label}: ${details}`)
+  }
 }
 
 function gatewayDeclarations(bundle: LoadedBundle): LocalActionGatewayDeclarations {
@@ -497,6 +519,7 @@ function requireReadArtifact(reads: ReadArtifactResult<ArtifactRecord>[], type: 
 
 async function runCaseReviewDemo(options: { clean: boolean }): Promise<DemoResult> {
   const bundle = await loadBundle()
+  assertValidArtifactDeclarations(bundle)
   const stateDir = resolve(EXAMPLE_ROOT, bundle.manifest.state.dir)
   if (options.clean) await rm(stateDir, { recursive: true, force: true })
 
@@ -524,6 +547,7 @@ async function runCaseReviewDemo(options: { clean: boolean }): Promise<DemoResul
   const requestFixture = findLoaded(bundle.fixtures, "case-request-001", "fixture").data
   const guidelineFixture = findLoaded(bundle.fixtures, "guideline-excerpt", "fixture").data
   const casePacket = objectValue(requestFixture.case_packet)
+  assertValidArtifactData(casePacket, "fixtures.case-request-001.case_packet")
   const dataClass = stringValue(casePacket.data_class) ?? "unknown"
 
   const artifactPort: LocalArtifactPort<ArtifactRecord, ArtifactRecord> = {

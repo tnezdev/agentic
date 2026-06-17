@@ -24,10 +24,17 @@
     ],
     "attachments": [
       {
-        "id": "image-meta-001",
-        "kind": "dicom-metadata",
-        "view": "AP",
-        "laterality": "left"
+        "id": "att-left-knee-ap",
+        "role": "source-image",
+        "media_type": "application/dicom",
+        "ref": "runtime://fixtures/case-request-001/dicom/left-knee-ap.dcm",
+        "name": "left-knee-ap.dcm",
+        "size_bytes": 245760,
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "metadata": {
+          "view": "AP",
+          "laterality": "left"
+        }
       }
     ],
     "requested_review": "qc-before-release",

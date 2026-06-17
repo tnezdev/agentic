@@ -80,7 +80,7 @@ export type NodeType = "automated" | "manual"
  * routing hint, and `tags` aid indexing.
  */
 export type NodeArtifactDef = {
-  type: string
+  type: ArtifactType
   description?: string
   required?: boolean
   path?: string
@@ -128,7 +128,7 @@ export type NodeStatus =
   | "invalidated"
 
 export type Artifact = {
-  type: string
+  type: ArtifactType
   content: unknown
   produced_at: string
 }
@@ -544,7 +544,7 @@ export type WriteDraftArtifactMode = "iterate" | "replace"
 
 export type WriteDraftArtifactRequest = {
   artifact_id?: ArtifactId | undefined
-  type?: string | undefined
+  type?: ArtifactType | undefined
   title?: string | undefined
   body: JsonValue
   tags?: string[] | undefined
@@ -861,13 +861,57 @@ export type LifecycleEvent<TName extends LifecycleEventName = LifecycleEventName
 /** ULID-shaped identifier for an artifact. */
 export type ArtifactId = string
 
+/** Domain/application-specific artifact kind, e.g. `case-packet`. */
+export type ArtifactType = string
+
+/**
+ * Opaque reference to runtime-owned bytes attached to model-facing artifact
+ * data. `ref` is storage-adapter text; core does not interpret schemes,
+ * locations, signed URLs, or media-specific details.
+ */
+export type ArtifactAttachmentRef = {
+  id: string
+  role: string
+  media_type: string
+  ref: string
+  name?: string | undefined
+  size_bytes?: number | undefined
+  sha256?: string | undefined
+  metadata?: JsonObject | undefined
+}
+
+/** Small model-facing artifact data plus optional opaque attachment refs. */
+export type ArtifactData = {
+  [key: string]: JsonValue | ArtifactAttachmentRef[] | undefined
+  attachments?: ArtifactAttachmentRef[] | undefined
+}
+
+export type ArtifactAttachmentDeclaration = {
+  required?: boolean | undefined
+  roles?: string[] | undefined
+  media_types?: string[] | undefined
+}
+
+/** Authored artifact type declaration; runtime instances live elsewhere. */
+export type ArtifactDeclaration = {
+  id: ArtifactType
+  kind?: string | undefined
+  description?: string | undefined
+  data_classes?: string[] | undefined
+  statuses?: string[] | undefined
+  required_fields?: string[] | undefined
+  attachments?: ArtifactAttachmentDeclaration | undefined
+  default_tags?: string[] | undefined
+  metadata?: JsonObject | undefined
+}
+
 /**
  * The full persisted record for an artifact. `body_ref` is an
  * adapter-defined locator — a filesystem path, blob key, etc.
  */
 export type ArtifactRecord = {
   id: ArtifactId
-  type: string               // aligns with NodeArtifactDef.type from workflow nodes
+  type: ArtifactType         // aligns with NodeArtifactDef.type from workflow nodes
   title: string
   body_ref: string           // adapter-defined reference (FS path, blob key, etc.)
   version: number
@@ -890,7 +934,7 @@ export type ArtifactMetadata = ArtifactRecord & {
 /** Lightweight artifact reference — id + type + title only. */
 export type ArtifactRef = {
   id: ArtifactId
-  type: string
+  type: ArtifactType
   title: string
   version: number
   finalized: boolean
@@ -900,7 +944,7 @@ export type ArtifactRef = {
 
 /** Filter for listing artifacts. All fields are optional. */
 export type ArtifactQuery = {
-  type?: string | undefined
+  type?: ArtifactType | undefined
   tags?: string[] | undefined
   finalized?: boolean | undefined
 }

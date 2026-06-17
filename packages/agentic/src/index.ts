@@ -79,6 +79,11 @@ export type {
   WorkflowRunTransitionedOutput,
   WakeOutput,
   ArtifactId,
+  ArtifactType,
+  ArtifactAttachmentRef,
+  ArtifactData,
+  ArtifactAttachmentDeclaration,
+  ArtifactDeclaration,
   ArtifactRecord,
   ArtifactMetadata,
   ArtifactRef,
@@ -217,3 +222,12 @@ export { fireHook } from "./hooks/fire.js"
 
 export type { ArtifactAdapter, CreateArtifactInput, WriteArtifactInput } from "./artifact/adapter.js"
 export { FilesystemArtifactAdapter } from "./artifact/filesystem.js"
+export type {
+  ArtifactContractValidationError,
+  ArtifactContractValidationResult,
+} from "./artifact/contracts.js"
+export {
+  validateArtifactAttachmentRef,
+  validateArtifactData,
+  validateArtifactDeclaration,
+} from "./artifact/contracts.js"
