@@ -54,6 +54,8 @@ A runtime adapter implementing these ports must:
 
 The local package proves this shape with `LocalActionGateway`, `LocalArtifactPort`, and `LocalAgenticPorts` in `packages/agentic-runtime-local`.
 
+For the authored-vs-runtime filesystem split and JSON record mapping, see `docs/runtime-state-layout.md`.
+
 ## Harness Adapter Responsibilities
 
 A harness adapter may translate Agentic ports into model-facing tools, CLI commands, Pi SDK calls, MCP tools, or provider-specific function schemas. The harness owns:
