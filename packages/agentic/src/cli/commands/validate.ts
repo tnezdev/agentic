@@ -13,6 +13,7 @@ import type {
   ArtifactDeclaration,
 } from "../../types.js"
 import type { Command } from "../context.js"
+import { parseAgenticEvalDeclaration } from "../eval-declaration.js"
 import {
   formatAgenticValidate,
   type AgenticValidateCheck,
@@ -63,6 +64,7 @@ async function validateBundle(root: string): Promise<AgenticValidateResult> {
   appendArtifactValidation(result, bundle)
   appendActionGatewayValidation(result, bundle)
   appendTriggerValidation(result, bundle)
+  appendEvalValidation(result, bundle)
   result.valid = result.errors.length === 0
   return result
 }
@@ -136,6 +138,21 @@ function appendTriggerValidation(result: AgenticValidateResult, bundle: LoadedAg
     hooks: bundle.hooks.length,
   })
   appendErrors(result.errors, validation)
+}
+
+function appendEvalValidation(result: AgenticValidateResult, bundle: LoadedAgenticBundle): void {
+  const fixtureIds = new Set(bundle.fixtures.map((entry) => entry.id))
+  const validationErrors: AgenticValidateError[] = []
+  for (const entry of bundle.evals) {
+    const parsed = parseAgenticEvalDeclaration(entry, fixtureIds)
+    if (Array.isArray(parsed)) validationErrors.push(...parsed)
+  }
+  appendCheck(result, {
+    name: "evals",
+    status: validationErrors.length === 0 ? "passed" : "failed",
+    count: bundle.evals.length,
+  })
+  result.errors.push(...validationErrors)
 }
 
 function appendCheck(result: AgenticValidateResult, check: AgenticValidateCheck): void {

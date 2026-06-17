@@ -8,9 +8,10 @@ import {
   type LoadedAgenticBundleData,
   type LoadedAgenticBundleManifest,
 } from "../../bundle/filesystem.js"
-import type { JsonObject, JsonValue } from "../../types.js"
+import type { JsonObject } from "../../types.js"
 import { resolveBundleRoot, workspaceRootForBundleRoot } from "../bundle-root.js"
 import type { Command } from "../context.js"
+import { parseAgenticEvalDeclaration, type ParsedAgenticEvalDeclaration } from "../eval-declaration.js"
 import {
   formatAgenticEval,
   type AgenticEvalCaseResult,
@@ -19,17 +20,6 @@ import {
   type AgenticEvalResult,
 } from "../format.js"
 import { output } from "../output.js"
-
-type ParsedEvalDeclaration = {
-  id: string
-  fixture: string | null
-  expect: {
-    artifacts?: string[] | undefined
-    actions?: string[] | undefined
-    approval_required?: string | undefined
-    external_write_executed?: boolean | undefined
-  }
-}
 
 type SelectedRun = {
   runId: string
@@ -257,7 +247,7 @@ function evaluateDeclaration(
     }
   }
 
-  const parsed = parseEvalDeclaration(entry, fixtureIds)
+  const parsed = parseAgenticEvalDeclaration(entry, fixtureIds)
   if (Array.isArray(parsed)) {
     return { id, ok: false, fixture: null, checks: [], errors: parsed }
   }
@@ -273,55 +263,7 @@ function evaluateDeclaration(
   }
 }
 
-function parseEvalDeclaration(
-  entry: LoadedAgenticBundleData,
-  fixtureIds: Set<string>,
-): ParsedEvalDeclaration | AgenticEvalMessage[] {
-  const errors: AgenticEvalMessage[] = []
-  const data = entry.data
-  if (!isNonEmptyString(data.id)) {
-    errors.push({ field: `evals.${entry.id}.id`, message: "id must be a non-empty string" })
-  }
-  const expect = data.expect
-  if (!isJsonObject(expect)) {
-    errors.push({ field: `evals.${entry.id}.expect`, message: "expect must be an object" })
-  }
-
-  const fixture = data.fixture
-  if (fixture !== undefined && !isNonEmptyString(fixture)) {
-    errors.push({ field: `evals.${entry.id}.fixture`, message: "fixture must be a non-empty string" })
-  } else if (typeof fixture === "string" && !fixtureIds.has(fixture)) {
-    errors.push({ field: `evals.${entry.id}.fixture`, message: `unknown fixture: ${fixture}` })
-  }
-
-  if (!isJsonObject(expect)) return errors
-
-  const artifacts = optionalStringArray(expect.artifacts, `evals.${entry.id}.expect.artifacts`, errors)
-  const actions = optionalStringArray(expect.actions, `evals.${entry.id}.expect.actions`, errors)
-  const approvalRequired = optionalString(expect.approval_required, `evals.${entry.id}.expect.approval_required`, errors)
-  const externalWriteExecuted = optionalBoolean(expect.external_write_executed, `evals.${entry.id}.expect.external_write_executed`, errors)
-
-  if (externalWriteExecuted !== undefined && approvalRequired === undefined) {
-    errors.push({
-      field: `evals.${entry.id}.expect.external_write_executed`,
-      message: "external_write_executed requires approval_required",
-    })
-  }
-
-  if (errors.length > 0) return errors
-  const parsedExpect: ParsedEvalDeclaration["expect"] = {}
-  if (artifacts !== undefined) parsedExpect.artifacts = artifacts
-  if (actions !== undefined) parsedExpect.actions = actions
-  if (approvalRequired !== undefined) parsedExpect.approval_required = approvalRequired
-  if (externalWriteExecuted !== undefined) parsedExpect.external_write_executed = externalWriteExecuted
-  return {
-    id: entry.id,
-    fixture: typeof fixture === "string" ? fixture : null,
-    expect: parsedExpect,
-  }
-}
-
-function evaluateChecks(parsed: ParsedEvalDeclaration, records: RuntimeRecords): AgenticEvalCheck[] {
+function evaluateChecks(parsed: ParsedAgenticEvalDeclaration, records: RuntimeRecords): AgenticEvalCheck[] {
   const checks: AgenticEvalCheck[] = []
   const artifactTypes = uniqueStringValues(records.artifacts, "type")
   const actionTypes = uniqueStringValues(records.actions, "type")
@@ -437,45 +379,6 @@ async function maybeStat(path: string): Promise<Stats | null> {
   }
 }
 
-function optionalStringArray(
-  value: JsonValue | undefined,
-  field: string,
-  errors: AgenticEvalMessage[],
-): string[] | undefined {
-  if (value === undefined) return undefined
-  if (!Array.isArray(value) || !value.every(isNonEmptyString)) {
-    errors.push({ field, message: "must be an array of non-empty strings" })
-    return undefined
-  }
-  return value
-}
-
-function optionalString(
-  value: JsonValue | undefined,
-  field: string,
-  errors: AgenticEvalMessage[],
-): string | undefined {
-  if (value === undefined) return undefined
-  if (!isNonEmptyString(value)) {
-    errors.push({ field, message: "must be a non-empty string" })
-    return undefined
-  }
-  return value
-}
-
-function optionalBoolean(
-  value: JsonValue | undefined,
-  field: string,
-  errors: AgenticEvalMessage[],
-): boolean | undefined {
-  if (value === undefined) return undefined
-  if (typeof value !== "boolean") {
-    errors.push({ field, message: "must be a boolean" })
-    return undefined
-  }
-  return value
-}
-
 function uniqueStringValues(records: JsonObject[], field: string): string[] {
   return [...new Set(records.map((record) => record[field]).filter((value): value is string => typeof value === "string"))]
     .sort((a, b) => a.localeCompare(b))
@@ -483,10 +386,6 @@ function uniqueStringValues(records: JsonObject[], field: string): string[] {
 
 function isJsonObject(value: unknown): value is JsonObject {
   return value !== null && typeof value === "object" && !Array.isArray(value)
-}
-
-function isNonEmptyString(value: unknown): value is string {
-  return typeof value === "string" && value.trim() !== ""
 }
 
 function loadError(error: unknown, field: string): AgenticEvalMessage {

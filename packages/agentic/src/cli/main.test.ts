@@ -331,6 +331,7 @@ describe("CLI", () => {
         "artifacts",
         "action_gateway",
         "triggers",
+        "evals",
       ])
     })
 
@@ -397,6 +398,49 @@ describe("CLI", () => {
       expect(triggerCheck?.status).toBe("failed")
       expect(result.errors.some((error) => error.field === "schedules[0].proposes.action")).toBe(true)
       expect(result.errors.some((error) => error.message === "unknown action: missing.action")).toBe(true)
+    })
+
+    it("exits 1 and reports malformed eval declarations", async () => {
+      await writeMinimalEvalBundle(tmpDir, [
+        defaultEvalDeclaration({
+          expect: {
+            artifacts: "case-packet",
+            external_write_executed: false,
+          },
+        }),
+      ])
+
+      const { stdout, exitCode } = await run("--json", ...base, "validate")
+      expect(exitCode).toBe(1)
+      const result = JSON.parse(stdout) as {
+        valid: boolean
+        checks: Array<{ name: string; status: string; count?: number }>
+        errors: Array<{ field: string; message: string }>
+      }
+      const evalsCheck = result.checks.find((check) => check.name === "evals")
+
+      expect(result.valid).toBe(false)
+      expect(evalsCheck).toEqual({ name: "evals", status: "failed", count: 1 })
+      expect(result.errors.some((error) => error.field === "evals.smoke.expect.artifacts")).toBe(true)
+      expect(result.errors.some((error) => error.field === "evals.smoke.expect.external_write_executed")).toBe(true)
+    })
+
+    it("exits 1 and reports eval fixture refs missing from the manifest", async () => {
+      await writeMinimalEvalBundle(tmpDir, [defaultEvalDeclaration({ fixture: "missing-fixture" })])
+
+      const { stdout, exitCode } = await run("--json", ...base, "validate")
+      expect(exitCode).toBe(1)
+      const result = JSON.parse(stdout) as {
+        valid: boolean
+        checks: Array<{ name: string; status: string }>
+        errors: Array<{ field: string; message: string }>
+      }
+      const evalsCheck = result.checks.find((check) => check.name === "evals")
+
+      expect(result.valid).toBe(false)
+      expect(evalsCheck?.status).toBe("failed")
+      expect(result.errors.some((error) => error.field === "evals.smoke.fixture")).toBe(true)
+      expect(result.errors.some((error) => error.message === "unknown fixture: missing-fixture")).toBe(true)
     })
   })
 

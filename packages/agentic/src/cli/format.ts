@@ -626,7 +626,7 @@ export type AgenticValidateError = {
 }
 
 export type AgenticValidateCheck = {
-  name: "manifest" | "bundle_refs" | "artifacts" | "action_gateway" | "triggers"
+  name: "manifest" | "bundle_refs" | "artifacts" | "action_gateway" | "triggers" | "evals"
   status: "passed" | "failed"
   count?: number | undefined
   actions?: number | undefined
@@ -895,7 +895,7 @@ function formatAgenticInspectMessages(messages: AgenticInspectMessage[]): string
 
 function formatAgenticValidateCheck(check: AgenticValidateCheck): string {
   const label = check.name.replace(/_/g, " ")
-  if (check.name === "artifacts" && check.count !== undefined) {
+  if ((check.name === "artifacts" || check.name === "evals") && check.count !== undefined) {
     return `${label}: ${check.status} (${check.count})`
   }
   if (check.name === "action_gateway") {
