@@ -1,5 +1,5 @@
-import { appendFile, mkdir, readFile, rm, writeFile } from "node:fs/promises"
-import { dirname, extname, join, relative, resolve } from "node:path"
+import { appendFile, mkdir, rm, writeFile } from "node:fs/promises"
+import { dirname, join, relative, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import type {
   ActionCapabilityDeclaration,
@@ -9,6 +9,8 @@ import type {
   ActionRecord,
   JsonObject,
   JsonValue,
+  LoadedAgenticBundle as LoadedBundle,
+  LoadedAgenticBundleData as LoadedData,
   ReadArtifactRequest,
   ReadArtifactResult,
   RequestActionResult,
@@ -16,74 +18,16 @@ import type {
   WriteDraftArtifactResult,
 } from "../../packages/agentic/src/index.ts"
 import {
+  loadAgenticBundle,
   validateArtifactData,
   validateArtifactDeclaration,
-  validateAgenticBundleManifest,
 } from "../../packages/agentic/src/index.ts"
-import { parseYaml } from "../../packages/agentic/src/workflow/yaml.ts"
 import {
   LocalActionGateway,
   LocalAgenticPorts,
   type LocalActionGatewayDeclarations,
   type LocalArtifactPort,
 } from "../../packages/agentic-runtime-local/src/index.ts"
-
-type BundleRef = {
-  id: string
-  path: string
-}
-
-type BundleManifest = {
-  schema_version: string
-  name: string
-  version: string
-  description: string
-  state: {
-    adapter: "filesystem"
-    dir: string
-  }
-  principals: JsonObject[]
-  prompts: BundleRef[]
-  skills: BundleRef[]
-  artifacts: BundleRef[]
-  actions: BundleRef[]
-  capabilities: BundleRef[]
-  hooks: BundleRef[]
-  surfaces: BundleRef[]
-  schedules: BundleRef[]
-  integrations: BundleRef[]
-  policies: BundleRef[]
-  deploy: BundleRef[]
-  evals: BundleRef[]
-  fixtures: BundleRef[]
-}
-
-type LoadedMarkdown = BundleRef & {
-  content: string
-}
-
-type LoadedData = BundleRef & {
-  data: JsonObject
-}
-
-type LoadedBundle = {
-  root: string
-  manifestPath: string
-  manifest: BundleManifest
-  prompts: LoadedMarkdown[]
-  skills: LoadedMarkdown[]
-  artifacts: LoadedData[]
-  actions: LoadedData[]
-  capabilities: LoadedData[]
-  hooks: LoadedData[]
-  surfaces: LoadedData[]
-  schedules: LoadedData[]
-  integrations: LoadedData[]
-  policies: LoadedData[]
-  deploy: LoadedData[]
-  evals: LoadedData[]
-  fixtures: LoadedData[]
-}
 
 type ArtifactRecord = {
   id: string
@@ -116,91 +60,13 @@ type DemoAgenticPorts = LocalAgenticPorts<ArtifactRecord, ArtifactRecord, Artifa
 
 const EXAMPLE_ROOT = dirname(fileURLToPath(import.meta.url))
 const BUNDLE_ROOT = join(EXAMPLE_ROOT, ".agentic")
-const MANIFEST_FILENAMES = ["agentic.yaml", "agentic.yml", "agentic.json"]
-
-function isNotFound(error: unknown): boolean {
-  return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT"
-}
-
-async function readAuthoredObject<T>(path: string): Promise<T> {
-  const text = await readFile(path, "utf-8")
-  const ext = extname(path)
-  if (ext === ".json") return JSON.parse(text) as T
-  if (ext === ".yaml" || ext === ".yml") {
-    const data = parseYaml(text)
-    if (data === null || typeof data !== "object" || Array.isArray(data)) {
-      throw new Error(`Authored data file ${path} must contain a non-null mapping.`)
-    }
-    return data as T
-  }
-
-  throw new Error(`Unsupported authored data file extension for ${path}. Expected .json, .yaml, or .yml.`)
-}
 
 async function writeJson(path: string, value: unknown): Promise<void> {
   await writeFile(path, `${JSON.stringify(value, null, 2)}\n`, "utf-8")
 }
 
-async function loadMarkdownSection(refs: BundleRef[]): Promise<LoadedMarkdown[]> {
-  const loaded: LoadedMarkdown[] = []
-  for (const ref of refs) {
-    loaded.push({ ...ref, content: await readFile(join(BUNDLE_ROOT, ref.path), "utf-8") })
-  }
-  return loaded
-}
-
-async function loadDataSection(refs: BundleRef[]): Promise<LoadedData[]> {
-  const loaded: LoadedData[] = []
-  for (const ref of refs) {
-    const data = await readAuthoredObject<JsonObject>(join(BUNDLE_ROOT, ref.path))
-    if (data.id !== ref.id) {
-      throw new Error(`Declaration id mismatch for ${ref.path}: manifest has ${ref.id}, file has ${String(data.id)}`)
-    }
-    loaded.push({ ...ref, data })
-  }
-  return loaded
-}
-
-async function loadManifest(): Promise<{ path: string; manifest: BundleManifest }> {
-  for (const filename of MANIFEST_FILENAMES) {
-    const path = join(BUNDLE_ROOT, filename)
-    try {
-      const manifest = await readAuthoredObject<BundleManifest>(path)
-      const result = validateAgenticBundleManifest(manifest)
-      if (!result.valid) {
-        const details = result.errors.map((error) => `${error.field}: ${error.message}`).join("; ")
-        throw new Error(`Invalid bundle manifest ${path}: ${details}`)
-      }
-      return { path, manifest }
-    } catch (error) {
-      if (isNotFound(error)) continue
-      throw error
-    }
-  }
-
-  throw new Error(`Missing bundle manifest. Expected one of: ${MANIFEST_FILENAMES.join(", ")}`)
-}
-
 async function loadBundle(): Promise<LoadedBundle> {
-  const { path: manifestPath, manifest } = await loadManifest()
-  return {
-    root: BUNDLE_ROOT,
-    manifestPath,
-    manifest,
-    prompts: await loadMarkdownSection(manifest.prompts),
-    skills: await loadMarkdownSection(manifest.skills),
-    artifacts: await loadDataSection(manifest.artifacts),
-    actions: await loadDataSection(manifest.actions),
-    capabilities: await loadDataSection(manifest.capabilities),
-    hooks: await loadDataSection(manifest.hooks),
-    surfaces: await loadDataSection(manifest.surfaces),
-    schedules: await loadDataSection(manifest.schedules),
-    integrations: await loadDataSection(manifest.integrations),
-    policies: await loadDataSection(manifest.policies),
-    deploy: await loadDataSection(manifest.deploy),
-    evals: await loadDataSection(manifest.evals),
-    fixtures: await loadDataSection(manifest.fixtures),
-  }
+  return loadAgenticBundle(BUNDLE_ROOT)
 }
 
 function findLoaded(section: LoadedData[], id: string, kind: string): LoadedData {

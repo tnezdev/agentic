@@ -197,6 +197,20 @@ export {
   AGENTIC_BUNDLE_REF_SECTIONS,
   validateAgenticBundleManifest,
 } from "./bundle/manifest.js"
+export type {
+  LoadedAgenticBundle,
+  LoadedAgenticBundleData,
+  LoadedAgenticBundleManifest,
+  LoadedAgenticBundleMarkdown,
+} from "./bundle/filesystem.js"
+export {
+  AGENTIC_BUNDLE_MANIFEST_FILENAMES,
+  loadAgenticBundle,
+  loadAgenticBundleDataSection,
+  loadAgenticBundleManifest,
+  loadAgenticBundleMarkdownSection,
+  readAuthoredObject,
+} from "./bundle/filesystem.js"
 
 export type {
   ActionGatewayDeclarations,
