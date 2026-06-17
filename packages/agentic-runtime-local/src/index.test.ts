@@ -1,10 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test"
 import { chmod, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises"
-import { dirname, join } from "node:path"
+import { dirname, join, resolve } from "node:path"
 import { tmpdir } from "node:os"
-import { FilesystemArtifactAdapter, type ActionRecord, type ApprovalRequest } from "@tnezdev/agentic"
+import { fileURLToPath } from "node:url"
+import { FilesystemArtifactAdapter, loadAgenticBundle, type ActionRecord, type ApprovalRequest } from "@tnezdev/agentic"
 import type { RuntimeContext } from "@tnezdev/agentic/runtime"
 import {
+  createLocalActionGatewayDeclarations,
   createFilesystemArtifactPort,
   LocalActionGateway,
   LocalAgenticPorts,
@@ -16,6 +18,10 @@ import {
 const TASK_ID = "01KTC500000000000000000001"
 const PROFILE_ARTIFACT_ID = "01KAC500000000000000000001"
 const CONTINUITY_ARTIFACT_ID = "01KAC500000000000000000002"
+const AGENTIC_NEXT_BUNDLE_ROOT = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  "../../../examples/agentic-next/.agentic",
+)
 
 async function writeText(path: string, text: string): Promise<void> {
   await mkdir(dirname(path), { recursive: true })
@@ -273,6 +279,46 @@ function createGatewayStore(): {
     },
   }
 }
+
+describe("local action gateway declarations", () => {
+  it("derives action gateway declarations from the agentic-next bundle", async () => {
+    const bundle = await loadAgenticBundle(AGENTIC_NEXT_BUNDLE_ROOT)
+    const declarations = createLocalActionGatewayDeclarations(bundle)
+
+    expect(declarations.principals).toEqual([
+      "service:demo-api",
+      "service:nightly-scheduler",
+      "service:agentic-runtime",
+      "agent:case-reviewer",
+      "user:reviewer.alba",
+    ])
+    expect(declarations.actions.map((action) => action.id)).toEqual([
+      "surface.receive",
+      "schedule.tick",
+      "case.validate",
+      "hook.run",
+      "approval.request",
+      "external.handoff",
+    ])
+    expect(declarations.capabilities?.map((capability) => capability.id)).toEqual([
+      "case.validate",
+      "handoff.release",
+    ])
+    expect(declarations.integrations?.map((integration) => integration.id)).toEqual(["review-queue"])
+    expect(declarations.integrations?.[0]).toMatchObject({
+      id: "review-queue",
+      availability: "declared-for-demo",
+    })
+    expect(declarations.actions.find((action) => action.id === "external.handoff")).toMatchObject({
+      capability: "handoff.release",
+      effects: ["external.write:review-queue", "artifact.write:handoff-note"],
+    })
+    expect(declarations.data_boundary).toMatchObject({
+      allowed_data_classes: ["synthetic_regulated_demo"],
+      disallowed: ["real_phi", "real_patient_data", "private_customer_data"],
+    })
+  })
+})
 
 describe("local action gateway", () => {
   const declarations = {

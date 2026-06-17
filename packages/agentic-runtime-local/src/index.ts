@@ -37,6 +37,7 @@ import type {
   GraphDef,
   JsonObject,
   JsonValue,
+  LoadedAgenticBundle,
   Persona,
   PersonaFile,
   PersonaRef,
@@ -140,6 +141,20 @@ export type LocalActionGatewayDeclarations = {
   capabilities?: readonly ActionCapabilityDeclaration[] | undefined
   integrations?: readonly ActionIntegrationDeclaration[] | undefined
   data_boundary?: ActionDataBoundaryPolicy | undefined
+}
+
+export function createLocalActionGatewayDeclarations(bundle: LoadedAgenticBundle): LocalActionGatewayDeclarations {
+  const declarations: LocalActionGatewayDeclarations = {
+    principals: bundle.manifest.principals.map((principal) => principal.id),
+    actions: bundle.actions.map((entry) => entry.data as unknown as ActionDeclaration),
+    capabilities: bundle.capabilities.map((entry) => entry.data as unknown as ActionCapabilityDeclaration),
+    integrations: bundle.integrations.map((entry) => entry.data as unknown as ActionIntegrationDeclaration),
+  }
+  const dataBoundary = bundle.policies.find((entry) => entry.id === "data-boundary")?.data
+  if (dataBoundary !== undefined) {
+    declarations.data_boundary = dataBoundary as unknown as ActionDataBoundaryPolicy
+  }
+  return declarations
 }
 
 export type LocalApprovalRequestArtifactInput = {

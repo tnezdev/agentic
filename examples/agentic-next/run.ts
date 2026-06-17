@@ -3,9 +3,7 @@ import { dirname, join, relative, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import type {
   ActionCapabilityDeclaration,
-  ActionDataBoundaryPolicy,
   ActionDeclaration,
-  ActionIntegrationDeclaration,
   ActionRecord,
   ArtifactDeclaration,
   HookDeclaration,
@@ -28,9 +26,9 @@ import {
   LocalActionGateway,
   LocalAgenticPorts,
   LocalBundleRunStore,
+  createLocalActionGatewayDeclarations,
   createLocalBundleRunId,
   type LocalBundleArtifactRecord,
-  type LocalActionGatewayDeclarations,
   type LocalArtifactPort,
 } from "../../packages/agentic-runtime-local/src/index.ts"
 
@@ -64,10 +62,6 @@ function findLoaded(section: LoadedAgenticBundleData[], id: string, kind: string
 
 function findDeclaration<T>(section: LoadedAgenticBundleData[], id: string, kind: string): T {
   return findLoaded(section, id, kind).data as unknown as T
-}
-
-function findOptional(section: LoadedAgenticBundleData[], id: string): LoadedAgenticBundleData | undefined {
-  return section.find((entry) => entry.id === id)
 }
 
 function declarationData<T>(section: LoadedAgenticBundleData[]): T[] {
@@ -105,22 +99,6 @@ function assertValidArtifactData(value: JsonObject, label: string): void {
     const details = result.errors.map((error) => `${error.field}: ${error.message}`).join("; ")
     throw new Error(`Invalid artifact data ${label}: ${details}`)
   }
-}
-
-function gatewayDeclarations(bundle: LoadedAgenticBundle): LocalActionGatewayDeclarations {
-  const declarations: LocalActionGatewayDeclarations = {
-    principals: bundle.manifest.principals
-      .map((principal) => stringValue(principal.id))
-      .filter((id): id is string => id !== undefined),
-    actions: declarationData<ActionDeclaration>(bundle.actions),
-    capabilities: declarationData<ActionCapabilityDeclaration>(bundle.capabilities),
-    integrations: declarationData<ActionIntegrationDeclaration>(bundle.integrations),
-  }
-  const dataBoundary = findOptional(bundle.policies, "data-boundary")?.data
-  if (dataBoundary !== undefined) {
-    declarations.data_boundary = dataBoundary as unknown as ActionDataBoundaryPolicy
-  }
-  return declarations
 }
 
 function stringArray(value: JsonValue | undefined): string[] {
@@ -287,7 +265,7 @@ async function runCaseReviewDemo(options: { clean: boolean }): Promise<DemoResul
 
   const runtime = new LocalBundleRunStore(stateDir, createLocalBundleRunId())
   await runtime.init()
-  const gateway = new LocalActionGateway<ArtifactRecord>(gatewayDeclarations(bundle), {
+  const gateway = new LocalActionGateway<ArtifactRecord>(createLocalActionGatewayDeclarations(bundle), {
     nextId: (prefix) => runtime.nextId(prefix),
     recordAction: (input) => runtime.recordAction(input),
     writeApprovalRequest: (input) => runtime.writeArtifact({
