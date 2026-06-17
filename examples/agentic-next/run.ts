@@ -1,11 +1,17 @@
-import { createHash } from "node:crypto"
 import { appendFile, mkdir, readFile, rm, writeFile } from "node:fs/promises"
 import { dirname, extname, join, relative, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
+import type {
+  ActionCapabilityDeclaration,
+  ActionDataBoundaryPolicy,
+  ActionDeclaration,
+  ActionIntegrationDeclaration,
+  ActionRecord,
+  JsonObject,
+  JsonValue,
+} from "../../packages/agentic/src/index.ts"
 import { parseYaml } from "../../packages/agentic/src/workflow/yaml.ts"
-
-type JsonValue = string | number | boolean | null | JsonObject | JsonValue[]
-type JsonObject = { [key: string]: JsonValue }
+import { LocalActionGateway, type LocalActionGatewayDeclarations } from "../../packages/agentic-runtime-local/src/index.ts"
 
 type BundleRef = {
   id: string
@@ -64,34 +70,6 @@ type LoadedBundle = {
   fixtures: LoadedData[]
 }
 
-type PolicyCheck = {
-  decision: "allow" | "deny" | "approval_required"
-  capability?: string
-  reason: string
-  required_approval?: JsonObject
-}
-
-type ActionStatus = "completed" | "denied" | "approval_required"
-
-type ActionRecord = {
-  id: string
-  type: string
-  status: ActionStatus
-  principal: string
-  created_at: string
-  completed_at?: string
-  capability?: string
-  surface?: string
-  schedule?: string
-  hook?: string
-  input_artifact_ids?: string[]
-  output_artifact_ids?: string[]
-  effects?: string[]
-  policy?: PolicyCheck
-  digest?: string
-  payload?: JsonObject
-}
-
 type ArtifactRecord = {
   id: string
   type: string
@@ -117,44 +95,6 @@ type DemoResult = {
   approval_request_artifact_id: string
   actions: Pick<ActionRecord, "id" | "type" | "status" | "capability">[]
   artifacts: Pick<ArtifactRecord, "id" | "type" | "title" | "status">[]
-}
-
-type ActionProposal = {
-  id?: string
-  type: string
-  principal: string
-  data_class: string
-  capability?: string
-  surface?: string
-  schedule?: string
-  hook?: string
-  input_artifact_ids?: string[]
-  effects?: string[]
-  payload?: JsonObject
-}
-
-type ResolvedActionProposal = ActionProposal & {
-  id: string
-  effects: string[]
-}
-
-type ActionExecutionContext = {
-  action_id: string
-  digest: string
-  action: JsonObject
-  capability?: JsonObject
-}
-
-type ActionExecutionResult = {
-  artifacts?: ArtifactRecord[]
-  output_artifact_ids?: string[]
-  payload?: JsonObject
-}
-
-type GatewayResult = {
-  action: ActionRecord
-  artifacts: ArtifactRecord[]
-  approval_request_artifact?: ArtifactRecord
 }
 
 const EXAMPLE_ROOT = dirname(fileURLToPath(import.meta.url))
@@ -250,6 +190,22 @@ function findOptional(section: LoadedData[], id: string): LoadedData | undefined
   return section.find((entry) => entry.id === id)
 }
 
+function gatewayDeclarations(bundle: LoadedBundle): LocalActionGatewayDeclarations {
+  const declarations: LocalActionGatewayDeclarations = {
+    principals: bundle.manifest.principals
+      .map((principal) => stringValue(principal.id))
+      .filter((id): id is string => id !== undefined),
+    actions: bundle.actions.map((entry) => entry.data as unknown as ActionDeclaration),
+    capabilities: bundle.capabilities.map((entry) => entry.data as unknown as ActionCapabilityDeclaration),
+    integrations: bundle.integrations.map((entry) => entry.data as unknown as ActionIntegrationDeclaration),
+  }
+  const dataBoundary = findOptional(bundle.policies, "data-boundary")?.data
+  if (dataBoundary !== undefined) {
+    declarations.data_boundary = dataBoundary as unknown as ActionDataBoundaryPolicy
+  }
+  return declarations
+}
+
 function stringArray(value: JsonValue | undefined): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : []
 }
@@ -263,35 +219,12 @@ function stringValue(value: JsonValue | undefined): string | undefined {
   return typeof value === "string" ? value : undefined
 }
 
-function stableStringify(value: unknown): string {
-  if (value === null || typeof value !== "object") return JSON.stringify(value)
-  if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`
-
-  const record = value as Record<string, unknown>
-  const entries = Object.entries(record)
-    .filter(([, entryValue]) => entryValue !== undefined)
-    .sort(([a], [b]) => a.localeCompare(b))
-  return `{${entries.map(([key, entryValue]) => `${JSON.stringify(key)}:${stableStringify(entryValue)}`).join(",")}}`
-}
-
-function digestOf(value: unknown): string {
-  return createHash("sha256").update(stableStringify(value)).digest("hex")
-}
-
 function safeTimestamp(date = new Date()): string {
   return date.toISOString().replace(/[:.]/g, "-")
 }
 
-function isoInHours(hours: number): string {
-  return new Date(Date.now() + hours * 60 * 60 * 1000).toISOString()
-}
-
 function displayPath(path: string): string {
   return relative(process.cwd(), path) || "."
-}
-
-function actionIdPrefix(type: string): string {
-  return `act_${type.replace(/[^a-z0-9]+/gi, "_").replace(/^_|_$/g, "")}`
 }
 
 class DemoRuntime {
@@ -356,351 +289,6 @@ class DemoRuntime {
   async writeSummary(markdown: string, latest: DemoResult): Promise<void> {
     await writeFile(this.summaryPath, markdown, "utf-8")
     await writeJson(this.latestPath, latest)
-  }
-}
-
-class ActionGateway {
-  constructor(
-    readonly bundle: LoadedBundle,
-    readonly runtime: DemoRuntime,
-  ) {}
-
-  async submit(
-    proposal: ActionProposal,
-    execute?: (context: ActionExecutionContext) => Promise<ActionExecutionResult>,
-  ): Promise<GatewayResult> {
-    const actionDeclaration = findLoaded(this.bundle.actions, proposal.type, "action").data
-    const actionId = proposal.id ?? this.runtime.nextId(actionIdPrefix(proposal.type))
-    const capabilityId = proposal.capability ?? stringValue(actionDeclaration.capability)
-    const resolved: ResolvedActionProposal = {
-      ...proposal,
-      id: actionId,
-      effects: proposal.effects ?? stringArray(actionDeclaration.effects),
-    }
-    if (capabilityId !== undefined) resolved.capability = capabilityId
-
-    const digest = digestOf({
-      id: resolved.id,
-      type: resolved.type,
-      principal: resolved.principal,
-      capability: resolved.capability,
-      surface: resolved.surface,
-      schedule: resolved.schedule,
-      hook: resolved.hook,
-      data_class: resolved.data_class,
-      input_artifact_ids: resolved.input_artifact_ids ?? [],
-      effects: resolved.effects,
-      payload: resolved.payload ?? {},
-    })
-    const policy = evaluateActionPolicy(this.bundle, actionDeclaration, resolved)
-
-    if (policy.decision === "deny") {
-      const action = await this.recordAction(resolved, "denied", policy, digest)
-      return { action, artifacts: [] }
-    }
-
-    if (policy.decision === "approval_required") {
-      const approval = await this.requestApproval(resolved, policy, digest)
-      const action = await this.recordAction(resolved, "approval_required", policy, digest, [
-        approval.approval_request_artifact.id,
-      ])
-      return {
-        action,
-        artifacts: [approval.approval_request_artifact],
-        approval_request_artifact: approval.approval_request_artifact,
-      }
-    }
-
-    const context: ActionExecutionContext = {
-      action_id: resolved.id,
-      digest,
-      action: actionDeclaration,
-    }
-    const capability = resolved.capability === undefined
-      ? undefined
-      : findOptional(this.bundle.capabilities, resolved.capability)?.data
-    if (capability !== undefined) context.capability = capability
-
-    const execution = execute === undefined ? {} : await execute(context)
-    const artifacts = execution.artifacts ?? []
-    const outputArtifactIds = execution.output_artifact_ids ?? artifacts.map((artifact) => artifact.id)
-    const action = await this.recordAction(
-      resolved,
-      "completed",
-      policy,
-      digest,
-      outputArtifactIds,
-      execution.payload ?? resolved.payload,
-    )
-    return { action, artifacts }
-  }
-
-  private async requestApproval(
-    proposal: ResolvedActionProposal,
-    policy: PolicyCheck,
-    actionDigest: string,
-  ): Promise<GatewayResult & { approval_request_artifact: ArtifactRecord }> {
-    const approvalPayload: JsonObject = {
-      action_id: proposal.id,
-      action_type: proposal.type,
-      action_digest: actionDigest,
-      effects: proposal.effects,
-      input_artifact_ids: proposal.input_artifact_ids ?? [],
-      approver_rule: policy.required_approval ?? {},
-      expires_at: isoInHours(24),
-      status: "pending",
-    }
-    if (proposal.capability !== undefined) approvalPayload.capability = proposal.capability
-
-    const approvalProposal: ActionProposal = {
-      type: "approval.request",
-      principal: "service:agentic-runtime",
-      data_class: proposal.data_class,
-      payload: approvalPayload,
-    }
-    if (proposal.input_artifact_ids !== undefined) {
-      approvalProposal.input_artifact_ids = proposal.input_artifact_ids
-    }
-
-    const result = await this.submit(approvalProposal, async ({ action_id }) => {
-      const artifact = await this.runtime.writeArtifact({
-        id: this.runtime.nextId("art_approval_request"),
-        type: "approval-request",
-        title: `Approval required for ${proposal.id}`,
-        status: "pending",
-        data_class: proposal.data_class,
-        tags: ["case-review", "approval", "pending"],
-        body: approvalPayload,
-        derived_from: proposal.input_artifact_ids ?? [],
-        created_by_action_id: action_id,
-      })
-      return { artifacts: [artifact] }
-    })
-
-    const approvalRequestArtifact = result.artifacts.find((artifact) => artifact.type === "approval-request")
-    if (approvalRequestArtifact === undefined) {
-      throw new Error("Approval gateway did not create an approval-request artifact.")
-    }
-
-    return {
-      ...result,
-      approval_request_artifact: approvalRequestArtifact,
-    }
-  }
-
-  private async recordAction(
-    proposal: ResolvedActionProposal,
-    status: ActionStatus,
-    policy: PolicyCheck,
-    digest: string,
-    outputArtifactIds: string[] = [],
-    payload: JsonObject | undefined = proposal.payload,
-  ): Promise<ActionRecord> {
-    const input: Omit<ActionRecord, "created_at" | "completed_at"> = {
-      id: proposal.id,
-      type: proposal.type,
-      status,
-      principal: proposal.principal,
-      policy,
-      digest,
-    }
-    if (proposal.capability !== undefined) input.capability = proposal.capability
-    if (proposal.surface !== undefined) input.surface = proposal.surface
-    if (proposal.schedule !== undefined) input.schedule = proposal.schedule
-    if (proposal.hook !== undefined) input.hook = proposal.hook
-    if (proposal.input_artifact_ids !== undefined) input.input_artifact_ids = proposal.input_artifact_ids
-    if (outputArtifactIds.length > 0) input.output_artifact_ids = outputArtifactIds
-    if (proposal.effects.length > 0) input.effects = proposal.effects
-    if (payload !== undefined) input.payload = payload
-
-    return this.runtime.recordAction(input)
-  }
-}
-
-function checkCapability(
-  bundle: LoadedBundle,
-  capabilityId: string,
-  request: {
-    action: string
-    principal: string
-    effects: string[]
-    data_class: string
-  },
-): PolicyCheck {
-  const loadedCapability = findOptional(bundle.capabilities, capabilityId)
-  if (loadedCapability === undefined) {
-    return {
-      decision: "deny",
-      reason: `Missing capability declaration: ${capabilityId}.`,
-    }
-  }
-
-  const capability = loadedCapability.data
-  const capabilityAction = stringValue(capability.action)
-  const allowedPrincipals = stringArray(objectValue(capability.principals).allowed)
-  const allowedEffects = stringArray(capability.effects)
-  const allowedDataClasses = stringArray(capability.data_classes)
-  const integrations = stringArray(capability.integrations)
-  const approval = objectValue(capability.approval)
-
-  if (capabilityAction !== undefined && capabilityAction !== request.action) {
-    return {
-      decision: "deny",
-      capability: capabilityId,
-      reason: `Capability ${capabilityId} is declared for ${capabilityAction}, not ${request.action}.`,
-    }
-  }
-
-  if (!allowedPrincipals.includes("*") && !allowedPrincipals.includes(request.principal)) {
-    return {
-      decision: "deny",
-      capability: capabilityId,
-      reason: `Principal ${request.principal} is not allowed for ${capabilityId}.`,
-    }
-  }
-
-  const unsupportedEffect = request.effects.find((effect) => !allowedEffects.includes(effect))
-  if (unsupportedEffect !== undefined) {
-    return {
-      decision: "deny",
-      capability: capabilityId,
-      reason: `Effect ${unsupportedEffect} is not declared by ${capabilityId}.`,
-    }
-  }
-
-  if (allowedDataClasses.length > 0 && !allowedDataClasses.includes(request.data_class)) {
-    return {
-      decision: "deny",
-      capability: capabilityId,
-      reason: `Data class ${request.data_class} is not allowed by ${capabilityId}.`,
-    }
-  }
-
-  for (const integrationId of integrations) {
-    const integration = findOptional(bundle.integrations, integrationId)
-    if (integration === undefined) {
-      return {
-        decision: "deny",
-        capability: capabilityId,
-        reason: `Capability ${capabilityId} requires missing integration ${integrationId}.`,
-      }
-    }
-
-    const availability = stringValue(integration.data.availability) ?? "unknown"
-    if (availability === "missing" || availability === "unavailable") {
-      return {
-        decision: "deny",
-        capability: capabilityId,
-        reason: `Integration ${integrationId} is ${availability}.`,
-      }
-    }
-  }
-
-  if (approval.required === true) {
-    return {
-      decision: "approval_required",
-      capability: capabilityId,
-      reason: `${capabilityId} requires a runtime-authenticated approval grant before execution.`,
-      required_approval: objectValue(approval.approver_rule),
-    }
-  }
-
-  return {
-    decision: "allow",
-    capability: capabilityId,
-    reason: `${capabilityId} is available for ${request.principal}.`,
-  }
-}
-
-function checkDataBoundary(bundle: LoadedBundle, dataClass: string): PolicyCheck | undefined {
-  const dataBoundary = findOptional(bundle.policies, "data-boundary")?.data
-  if (dataBoundary === undefined) return undefined
-
-  const disallowed = stringArray(dataBoundary.disallowed)
-  if (disallowed.includes(dataClass)) {
-    return {
-      decision: "deny",
-      reason: `Data class ${dataClass} is blocked by policy data-boundary.`,
-    }
-  }
-
-  const allowed = stringArray(dataBoundary.allowed_data_classes)
-  if (allowed.length > 0 && !allowed.includes(dataClass)) {
-    return {
-      decision: "deny",
-      reason: `Data class ${dataClass} is not listed in policy data-boundary.`,
-    }
-  }
-
-  return undefined
-}
-
-function evaluateActionPolicy(
-  bundle: LoadedBundle,
-  actionDeclaration: JsonObject,
-  proposal: ResolvedActionProposal,
-): PolicyCheck {
-  const principalIds = bundle.manifest.principals
-    .map((principal) => stringValue(principal.id))
-    .filter((id): id is string => id !== undefined)
-  if (!principalIds.includes(proposal.principal)) {
-    return {
-      decision: "deny",
-      reason: `Principal ${proposal.principal} is not declared in the bundle manifest.`,
-    }
-  }
-
-  const dataBoundary = checkDataBoundary(bundle, proposal.data_class)
-  if (dataBoundary !== undefined) return dataBoundary
-
-  const declaredCapability = stringValue(actionDeclaration.capability)
-  if (declaredCapability !== undefined && proposal.capability !== declaredCapability) {
-    const result: PolicyCheck = {
-      decision: "deny",
-      reason: `Action ${proposal.type} must use declared capability ${declaredCapability}.`,
-    }
-    if (proposal.capability !== undefined) result.capability = proposal.capability
-    return result
-  }
-
-  if (declaredCapability === undefined && proposal.capability !== undefined) {
-    return {
-      decision: "deny",
-      capability: proposal.capability,
-      reason: `Action ${proposal.type} does not declare a capability boundary.`,
-    }
-  }
-
-  const declaredEffects = stringArray(actionDeclaration.effects)
-  const unsupportedEffect = proposal.effects.find((effect) => !declaredEffects.includes(effect))
-  if (unsupportedEffect !== undefined) {
-    const result: PolicyCheck = {
-      decision: "deny",
-      reason: `Action ${proposal.type} does not declare effect ${unsupportedEffect}.`,
-    }
-    if (proposal.capability !== undefined) result.capability = proposal.capability
-    return result
-  }
-
-  if (proposal.capability !== undefined) {
-    return checkCapability(bundle, proposal.capability, {
-      action: proposal.type,
-      principal: proposal.principal,
-      effects: proposal.effects,
-      data_class: proposal.data_class,
-    })
-  }
-
-  if (!proposal.principal.startsWith("service:")) {
-    return {
-      decision: "deny",
-      reason: `Action ${proposal.type} has no capability and must be proposed by a host-owned service principal.`,
-    }
-  }
-
-  return {
-    decision: "allow",
-    reason: `Host-owned action ${proposal.type} is available to ${proposal.principal}.`,
   }
 }
 
@@ -834,7 +422,21 @@ async function runCaseReviewDemo(options: { clean: boolean }): Promise<DemoResul
 
   const runtime = new DemoRuntime(stateDir, `run-${safeTimestamp()}`)
   await runtime.init()
-  const gateway = new ActionGateway(bundle, runtime)
+  const gateway = new LocalActionGateway<ArtifactRecord>(gatewayDeclarations(bundle), {
+    nextId: (prefix) => runtime.nextId(prefix),
+    recordAction: (input) => runtime.recordAction(input),
+    writeApprovalRequest: (input) => runtime.writeArtifact({
+      id: input.id,
+      type: input.type,
+      title: input.title,
+      status: input.status,
+      data_class: input.data_class,
+      tags: ["case-review", ...input.tags],
+      body: input.body as unknown as JsonObject,
+      derived_from: input.derived_from,
+      created_by_action_id: input.created_by_action_id,
+    }),
+  })
 
   const surface = findLoaded(bundle.surfaces, "case-intake-api", "surface").data
   const schedule = findLoaded(bundle.schedules, "nightly-qc-sweep", "schedule").data

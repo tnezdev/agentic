@@ -8,14 +8,31 @@ import {
   FilesystemPersonaAdapter,
   FilesystemTaskAdapter,
   FilesystemWorkflowAdapter,
+  computeActionDigest,
+  createApprovalRequest,
+  evaluateActionPolicy,
   loadSkill,
+  resolveActionProposal,
 } from "@tnezdev/agentic"
 import type {
+  ActionCapabilityDeclaration,
+  ActionDataBoundaryPolicy,
+  ActionDeclaration,
+  ActionDecision,
+  ActionExecutionContext,
+  ActionExecutionResult,
+  ActionIntegrationDeclaration,
+  ActionProposal,
+  ActionRecord,
+  ActionStatus,
   ArtifactMetadata,
+  ApprovalRequest,
   GraphDef,
+  JsonObject,
   Persona,
   PersonaFile,
   PersonaRef,
+  ResolvedActionProposal,
   Skill,
   Task,
   TaskQuery,
@@ -98,6 +115,207 @@ type PiHarnessResult = {
   stderr: string
 }
 
+export type LocalActionGatewayArtifact = {
+  id: string
+  type: string
+}
+
+export type LocalActionGatewayDeclarations = {
+  principals: readonly string[]
+  actions: readonly ActionDeclaration[]
+  capabilities?: readonly ActionCapabilityDeclaration[] | undefined
+  integrations?: readonly ActionIntegrationDeclaration[] | undefined
+  data_boundary?: ActionDataBoundaryPolicy | undefined
+}
+
+export type LocalApprovalRequestArtifactInput = {
+  id: string
+  type: "approval-request"
+  title: string
+  status: "pending"
+  data_class: string
+  tags: string[]
+  body: ApprovalRequest
+  derived_from: string[]
+  created_by_action_id: string
+}
+
+export type LocalActionGatewayStore<TArtifact extends LocalActionGatewayArtifact> = {
+  nextId(prefix: string): string
+  recordAction(input: Omit<ActionRecord, "created_at" | "completed_at">): Promise<ActionRecord>
+  writeApprovalRequest(input: LocalApprovalRequestArtifactInput): Promise<TArtifact>
+}
+
+export type LocalActionExecutionResult<TArtifact extends LocalActionGatewayArtifact> = ActionExecutionResult & {
+  artifacts?: TArtifact[] | undefined
+}
+
+export type LocalActionHandler<TArtifact extends LocalActionGatewayArtifact> = (
+  context: ActionExecutionContext,
+) => Promise<LocalActionExecutionResult<TArtifact>>
+
+export type LocalActionGatewayResult<TArtifact extends LocalActionGatewayArtifact> = {
+  action: ActionRecord
+  artifacts: TArtifact[]
+  approval_request_artifact?: TArtifact | undefined
+}
+
+export type LocalActionGatewayOptions = {
+  approvalExpiresAt?: () => string
+}
+
+export class LocalActionGateway<TArtifact extends LocalActionGatewayArtifact> {
+  constructor(
+    readonly declarations: LocalActionGatewayDeclarations,
+    readonly store: LocalActionGatewayStore<TArtifact>,
+    readonly options: LocalActionGatewayOptions = {},
+  ) {}
+
+  async submit(
+    proposal: ActionProposal,
+    execute?: LocalActionHandler<TArtifact> | undefined,
+  ): Promise<LocalActionGatewayResult<TArtifact>> {
+    const actionDeclaration = this.declarations.actions.find((action) => action.id === proposal.type)
+    const actionId = proposal.id ?? this.store.nextId(actionIdPrefix(proposal.type))
+    const resolved = resolveActionProposal(
+      proposal,
+      actionDeclaration ?? { id: proposal.type, effects: proposal.effects ?? [] },
+      actionId,
+    )
+    const digest = computeActionDigest(resolved)
+
+    if (actionDeclaration === undefined) {
+      const policy: ActionDecision = {
+        decision: "deny",
+        code: "missing_action_declaration",
+        reason: `Missing action declaration: ${proposal.type}.`,
+      }
+      const action = await this.recordAction(resolved, "denied", policy, digest)
+      return { action, artifacts: [] }
+    }
+
+    const policy = evaluateActionPolicy({
+      principals: this.declarations.principals,
+      action: actionDeclaration,
+      proposal: resolved,
+      capabilities: this.declarations.capabilities,
+      integrations: this.declarations.integrations,
+      data_boundary: this.declarations.data_boundary,
+    })
+
+    if (policy.decision === "deny") {
+      const action = await this.recordAction(resolved, "denied", policy, digest)
+      return { action, artifacts: [] }
+    }
+
+    if (policy.decision === "approval_required") {
+      const approvalRequestArtifact = await this.requestApproval(resolved, policy, digest)
+      const action = await this.recordAction(resolved, "approval_required", policy, digest, [
+        approvalRequestArtifact.id,
+      ])
+      return {
+        action,
+        artifacts: [approvalRequestArtifact],
+        approval_request_artifact: approvalRequestArtifact,
+      }
+    }
+
+    const context: ActionExecutionContext = {
+      action_id: resolved.id,
+      digest,
+      action: actionDeclaration as unknown as JsonObject,
+    }
+    const capability = resolved.capability === undefined
+      ? undefined
+      : this.declarations.capabilities?.find((entry) => entry.id === resolved.capability)
+    if (capability !== undefined) context.capability = capability as unknown as JsonObject
+
+    const execution = execute === undefined ? {} : await execute(context)
+    const artifacts = execution.artifacts ?? []
+    const outputArtifactIds = execution.output_artifact_ids ?? artifacts.map((artifact) => artifact.id)
+    const action = await this.recordAction(
+      resolved,
+      "completed",
+      policy,
+      digest,
+      outputArtifactIds,
+      execution.payload ?? resolved.payload,
+    )
+    return { action, artifacts }
+  }
+
+  private async requestApproval(
+    proposal: ResolvedActionProposal,
+    policy: ActionDecision,
+    actionDigest: string,
+  ): Promise<TArtifact> {
+    const approvalRequest = createApprovalRequest({
+      proposal,
+      action_digest: actionDigest,
+      approver_rule: policy.required_approval,
+      expires_at: this.options.approvalExpiresAt?.() ?? isoInHours(24),
+    })
+    const approvalProposal: ActionProposal = {
+      type: "approval.request",
+      principal: "service:agentic-runtime",
+      data_class: proposal.data_class,
+      payload: approvalRequest as unknown as JsonObject,
+    }
+    if (proposal.input_artifact_ids !== undefined) {
+      approvalProposal.input_artifact_ids = proposal.input_artifact_ids
+    }
+
+    const result = await this.submit(approvalProposal, async ({ action_id }) => {
+      const artifact = await this.store.writeApprovalRequest({
+        id: this.store.nextId("art_approval_request"),
+        type: "approval-request",
+        title: `Approval required for ${proposal.id}`,
+        status: "pending",
+        data_class: proposal.data_class,
+        tags: ["approval", "pending"],
+        body: approvalRequest,
+        derived_from: proposal.input_artifact_ids ?? [],
+        created_by_action_id: action_id,
+      })
+      return { artifacts: [artifact] }
+    })
+
+    const approvalRequestArtifact = result.artifacts.find((artifact) => artifact.type === "approval-request")
+    if (approvalRequestArtifact === undefined) {
+      throw new Error("Approval gateway did not create an approval-request artifact.")
+    }
+    return approvalRequestArtifact
+  }
+
+  private async recordAction(
+    proposal: ResolvedActionProposal,
+    status: ActionStatus,
+    policy: ActionDecision,
+    digest: string,
+    outputArtifactIds: string[] = [],
+    payload: JsonObject | undefined = proposal.payload,
+  ): Promise<ActionRecord> {
+    const input: Omit<ActionRecord, "created_at" | "completed_at"> = {
+      id: proposal.id,
+      type: proposal.type,
+      status,
+      principal: proposal.principal,
+      policy,
+      digest,
+    }
+    if (proposal.capability !== undefined) input.capability = proposal.capability
+    if (proposal.surface !== undefined) input.surface = proposal.surface
+    if (proposal.schedule !== undefined) input.schedule = proposal.schedule
+    if (proposal.hook !== undefined) input.hook = proposal.hook
+    if (proposal.input_artifact_ids !== undefined) input.input_artifact_ids = proposal.input_artifact_ids
+    if (outputArtifactIds.length > 0) input.output_artifact_ids = outputArtifactIds
+    if (proposal.effects.length > 0) input.effects = proposal.effects
+    if (payload !== undefined) input.payload = payload
+
+    return this.store.recordAction(input)
+  }
+}
+
 function encodeTime(now: number, len: number): string {
   let out = ""
   for (let i = len - 1; i >= 0; i--) {
@@ -147,6 +365,14 @@ function createUlidFactory(): () => string {
 }
 
 const createInvocationId = createUlidFactory()
+
+function isoInHours(hours: number): string {
+  return new Date(Date.now() + hours * 60 * 60 * 1000).toISOString()
+}
+
+function actionIdPrefix(type: string): string {
+  return `act_${type.replace(/[^a-z0-9]+/gi, "_").replace(/^_|_$/g, "")}`
+}
 
 function runtimeDirFor(workspaceRoot: string): string {
   return join(workspaceRoot, RUNTIME_DIR)

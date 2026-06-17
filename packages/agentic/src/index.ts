@@ -34,6 +34,28 @@ export type {
   Dispatch,
   DispatchFilter,
   DispatchHandlerHooks,
+  JsonPrimitive,
+  JsonValue,
+  JsonObject,
+  ActionDigest,
+  ActionDecisionStatus,
+  ActionStatus,
+  ActionPolicyReason,
+  ActionDecision,
+  ActionPolicyResult,
+  ActionDeclaration,
+  ActionCapabilityDeclaration,
+  ActionIntegrationDeclaration,
+  ActionDataBoundaryPolicy,
+  ActionProposal,
+  ResolvedActionProposal,
+  ActionRecord,
+  ActionExecutionContext,
+  ActionExecutionResult,
+  ApprovalRequestStatus,
+  ApprovalRequest,
+  ActionGatewayEventName,
+  ActionGatewayEvent,
   LifecyclePrimitive,
   LifecycleEventName,
   LifecycleEventRef,
@@ -144,6 +166,22 @@ export { R2BucketSource } from "./sources/r2.js"
 export { KvSource } from "./sources/kv.js"
 
 export { match as matchDispatch } from "./dispatch/match.js"
+
+export type {
+  ActionGatewayDeclarations,
+  ActionGatewayValidationError,
+  ActionGatewayValidationResult,
+  CreateApprovalRequestInput,
+  EvaluateActionPolicyInput,
+} from "./action-gateway/helpers.js"
+export {
+  actionDigestMaterial,
+  computeActionDigest,
+  createApprovalRequest,
+  evaluateActionPolicy,
+  resolveActionProposal,
+  validateActionGatewayDeclarations,
+} from "./action-gateway/helpers.js"
 
 export type {
   CapabilityValidationError,

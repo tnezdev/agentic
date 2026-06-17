@@ -2,8 +2,9 @@ import { describe, it, expect, beforeEach, afterEach } from "bun:test"
 import { chmod, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises"
 import { dirname, join } from "node:path"
 import { tmpdir } from "node:os"
+import type { ActionRecord, ApprovalRequest } from "@tnezdev/agentic"
 import type { RuntimeContext } from "@tnezdev/agentic/runtime"
-import { runtime } from "./index.js"
+import { LocalActionGateway, runtime, type LocalActionGatewayStore } from "./index.js"
 
 const TASK_ID = "01KTC500000000000000000001"
 const PROFILE_ARTIFACT_ID = "01KAC500000000000000000001"
@@ -215,6 +216,149 @@ function dataOf(
 ): Record<string, unknown> {
   return result?.data as Record<string, unknown>
 }
+
+type GatewayArtifact = {
+  id: string
+  type: string
+  title: string
+  status: string
+  body: ApprovalRequest
+  created_by_action_id: string
+}
+
+function createGatewayStore(): {
+  actions: ActionRecord[]
+  artifacts: GatewayArtifact[]
+  store: LocalActionGatewayStore<GatewayArtifact>
+} {
+  let sequence = 0
+  const actions: ActionRecord[] = []
+  const artifacts: GatewayArtifact[] = []
+  return {
+    actions,
+    artifacts,
+    store: {
+      nextId(prefix: string): string {
+        sequence += 1
+        return `${prefix}_${String(sequence).padStart(4, "0")}`
+      },
+      async recordAction(input: Omit<ActionRecord, "created_at" | "completed_at">): Promise<ActionRecord> {
+        const action: ActionRecord = {
+          ...input,
+          created_at: "2026-06-17T00:00:00.000Z",
+          completed_at: "2026-06-17T00:00:00.000Z",
+        }
+        actions.push(action)
+        return action
+      },
+      async writeApprovalRequest(input): Promise<GatewayArtifact> {
+        const artifact: GatewayArtifact = {
+          id: input.id,
+          type: input.type,
+          title: input.title,
+          status: input.status,
+          body: input.body,
+          created_by_action_id: input.created_by_action_id,
+        }
+        artifacts.push(artifact)
+        return artifact
+      },
+    },
+  }
+}
+
+describe("local action gateway", () => {
+  const declarations = {
+    principals: ["agent:case-reviewer", "service:agentic-runtime"],
+    actions: [
+      {
+        id: "approval.request",
+        effects: ["artifact.write:approval-request"],
+      },
+      {
+        id: "case.validate",
+        capability: "case.validate",
+        effects: ["artifact.read:case-packet", "artifact.write:validation-result"],
+      },
+      {
+        id: "external.handoff",
+        capability: "handoff.release",
+        effects: ["external.write:review-queue"],
+      },
+    ],
+    capabilities: [
+      {
+        id: "case.validate",
+        action: "case.validate",
+        effects: ["artifact.read:case-packet", "artifact.write:validation-result"],
+        data_classes: ["synthetic_regulated_demo"],
+        principals: { allowed: ["agent:case-reviewer"] },
+        approval: { required: false },
+      },
+      {
+        id: "handoff.release",
+        action: "external.handoff",
+        effects: ["external.write:review-queue"],
+        data_classes: ["synthetic_regulated_demo"],
+        principals: { allowed: ["agent:case-reviewer"] },
+        approval: {
+          required: true,
+          approver_rule: { all_of: ["grant.action_digest == action.digest"] },
+        },
+      },
+    ],
+    data_boundary: { allowed_data_classes: ["synthetic_regulated_demo"] },
+  }
+
+  it("records approval-required actions and exact approval request artifacts", async () => {
+    const { actions, artifacts, store } = createGatewayStore()
+    const gateway = new LocalActionGateway(declarations, store, {
+      approvalExpiresAt: () => "2026-06-18T00:00:00.000Z",
+    })
+
+    const result = await gateway.submit({
+      type: "external.handoff",
+      principal: "agent:case-reviewer",
+      data_class: "synthetic_regulated_demo",
+      input_artifact_ids: ["art_packet_001"],
+      payload: { queue: "orthopedic-qc" },
+    })
+
+    expect(result.action.status).toBe("approval_required")
+    expect(result.action.digest).toHaveLength(64)
+    expect(result.approval_request_artifact?.type).toBe("approval-request")
+    expect(actions.map((action) => action.type)).toEqual(["approval.request", "external.handoff"])
+    expect(artifacts).toHaveLength(1)
+    expect(artifacts[0]!.body).toMatchObject({
+      action_id: result.action.id,
+      action_digest: result.action.digest,
+      capability: "handoff.release",
+      status: "pending",
+    })
+  })
+
+  it("does not execute denied action handlers", async () => {
+    const { store } = createGatewayStore()
+    const gateway = new LocalActionGateway(declarations, store)
+    let executed = false
+
+    const result = await gateway.submit({
+      type: "case.validate",
+      principal: "agent:unknown",
+      data_class: "synthetic_regulated_demo",
+    }, async () => {
+      executed = true
+      return {}
+    })
+
+    expect(result.action.status).toBe("denied")
+    expect(result.action.policy).toMatchObject({
+      decision: "deny",
+      code: "undeclared_principal",
+    })
+    expect(executed).toBe(false)
+  })
+})
 
 describe("local runtime package", () => {
   let tmpDir: string

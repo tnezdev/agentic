@@ -55,6 +55,14 @@ export type SporesConfig = {
 export type AgenticConfig = SporesConfig
 
 // ---------------------------------------------------------------------------
+// JSON types
+// ---------------------------------------------------------------------------
+
+export type JsonPrimitive = string | number | boolean | null
+export type JsonValue = JsonPrimitive | JsonObject | JsonValue[]
+export type JsonObject = { [key: string]: JsonValue }
+
+// ---------------------------------------------------------------------------
 // Workflow types (digraph runtime)
 // ---------------------------------------------------------------------------
 
@@ -369,6 +377,157 @@ export type DispatchFilter = {
 export type DispatchHandlerHooks = {
   onRegister?: () => Promise<void>
   onUnregister?: () => Promise<void>
+}
+
+// ---------------------------------------------------------------------------
+// Action gateway types
+//
+// Action gateways are the portable policy membrane between agent requests and
+// runtime-owned effects. Core owns vocabulary and pure helpers; runtimes own
+// identity binding, persistence, approval channels, handlers, and execution.
+// ---------------------------------------------------------------------------
+
+export type ActionDigest = string
+
+export type ActionDecisionStatus = "allow" | "deny" | "approval_required"
+
+export type ActionStatus = "completed" | "denied" | "approval_required"
+
+export type ActionPolicyReason =
+  | "allowed"
+  | "approval_required"
+  | "missing_action_declaration"
+  | "undeclared_principal"
+  | "data_boundary_denied"
+  | "action_capability_mismatch"
+  | "capability_not_declared"
+  | "capability_action_mismatch"
+  | "principal_not_allowed"
+  | "effect_not_allowed"
+  | "data_class_not_allowed"
+  | "integration_missing"
+  | "integration_unavailable"
+  | "service_principal_required"
+
+export type ActionDecision = {
+  decision: ActionDecisionStatus
+  reason: string
+  code?: ActionPolicyReason | undefined
+  capability?: string | undefined
+  required_approval?: JsonObject | undefined
+}
+
+export type ActionPolicyResult = ActionDecision
+
+export type ActionDeclaration = {
+  id: string
+  capability?: string | undefined
+  effects?: string[] | undefined
+}
+
+export type ActionCapabilityDeclaration = {
+  id: string
+  action?: string | undefined
+  effects?: string[] | undefined
+  data_classes?: string[] | undefined
+  principals?: {
+    allowed?: string[] | undefined
+  } | undefined
+  integrations?: string[] | undefined
+  approval?: {
+    required?: boolean | undefined
+    approver_rule?: JsonObject | undefined
+  } | undefined
+}
+
+export type ActionIntegrationDeclaration = {
+  id: string
+  availability?: string | undefined
+}
+
+export type ActionDataBoundaryPolicy = {
+  allowed_data_classes?: string[] | undefined
+  disallowed?: string[] | undefined
+}
+
+export type ActionProposal = {
+  id?: string | undefined
+  type: string
+  principal: string
+  data_class: string
+  capability?: string | undefined
+  surface?: string | undefined
+  schedule?: string | undefined
+  hook?: string | undefined
+  input_artifact_ids?: string[] | undefined
+  effects?: string[] | undefined
+  payload?: JsonObject | undefined
+}
+
+export type ResolvedActionProposal = Omit<ActionProposal, "id" | "effects"> & {
+  id: string
+  effects: string[]
+}
+
+export type ActionRecord = {
+  id: string
+  type: string
+  status: ActionStatus
+  principal: string
+  created_at: string
+  completed_at?: string | undefined
+  capability?: string | undefined
+  surface?: string | undefined
+  schedule?: string | undefined
+  hook?: string | undefined
+  input_artifact_ids?: string[] | undefined
+  output_artifact_ids?: string[] | undefined
+  effects?: string[] | undefined
+  policy?: ActionDecision | undefined
+  digest?: ActionDigest | undefined
+  payload?: JsonObject | undefined
+}
+
+export type ActionExecutionContext = {
+  action_id: string
+  digest: ActionDigest
+  action: JsonObject
+  capability?: JsonObject | undefined
+}
+
+export type ActionExecutionResult = {
+  output_artifact_ids?: string[] | undefined
+  payload?: JsonObject | undefined
+}
+
+export type ApprovalRequestStatus = "pending" | "granted" | "rejected" | "expired"
+
+export type ApprovalRequest = {
+  action_id: string
+  action_type: string
+  action_digest: ActionDigest
+  effects: string[]
+  input_artifact_ids: string[]
+  approver_rule: JsonObject
+  expires_at: string
+  status: ApprovalRequestStatus
+  capability?: string | undefined
+}
+
+export type ActionGatewayEventName =
+  | "action.requested"
+  | "action.allowed"
+  | "action.denied"
+  | "action.approval_required"
+  | "action.completed"
+
+export type ActionGatewayEvent = {
+  name: ActionGatewayEventName
+  action_id: string
+  action_type: string
+  timestamp: string
+  digest?: ActionDigest | undefined
+  decision?: ActionDecision | undefined
 }
 
 // ---------------------------------------------------------------------------
