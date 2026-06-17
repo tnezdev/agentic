@@ -380,6 +380,68 @@ export type DispatchHandlerHooks = {
 }
 
 // ---------------------------------------------------------------------------
+// Bundle manifest types
+//
+// A bundle manifest is authored configuration. Core owns the portable shape and
+// validation vocabulary; runtimes own materialization, deployment, and state.
+// ---------------------------------------------------------------------------
+
+export type AgenticBundleSectionName =
+  | "prompts"
+  | "skills"
+  | "artifacts"
+  | "actions"
+  | "capabilities"
+  | "hooks"
+  | "surfaces"
+  | "schedules"
+  | "integrations"
+  | "policies"
+  | "deploy"
+  | "evals"
+  | "fixtures"
+
+export type AgenticBundleRef = {
+  id: string
+  path: string
+}
+
+export type AgenticBundleState = {
+  adapter: string
+  dir: string
+}
+
+export type AgenticPrincipalDeclaration = {
+  id: string
+  kind?: string | undefined
+  roles?: string[] | undefined
+  description?: string | undefined
+  metadata?: JsonObject | undefined
+}
+
+export type AgenticBundleManifest = {
+  schema_version: string
+  name: string
+  version: string
+  description: string
+  state: AgenticBundleState
+  principals: AgenticPrincipalDeclaration[]
+  prompts: AgenticBundleRef[]
+  skills: AgenticBundleRef[]
+  artifacts: AgenticBundleRef[]
+  actions: AgenticBundleRef[]
+  capabilities: AgenticBundleRef[]
+  hooks: AgenticBundleRef[]
+  surfaces: AgenticBundleRef[]
+  schedules: AgenticBundleRef[]
+  integrations: AgenticBundleRef[]
+  policies: AgenticBundleRef[]
+  deploy: AgenticBundleRef[]
+  evals: AgenticBundleRef[]
+  fixtures: AgenticBundleRef[]
+}
+
+// ---------------------------------------------------------------------------
 // Action gateway types
 //
 // Action gateways are the portable policy membrane between agent requests and

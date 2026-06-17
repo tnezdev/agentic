@@ -18,6 +18,7 @@ import type {
 import {
   validateArtifactData,
   validateArtifactDeclaration,
+  validateAgenticBundleManifest,
 } from "../../packages/agentic/src/index.ts"
 import { parseYaml } from "../../packages/agentic/src/workflow/yaml.ts"
 import {
@@ -164,7 +165,13 @@ async function loadManifest(): Promise<{ path: string; manifest: BundleManifest 
   for (const filename of MANIFEST_FILENAMES) {
     const path = join(BUNDLE_ROOT, filename)
     try {
-      return { path, manifest: await readAuthoredObject<BundleManifest>(path) }
+      const manifest = await readAuthoredObject<BundleManifest>(path)
+      const result = validateAgenticBundleManifest(manifest)
+      if (!result.valid) {
+        const details = result.errors.map((error) => `${error.field}: ${error.message}`).join("; ")
+        throw new Error(`Invalid bundle manifest ${path}: ${details}`)
+      }
+      return { path, manifest }
     } catch (error) {
       if (isNotFound(error)) continue
       throw error

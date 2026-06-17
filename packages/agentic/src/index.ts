@@ -34,6 +34,11 @@ export type {
   Dispatch,
   DispatchFilter,
   DispatchHandlerHooks,
+  AgenticBundleSectionName,
+  AgenticBundleRef,
+  AgenticBundleState,
+  AgenticPrincipalDeclaration,
+  AgenticBundleManifest,
   JsonPrimitive,
   JsonValue,
   JsonObject,
@@ -183,6 +188,15 @@ export { R2BucketSource } from "./sources/r2.js"
 export { KvSource } from "./sources/kv.js"
 
 export { match as matchDispatch } from "./dispatch/match.js"
+
+export type {
+  BundleManifestValidationError,
+  BundleManifestValidationResult,
+} from "./bundle/manifest.js"
+export {
+  AGENTIC_BUNDLE_REF_SECTIONS,
+  validateAgenticBundleManifest,
+} from "./bundle/manifest.js"
 
 export type {
   ActionGatewayDeclarations,
