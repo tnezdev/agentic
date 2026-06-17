@@ -42,9 +42,12 @@ Recent production-host usage has validated several reusable concepts without mak
 | Tasks | Task shape, adapter interface, local queue semantics | External trackers, assignment policy, board stewardship, async workers |
 | Persona | Declarative active-hat metadata and rendered body | Identity, session ownership, authorization, automatic application of defaults |
 | Artifacts | Versioned content blobs, metadata, finalize/write semantics | UI rendering, collaboration, inboxes, external delivery, attachment APIs |
+| Ports / Action Gateway | Semantic artifact/action port interfaces, action records, approval-request vocabulary, pure policy and digest helpers | Mandatory enforcement path, handler execution, approval grants, audit storage, provider calls |
 | Sources | Read-only loader abstraction and composition | Remote storage, deployment, synchronization, access control |
 | Capabilities | Portable declarations and pure policy helpers | Provider clients, credentials, approval UI, enforcement, audit logs |
 | Dispatch | Message shape, filters, and pure match logic | Webhooks, queues, recurrence, transport, handler execution |
+
+See [`runtime-adapter-boundary.md`](runtime-adapter-boundary.md) for the current ports/runtime/harness split used by the `agentic-next` product-path spike.
 
 ## Capability Availability And Discovery
 

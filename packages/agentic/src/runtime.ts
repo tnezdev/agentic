@@ -15,4 +15,7 @@ export type {
   RuntimeInitArgs,
   RuntimeRunArgs,
   RuntimeStatusArgs,
+  ArtifactPort,
+  ActionGatewayPort,
+  AgenticPorts,
 } from "./types.js"

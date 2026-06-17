@@ -21,10 +21,13 @@ import type {
   ActionDecision,
   ActionExecutionContext,
   ActionExecutionResult,
+  ActionGatewayPort,
   ActionIntegrationDeclaration,
   ActionProposal,
   ActionRecord,
   ActionStatus,
+  AgenticPorts,
+  ArtifactPort,
   ArtifactAdapter,
   ArtifactMetadata,
   ArtifactRecord,
@@ -177,10 +180,8 @@ export type LocalActionGatewayOptions = {
   approvalExpiresAt?: () => string
 }
 
-export type LocalArtifactPort<TReadArtifact = ArtifactMetadata, TWriteArtifact = ArtifactRecord> = {
-  readArtifact(input: ReadArtifactRequest): Promise<ReadArtifactResult<TReadArtifact>>
-  writeDraftArtifact(input: WriteDraftArtifactRequest): Promise<WriteDraftArtifactResult<TWriteArtifact>>
-}
+export type LocalArtifactPort<TReadArtifact = ArtifactMetadata, TWriteArtifact = ArtifactRecord> =
+  ArtifactPort<TReadArtifact, TWriteArtifact>
 
 export type LocalAgenticPortsOptions<TArtifact extends LocalActionGatewayArtifact> = {
   handlers?: Partial<Record<string, LocalActionHandler<TArtifact>>> | undefined
@@ -231,7 +232,7 @@ export class LocalAgenticPorts<
   TActionArtifact extends LocalActionGatewayArtifact,
   TReadArtifact = ArtifactMetadata,
   TWriteArtifact = ArtifactRecord,
-> {
+> implements AgenticPorts<TReadArtifact, TWriteArtifact> {
   constructor(
     readonly gateway: LocalActionGateway<TActionArtifact>,
     readonly artifacts: LocalArtifactPort<TReadArtifact, TWriteArtifact>,
@@ -257,7 +258,7 @@ export class LocalAgenticPorts<
   }
 }
 
-export class LocalActionGateway<TArtifact extends LocalActionGatewayArtifact> {
+export class LocalActionGateway<TArtifact extends LocalActionGatewayArtifact> implements ActionGatewayPort {
   #actions = new Map<string, ActionRecord>()
   #approvalRequests = new Map<string, ApprovalRequest>()
 

@@ -575,6 +575,19 @@ export type CheckActionStatusResult = {
   approval_request?: ApprovalRequest | undefined
 }
 
+export type ArtifactPort<TReadArtifact = ArtifactMetadata, TWriteArtifact = ArtifactRecord> = {
+  readArtifact(input: ReadArtifactRequest): Promise<ReadArtifactResult<TReadArtifact>>
+  writeDraftArtifact(input: WriteDraftArtifactRequest): Promise<WriteDraftArtifactResult<TWriteArtifact>>
+}
+
+export type ActionGatewayPort = {
+  requestAction(input: RequestActionRequest): Promise<RequestActionResult>
+  checkActionStatus(input: CheckActionStatusRequest): Promise<CheckActionStatusResult>
+}
+
+export type AgenticPorts<TReadArtifact = ArtifactMetadata, TWriteArtifact = ArtifactRecord> =
+  ArtifactPort<TReadArtifact, TWriteArtifact> & ActionGatewayPort
+
 // ---------------------------------------------------------------------------
 // Runtime package CLI types
 //

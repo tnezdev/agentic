@@ -21,6 +21,11 @@ bun run build
 
 The dogfood workspace still lives at `.agentic/`. Start with [`.agentic/ONRAMP.md`](.agentic/ONRAMP.md), then read [`packages/agentic/AGENTS.md`](packages/agentic/AGENTS.md) for core package architecture.
 
+## Design Docs
+
+- [`docs/framework-boundaries.md`](docs/framework-boundaries.md) explains the package-vs-host boundary.
+- [`docs/runtime-adapter-boundary.md`](docs/runtime-adapter-boundary.md) defines the core ports, runtime adapter, and harness adapter split.
+
 ## Examples
 
 - [`.agentic/`](.agentic/) is the project dogfood workspace — a persona, skills, workflow, tasks, and memories used to build Agentic itself. Read [`.agentic/ONRAMP.md`](.agentic/ONRAMP.md) for the maintainer flow.
