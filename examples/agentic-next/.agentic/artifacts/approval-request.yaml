@@ -1,0 +1,20 @@
+id: approval-request
+kind: artifact_declaration
+description: Runtime-created request for an authenticated principal to approve an exact action digest.
+data_classes:
+  - synthetic_regulated_demo
+statuses:
+  - pending
+  - approved
+  - denied
+  - expired
+required_fields:
+  - action_id
+  - action_digest
+  - capability
+  - approver_rule
+  - expires_at
+  - status
+default_tags:
+  - approval
+  - policy

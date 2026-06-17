@@ -1,0 +1,17 @@
+id: case-review-request
+kind: artifact_declaration
+description: Raw inbound request from a surface before normalization.
+data_classes:
+  - synthetic_regulated_demo
+statuses:
+  - received
+  - normalized
+  - rejected
+required_fields:
+  - request_id
+  - received_at
+  - source
+  - case_packet
+default_tags:
+  - case-review
+  - intake

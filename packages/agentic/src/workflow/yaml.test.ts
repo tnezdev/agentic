@@ -52,6 +52,12 @@ describe("parseYaml — scalars", () => {
   it("parses a bare version string as a string", () => {
     expect(parseYaml("version: 1.0.0")).toEqual({ version: "1.0.0" })
   })
+
+  it("parses a colon-bearing mapping value as a string", () => {
+    expect(parseYaml("principal: service:demo-api")).toEqual({
+      principal: "service:demo-api",
+    })
+  })
 })
 
 describe("parseYaml — mappings", () => {
@@ -90,6 +96,20 @@ claims:
 `.trim()
     expect(parseYaml(input)).toEqual({
       claims: ["read", "write", "admin"],
+    })
+  })
+
+  it("parses colon-bearing sequence items as scalars", () => {
+    const input = `
+effects:
+  - artifact.read:case-packet
+  - artifact.write:validation-result
+principals:
+  - agent:case-reviewer
+`.trim()
+    expect(parseYaml(input)).toEqual({
+      effects: ["artifact.read:case-packet", "artifact.write:validation-result"],
+      principals: ["agent:case-reviewer"],
     })
   })
 

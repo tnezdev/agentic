@@ -1,0 +1,17 @@
+id: handoff-note
+kind: artifact_declaration
+description: Reviewer-facing handoff payload prepared for an external review queue.
+data_classes:
+  - synthetic_regulated_demo
+statuses:
+  - draft
+  - approval_required
+  - released
+required_fields:
+  - case_id
+  - validation_result_id
+  - message
+  - target_queue
+default_tags:
+  - case-review
+  - handoff

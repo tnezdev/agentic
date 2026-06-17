@@ -150,12 +150,13 @@ function parseMapping(
 
     const trimmed = line.text.trimStart()
 
-    // Must be a key: (with optional value) — keys are identifier-like
-    const kvMatch = trimmed.match(/^([\w][\w_.-]*):\s*(.*)$/)
+    // Must be a key: (with optional value) — keys are identifier-like.
+    // A colon inside a plain scalar such as `agent:reviewer` is not a key separator.
+    const kvMatch = trimmed.match(/^([\w][\w_.-]*):(?:\s+(.*)|\s*)$/)
     if (!kvMatch) break // not a mapping entry
 
     const key = kvMatch[1]!
-    const rawValue = kvMatch[2]!.trim()
+    const rawValue = (kvMatch[2] ?? "").trim()
     idx++
 
     if (rawValue !== "") {
@@ -211,10 +212,10 @@ function parseSequence(
       }
     } else {
       // Check if this inline content starts a mapping entry
-      const kvMatch = itemContent.match(/^([\w][\w_.-]*):\s*(.*)$/)
+      const kvMatch = itemContent.match(/^([\w][\w_.-]*):(?:\s+(.*)|\s*)$/)
       if (kvMatch) {
         const key = kvMatch[1]!
-        const rawValue = kvMatch[2]!.trim()
+        const rawValue = (kvMatch[2] ?? "").trim()
         const obj: { [key: string]: YamlValue } = {}
 
         if (rawValue !== "") {
@@ -277,7 +278,7 @@ export function parseYaml(text: string): YamlValue {
   }
 
   // Top-level mapping: first line must be a key: entry
-  if (/^[\w][\w_.-]*\s*:/.test(trimmed)) {
+  if (/^[\w][\w_.-]*:(?:\s|$)/.test(trimmed)) {
     const [result] = parseMapping(lines, 0, 0)
     return result
   }

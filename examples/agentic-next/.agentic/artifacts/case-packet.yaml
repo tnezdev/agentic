@@ -1,0 +1,22 @@
+id: case-packet
+kind: artifact_declaration
+description: Normalized reviewable case payload derived from an intake request.
+data_classes:
+  - synthetic_regulated_demo
+statuses:
+  - intake_ready
+  - validating
+  - validated
+  - needs_reviewer
+  - released
+required_fields:
+  - case_id
+  - data_class
+  - modality
+  - body_region
+  - laterality
+  - report_text
+  - attachments
+default_tags:
+  - case-review
+  - packet

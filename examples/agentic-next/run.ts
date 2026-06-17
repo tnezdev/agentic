@@ -1,0 +1,996 @@
+import { createHash } from "node:crypto"
+import { appendFile, mkdir, readFile, rm, writeFile } from "node:fs/promises"
+import { dirname, extname, join, relative, resolve } from "node:path"
+import { fileURLToPath } from "node:url"
+import { parseYaml } from "../../packages/agentic/src/workflow/yaml.ts"
+
+type JsonValue = string | number | boolean | null | JsonObject | JsonValue[]
+type JsonObject = { [key: string]: JsonValue }
+
+type BundleRef = {
+  id: string
+  path: string
+}
+
+type BundleManifest = {
+  schema_version: string
+  name: string
+  version: string
+  description: string
+  state: {
+    adapter: "filesystem"
+    dir: string
+  }
+  principals: JsonObject[]
+  prompts: BundleRef[]
+  skills: BundleRef[]
+  artifacts: BundleRef[]
+  actions: BundleRef[]
+  capabilities: BundleRef[]
+  hooks: BundleRef[]
+  surfaces: BundleRef[]
+  schedules: BundleRef[]
+  integrations: BundleRef[]
+  policies: BundleRef[]
+  deploy: BundleRef[]
+  evals: BundleRef[]
+  fixtures: BundleRef[]
+}
+
+type LoadedMarkdown = BundleRef & {
+  content: string
+}
+
+type LoadedData = BundleRef & {
+  data: JsonObject
+}
+
+type LoadedBundle = {
+  root: string
+  manifestPath: string
+  manifest: BundleManifest
+  prompts: LoadedMarkdown[]
+  skills: LoadedMarkdown[]
+  artifacts: LoadedData[]
+  actions: LoadedData[]
+  capabilities: LoadedData[]
+  hooks: LoadedData[]
+  surfaces: LoadedData[]
+  schedules: LoadedData[]
+  integrations: LoadedData[]
+  policies: LoadedData[]
+  deploy: LoadedData[]
+  evals: LoadedData[]
+  fixtures: LoadedData[]
+}
+
+type PolicyCheck = {
+  decision: "allow" | "deny" | "approval_required"
+  capability?: string
+  reason: string
+  required_approval?: JsonObject
+}
+
+type ActionStatus = "completed" | "denied" | "approval_required"
+
+type ActionRecord = {
+  id: string
+  type: string
+  status: ActionStatus
+  principal: string
+  created_at: string
+  completed_at?: string
+  capability?: string
+  surface?: string
+  schedule?: string
+  hook?: string
+  input_artifact_ids?: string[]
+  output_artifact_ids?: string[]
+  effects?: string[]
+  policy?: PolicyCheck
+  digest?: string
+  payload?: JsonObject
+}
+
+type ArtifactRecord = {
+  id: string
+  type: string
+  title: string
+  status: string
+  version: number
+  finalized: boolean
+  data_class: string
+  tags: string[]
+  body: JsonObject
+  source?: JsonObject
+  derived_from?: string[]
+  created_by_action_id: string
+  created_at: string
+}
+
+type DemoResult = {
+  run_id: string
+  run_dir: string
+  summary_path: string
+  latest_path: string
+  approval_required_action_id: string
+  approval_request_artifact_id: string
+  actions: Pick<ActionRecord, "id" | "type" | "status" | "capability">[]
+  artifacts: Pick<ArtifactRecord, "id" | "type" | "title" | "status">[]
+}
+
+type ActionProposal = {
+  id?: string
+  type: string
+  principal: string
+  data_class: string
+  capability?: string
+  surface?: string
+  schedule?: string
+  hook?: string
+  input_artifact_ids?: string[]
+  effects?: string[]
+  payload?: JsonObject
+}
+
+type ResolvedActionProposal = ActionProposal & {
+  id: string
+  effects: string[]
+}
+
+type ActionExecutionContext = {
+  action_id: string
+  digest: string
+  action: JsonObject
+  capability?: JsonObject
+}
+
+type ActionExecutionResult = {
+  artifacts?: ArtifactRecord[]
+  output_artifact_ids?: string[]
+  payload?: JsonObject
+}
+
+type GatewayResult = {
+  action: ActionRecord
+  artifacts: ArtifactRecord[]
+  approval_request_artifact?: ArtifactRecord
+}
+
+const EXAMPLE_ROOT = dirname(fileURLToPath(import.meta.url))
+const BUNDLE_ROOT = join(EXAMPLE_ROOT, ".agentic")
+const MANIFEST_FILENAMES = ["agentic.yaml", "agentic.yml", "agentic.json"]
+
+function isNotFound(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT"
+}
+
+async function readAuthoredObject<T>(path: string): Promise<T> {
+  const text = await readFile(path, "utf-8")
+  const ext = extname(path)
+  if (ext === ".json") return JSON.parse(text) as T
+  if (ext === ".yaml" || ext === ".yml") {
+    const data = parseYaml(text)
+    if (data === null || typeof data !== "object" || Array.isArray(data)) {
+      throw new Error(`Authored data file ${path} must contain a non-null mapping.`)
+    }
+    return data as T
+  }
+
+  throw new Error(`Unsupported authored data file extension for ${path}. Expected .json, .yaml, or .yml.`)
+}
+
+async function writeJson(path: string, value: unknown): Promise<void> {
+  await writeFile(path, `${JSON.stringify(value, null, 2)}\n`, "utf-8")
+}
+
+async function loadMarkdownSection(refs: BundleRef[]): Promise<LoadedMarkdown[]> {
+  const loaded: LoadedMarkdown[] = []
+  for (const ref of refs) {
+    loaded.push({ ...ref, content: await readFile(join(BUNDLE_ROOT, ref.path), "utf-8") })
+  }
+  return loaded
+}
+
+async function loadDataSection(refs: BundleRef[]): Promise<LoadedData[]> {
+  const loaded: LoadedData[] = []
+  for (const ref of refs) {
+    const data = await readAuthoredObject<JsonObject>(join(BUNDLE_ROOT, ref.path))
+    if (data.id !== ref.id) {
+      throw new Error(`Declaration id mismatch for ${ref.path}: manifest has ${ref.id}, file has ${String(data.id)}`)
+    }
+    loaded.push({ ...ref, data })
+  }
+  return loaded
+}
+
+async function loadManifest(): Promise<{ path: string; manifest: BundleManifest }> {
+  for (const filename of MANIFEST_FILENAMES) {
+    const path = join(BUNDLE_ROOT, filename)
+    try {
+      return { path, manifest: await readAuthoredObject<BundleManifest>(path) }
+    } catch (error) {
+      if (isNotFound(error)) continue
+      throw error
+    }
+  }
+
+  throw new Error(`Missing bundle manifest. Expected one of: ${MANIFEST_FILENAMES.join(", ")}`)
+}
+
+async function loadBundle(): Promise<LoadedBundle> {
+  const { path: manifestPath, manifest } = await loadManifest()
+  return {
+    root: BUNDLE_ROOT,
+    manifestPath,
+    manifest,
+    prompts: await loadMarkdownSection(manifest.prompts),
+    skills: await loadMarkdownSection(manifest.skills),
+    artifacts: await loadDataSection(manifest.artifacts),
+    actions: await loadDataSection(manifest.actions),
+    capabilities: await loadDataSection(manifest.capabilities),
+    hooks: await loadDataSection(manifest.hooks),
+    surfaces: await loadDataSection(manifest.surfaces),
+    schedules: await loadDataSection(manifest.schedules),
+    integrations: await loadDataSection(manifest.integrations),
+    policies: await loadDataSection(manifest.policies),
+    deploy: await loadDataSection(manifest.deploy),
+    evals: await loadDataSection(manifest.evals),
+    fixtures: await loadDataSection(manifest.fixtures),
+  }
+}
+
+function findLoaded(section: LoadedData[], id: string, kind: string): LoadedData {
+  const match = section.find((entry) => entry.id === id)
+  if (match === undefined) throw new Error(`Missing ${kind} declaration: ${id}`)
+  return match
+}
+
+function findOptional(section: LoadedData[], id: string): LoadedData | undefined {
+  return section.find((entry) => entry.id === id)
+}
+
+function stringArray(value: JsonValue | undefined): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : []
+}
+
+function objectValue(value: JsonValue | undefined): JsonObject {
+  if (value !== null && typeof value === "object" && !Array.isArray(value)) return value
+  return {}
+}
+
+function stringValue(value: JsonValue | undefined): string | undefined {
+  return typeof value === "string" ? value : undefined
+}
+
+function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value)
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`
+
+  const record = value as Record<string, unknown>
+  const entries = Object.entries(record)
+    .filter(([, entryValue]) => entryValue !== undefined)
+    .sort(([a], [b]) => a.localeCompare(b))
+  return `{${entries.map(([key, entryValue]) => `${JSON.stringify(key)}:${stableStringify(entryValue)}`).join(",")}}`
+}
+
+function digestOf(value: unknown): string {
+  return createHash("sha256").update(stableStringify(value)).digest("hex")
+}
+
+function safeTimestamp(date = new Date()): string {
+  return date.toISOString().replace(/[:.]/g, "-")
+}
+
+function isoInHours(hours: number): string {
+  return new Date(Date.now() + hours * 60 * 60 * 1000).toISOString()
+}
+
+function displayPath(path: string): string {
+  return relative(process.cwd(), path) || "."
+}
+
+function actionIdPrefix(type: string): string {
+  return `act_${type.replace(/[^a-z0-9]+/gi, "_").replace(/^_|_$/g, "")}`
+}
+
+class DemoRuntime {
+  readonly runId: string
+  readonly stateDir: string
+  readonly runDir: string
+  readonly artifactDir: string
+  readonly actionDir: string
+  readonly actionLogPath: string
+  readonly summaryPath: string
+  readonly latestPath: string
+  readonly actions: ActionRecord[] = []
+  readonly artifacts: ArtifactRecord[] = []
+  #sequence = 0
+
+  constructor(stateDir: string, runId: string) {
+    this.runId = runId
+    this.stateDir = stateDir
+    this.runDir = join(stateDir, "runs", runId)
+    this.artifactDir = join(this.runDir, "artifacts")
+    this.actionDir = join(this.runDir, "actions")
+    this.actionLogPath = join(this.runDir, "actions.jsonl")
+    this.summaryPath = join(this.runDir, "summary.md")
+    this.latestPath = join(stateDir, "latest.json")
+  }
+
+  async init(): Promise<void> {
+    await mkdir(this.artifactDir, { recursive: true })
+    await mkdir(this.actionDir, { recursive: true })
+    await writeFile(this.actionLogPath, "", "utf-8")
+  }
+
+  nextId(prefix: string): string {
+    this.#sequence += 1
+    return `${prefix}_${String(this.#sequence).padStart(4, "0")}`
+  }
+
+  async writeArtifact(input: Omit<ArtifactRecord, "version" | "finalized" | "created_at">): Promise<ArtifactRecord> {
+    const artifact: ArtifactRecord = {
+      ...input,
+      version: 1,
+      finalized: true,
+      created_at: new Date().toISOString(),
+    }
+    this.artifacts.push(artifact)
+    await writeJson(join(this.artifactDir, `${artifact.id}.json`), artifact)
+    return artifact
+  }
+
+  async recordAction(input: Omit<ActionRecord, "created_at" | "completed_at">): Promise<ActionRecord> {
+    const action: ActionRecord = {
+      ...input,
+      created_at: new Date().toISOString(),
+      completed_at: new Date().toISOString(),
+    }
+    this.actions.push(action)
+    await writeJson(join(this.actionDir, `${action.id}.json`), action)
+    await appendFile(this.actionLogPath, `${JSON.stringify(action)}\n`, "utf-8")
+    return action
+  }
+
+  async writeSummary(markdown: string, latest: DemoResult): Promise<void> {
+    await writeFile(this.summaryPath, markdown, "utf-8")
+    await writeJson(this.latestPath, latest)
+  }
+}
+
+class ActionGateway {
+  constructor(
+    readonly bundle: LoadedBundle,
+    readonly runtime: DemoRuntime,
+  ) {}
+
+  async submit(
+    proposal: ActionProposal,
+    execute?: (context: ActionExecutionContext) => Promise<ActionExecutionResult>,
+  ): Promise<GatewayResult> {
+    const actionDeclaration = findLoaded(this.bundle.actions, proposal.type, "action").data
+    const actionId = proposal.id ?? this.runtime.nextId(actionIdPrefix(proposal.type))
+    const capabilityId = proposal.capability ?? stringValue(actionDeclaration.capability)
+    const resolved: ResolvedActionProposal = {
+      ...proposal,
+      id: actionId,
+      effects: proposal.effects ?? stringArray(actionDeclaration.effects),
+    }
+    if (capabilityId !== undefined) resolved.capability = capabilityId
+
+    const digest = digestOf({
+      id: resolved.id,
+      type: resolved.type,
+      principal: resolved.principal,
+      capability: resolved.capability,
+      surface: resolved.surface,
+      schedule: resolved.schedule,
+      hook: resolved.hook,
+      data_class: resolved.data_class,
+      input_artifact_ids: resolved.input_artifact_ids ?? [],
+      effects: resolved.effects,
+      payload: resolved.payload ?? {},
+    })
+    const policy = evaluateActionPolicy(this.bundle, actionDeclaration, resolved)
+
+    if (policy.decision === "deny") {
+      const action = await this.recordAction(resolved, "denied", policy, digest)
+      return { action, artifacts: [] }
+    }
+
+    if (policy.decision === "approval_required") {
+      const approval = await this.requestApproval(resolved, policy, digest)
+      const action = await this.recordAction(resolved, "approval_required", policy, digest, [
+        approval.approval_request_artifact.id,
+      ])
+      return {
+        action,
+        artifacts: [approval.approval_request_artifact],
+        approval_request_artifact: approval.approval_request_artifact,
+      }
+    }
+
+    const context: ActionExecutionContext = {
+      action_id: resolved.id,
+      digest,
+      action: actionDeclaration,
+    }
+    const capability = resolved.capability === undefined
+      ? undefined
+      : findOptional(this.bundle.capabilities, resolved.capability)?.data
+    if (capability !== undefined) context.capability = capability
+
+    const execution = execute === undefined ? {} : await execute(context)
+    const artifacts = execution.artifacts ?? []
+    const outputArtifactIds = execution.output_artifact_ids ?? artifacts.map((artifact) => artifact.id)
+    const action = await this.recordAction(
+      resolved,
+      "completed",
+      policy,
+      digest,
+      outputArtifactIds,
+      execution.payload ?? resolved.payload,
+    )
+    return { action, artifacts }
+  }
+
+  private async requestApproval(
+    proposal: ResolvedActionProposal,
+    policy: PolicyCheck,
+    actionDigest: string,
+  ): Promise<GatewayResult & { approval_request_artifact: ArtifactRecord }> {
+    const approvalPayload: JsonObject = {
+      action_id: proposal.id,
+      action_type: proposal.type,
+      action_digest: actionDigest,
+      effects: proposal.effects,
+      input_artifact_ids: proposal.input_artifact_ids ?? [],
+      approver_rule: policy.required_approval ?? {},
+      expires_at: isoInHours(24),
+      status: "pending",
+    }
+    if (proposal.capability !== undefined) approvalPayload.capability = proposal.capability
+
+    const approvalProposal: ActionProposal = {
+      type: "approval.request",
+      principal: "service:agentic-runtime",
+      data_class: proposal.data_class,
+      payload: approvalPayload,
+    }
+    if (proposal.input_artifact_ids !== undefined) {
+      approvalProposal.input_artifact_ids = proposal.input_artifact_ids
+    }
+
+    const result = await this.submit(approvalProposal, async ({ action_id }) => {
+      const artifact = await this.runtime.writeArtifact({
+        id: this.runtime.nextId("art_approval_request"),
+        type: "approval-request",
+        title: `Approval required for ${proposal.id}`,
+        status: "pending",
+        data_class: proposal.data_class,
+        tags: ["case-review", "approval", "pending"],
+        body: approvalPayload,
+        derived_from: proposal.input_artifact_ids ?? [],
+        created_by_action_id: action_id,
+      })
+      return { artifacts: [artifact] }
+    })
+
+    const approvalRequestArtifact = result.artifacts.find((artifact) => artifact.type === "approval-request")
+    if (approvalRequestArtifact === undefined) {
+      throw new Error("Approval gateway did not create an approval-request artifact.")
+    }
+
+    return {
+      ...result,
+      approval_request_artifact: approvalRequestArtifact,
+    }
+  }
+
+  private async recordAction(
+    proposal: ResolvedActionProposal,
+    status: ActionStatus,
+    policy: PolicyCheck,
+    digest: string,
+    outputArtifactIds: string[] = [],
+    payload: JsonObject | undefined = proposal.payload,
+  ): Promise<ActionRecord> {
+    const input: Omit<ActionRecord, "created_at" | "completed_at"> = {
+      id: proposal.id,
+      type: proposal.type,
+      status,
+      principal: proposal.principal,
+      policy,
+      digest,
+    }
+    if (proposal.capability !== undefined) input.capability = proposal.capability
+    if (proposal.surface !== undefined) input.surface = proposal.surface
+    if (proposal.schedule !== undefined) input.schedule = proposal.schedule
+    if (proposal.hook !== undefined) input.hook = proposal.hook
+    if (proposal.input_artifact_ids !== undefined) input.input_artifact_ids = proposal.input_artifact_ids
+    if (outputArtifactIds.length > 0) input.output_artifact_ids = outputArtifactIds
+    if (proposal.effects.length > 0) input.effects = proposal.effects
+    if (payload !== undefined) input.payload = payload
+
+    return this.runtime.recordAction(input)
+  }
+}
+
+function checkCapability(
+  bundle: LoadedBundle,
+  capabilityId: string,
+  request: {
+    action: string
+    principal: string
+    effects: string[]
+    data_class: string
+  },
+): PolicyCheck {
+  const loadedCapability = findOptional(bundle.capabilities, capabilityId)
+  if (loadedCapability === undefined) {
+    return {
+      decision: "deny",
+      reason: `Missing capability declaration: ${capabilityId}.`,
+    }
+  }
+
+  const capability = loadedCapability.data
+  const capabilityAction = stringValue(capability.action)
+  const allowedPrincipals = stringArray(objectValue(capability.principals).allowed)
+  const allowedEffects = stringArray(capability.effects)
+  const allowedDataClasses = stringArray(capability.data_classes)
+  const integrations = stringArray(capability.integrations)
+  const approval = objectValue(capability.approval)
+
+  if (capabilityAction !== undefined && capabilityAction !== request.action) {
+    return {
+      decision: "deny",
+      capability: capabilityId,
+      reason: `Capability ${capabilityId} is declared for ${capabilityAction}, not ${request.action}.`,
+    }
+  }
+
+  if (!allowedPrincipals.includes("*") && !allowedPrincipals.includes(request.principal)) {
+    return {
+      decision: "deny",
+      capability: capabilityId,
+      reason: `Principal ${request.principal} is not allowed for ${capabilityId}.`,
+    }
+  }
+
+  const unsupportedEffect = request.effects.find((effect) => !allowedEffects.includes(effect))
+  if (unsupportedEffect !== undefined) {
+    return {
+      decision: "deny",
+      capability: capabilityId,
+      reason: `Effect ${unsupportedEffect} is not declared by ${capabilityId}.`,
+    }
+  }
+
+  if (allowedDataClasses.length > 0 && !allowedDataClasses.includes(request.data_class)) {
+    return {
+      decision: "deny",
+      capability: capabilityId,
+      reason: `Data class ${request.data_class} is not allowed by ${capabilityId}.`,
+    }
+  }
+
+  for (const integrationId of integrations) {
+    const integration = findOptional(bundle.integrations, integrationId)
+    if (integration === undefined) {
+      return {
+        decision: "deny",
+        capability: capabilityId,
+        reason: `Capability ${capabilityId} requires missing integration ${integrationId}.`,
+      }
+    }
+
+    const availability = stringValue(integration.data.availability) ?? "unknown"
+    if (availability === "missing" || availability === "unavailable") {
+      return {
+        decision: "deny",
+        capability: capabilityId,
+        reason: `Integration ${integrationId} is ${availability}.`,
+      }
+    }
+  }
+
+  if (approval.required === true) {
+    return {
+      decision: "approval_required",
+      capability: capabilityId,
+      reason: `${capabilityId} requires a runtime-authenticated approval grant before execution.`,
+      required_approval: objectValue(approval.approver_rule),
+    }
+  }
+
+  return {
+    decision: "allow",
+    capability: capabilityId,
+    reason: `${capabilityId} is available for ${request.principal}.`,
+  }
+}
+
+function checkDataBoundary(bundle: LoadedBundle, dataClass: string): PolicyCheck | undefined {
+  const dataBoundary = findOptional(bundle.policies, "data-boundary")?.data
+  if (dataBoundary === undefined) return undefined
+
+  const disallowed = stringArray(dataBoundary.disallowed)
+  if (disallowed.includes(dataClass)) {
+    return {
+      decision: "deny",
+      reason: `Data class ${dataClass} is blocked by policy data-boundary.`,
+    }
+  }
+
+  const allowed = stringArray(dataBoundary.allowed_data_classes)
+  if (allowed.length > 0 && !allowed.includes(dataClass)) {
+    return {
+      decision: "deny",
+      reason: `Data class ${dataClass} is not listed in policy data-boundary.`,
+    }
+  }
+
+  return undefined
+}
+
+function evaluateActionPolicy(
+  bundle: LoadedBundle,
+  actionDeclaration: JsonObject,
+  proposal: ResolvedActionProposal,
+): PolicyCheck {
+  const principalIds = bundle.manifest.principals
+    .map((principal) => stringValue(principal.id))
+    .filter((id): id is string => id !== undefined)
+  if (!principalIds.includes(proposal.principal)) {
+    return {
+      decision: "deny",
+      reason: `Principal ${proposal.principal} is not declared in the bundle manifest.`,
+    }
+  }
+
+  const dataBoundary = checkDataBoundary(bundle, proposal.data_class)
+  if (dataBoundary !== undefined) return dataBoundary
+
+  const declaredCapability = stringValue(actionDeclaration.capability)
+  if (declaredCapability !== undefined && proposal.capability !== declaredCapability) {
+    const result: PolicyCheck = {
+      decision: "deny",
+      reason: `Action ${proposal.type} must use declared capability ${declaredCapability}.`,
+    }
+    if (proposal.capability !== undefined) result.capability = proposal.capability
+    return result
+  }
+
+  if (declaredCapability === undefined && proposal.capability !== undefined) {
+    return {
+      decision: "deny",
+      capability: proposal.capability,
+      reason: `Action ${proposal.type} does not declare a capability boundary.`,
+    }
+  }
+
+  const declaredEffects = stringArray(actionDeclaration.effects)
+  const unsupportedEffect = proposal.effects.find((effect) => !declaredEffects.includes(effect))
+  if (unsupportedEffect !== undefined) {
+    const result: PolicyCheck = {
+      decision: "deny",
+      reason: `Action ${proposal.type} does not declare effect ${unsupportedEffect}.`,
+    }
+    if (proposal.capability !== undefined) result.capability = proposal.capability
+    return result
+  }
+
+  if (proposal.capability !== undefined) {
+    return checkCapability(bundle, proposal.capability, {
+      action: proposal.type,
+      principal: proposal.principal,
+      effects: proposal.effects,
+      data_class: proposal.data_class,
+    })
+  }
+
+  if (!proposal.principal.startsWith("service:")) {
+    return {
+      decision: "deny",
+      reason: `Action ${proposal.type} has no capability and must be proposed by a host-owned service principal.`,
+    }
+  }
+
+  return {
+    decision: "allow",
+    reason: `Host-owned action ${proposal.type} is available to ${proposal.principal}.`,
+  }
+}
+
+function validateCase(packet: JsonObject, guideline: JsonObject): JsonObject {
+  const laterality = stringValue(packet.laterality)
+  const reportText = stringValue(packet.report_text)?.toLowerCase() ?? ""
+  const attachments = Array.isArray(packet.attachments) ? packet.attachments : []
+  const expectedViews = typeof guideline.expected_minimum_views === "number"
+    ? guideline.expected_minimum_views
+    : 2
+  const findings: JsonObject[] = []
+
+  if (reportText.includes("right") && laterality !== "right") {
+    findings.push({
+      id: "finding-laterality-mismatch",
+      severity: "high",
+      message: "Report text describes the right knee, but packet metadata says left knee.",
+      evidence: ["case_packet.report_text", "case_packet.laterality"],
+    })
+  }
+
+  if (attachments.length < expectedViews) {
+    findings.push({
+      id: "finding-insufficient-views",
+      severity: "medium",
+      message: `Knee radiograph QC expects at least ${expectedViews} views; packet includes ${attachments.length}.`,
+      evidence: ["case_packet.attachments"],
+    })
+  }
+
+  return {
+    status: findings.length > 0 ? "needs_reviewer" : "passed",
+    finding_count: findings.length,
+    findings,
+    checked_rules: stringArray(guideline.rules),
+    summary: findings.length > 0
+      ? "Synthetic QC found issues that require reviewer handoff."
+      : "Synthetic QC did not find blocking issues.",
+  }
+}
+
+function renderSummary(bundle: LoadedBundle, runtime: DemoRuntime, latest: DemoResult): string {
+  const inventoryRows = [
+    ["prompts", bundle.prompts.map((entry) => entry.id)],
+    ["skills", bundle.skills.map((entry) => entry.id)],
+    ["artifacts", bundle.artifacts.map((entry) => entry.id)],
+    ["actions", bundle.actions.map((entry) => entry.id)],
+    ["capabilities", bundle.capabilities.map((entry) => entry.id)],
+    ["hooks", bundle.hooks.map((entry) => entry.id)],
+    ["surfaces", bundle.surfaces.map((entry) => entry.id)],
+    ["schedules", bundle.schedules.map((entry) => entry.id)],
+  ]
+    .map(([section, ids]) => `| ${section} | ${(ids as string[]).join(", ")} |`)
+    .join("\n")
+  const actionRows = runtime.actions
+    .map((action) => {
+      const policy = action.policy?.decision ?? "not_checked"
+      const reason = action.policy?.reason ?? "none"
+      const digest = action.digest === undefined ? "none" : action.digest.slice(0, 12)
+      return `| ${action.id} | ${action.type} | ${action.status} | ${action.capability ?? "none"} | ${policy} | ${digest} | ${reason} |`
+    })
+    .join("\n")
+  const artifactRows = runtime.artifacts
+    .map((artifact) => `| ${artifact.id} | ${artifact.type} | ${artifact.status} | ${artifact.title} |`)
+    .join("\n")
+
+  return `# Agentic Next Demo Run
+
+Run id: ${runtime.runId}
+Bundle: ${bundle.manifest.name}@${bundle.manifest.version}
+
+## What Happened
+
+The example runner loaded the authored bundle from \`${displayPath(bundle.manifestPath)}\`, processed the synthetic API surface fixture, ran the schedule-like validation pass, and stopped at an approval gate before any external handoff. Every surface, schedule, hook, approval, and agent action entered the same action gateway before artifacts were written or effects were considered.
+
+## Authored Bundle Inventory
+
+| Section | Loaded ids |
+| --- | --- |
+${inventoryRows}
+
+## Actions
+
+| ID | Type | Status | Capability | Policy | Digest | Reason |
+| --- | --- | --- | --- | --- | --- | --- |
+${actionRows}
+
+## Artifacts
+
+| ID | Type | Status | Title |
+| --- | --- | --- | --- |
+${artifactRows}
+
+## Approval Gate
+
+- Action requiring approval: ${latest.approval_required_action_id}
+- Approval request artifact: ${latest.approval_request_artifact_id}
+- External write executed: no
+
+The runtime created an exact action digest and approval request. The model or agent cannot approve this by writing prose; a host-owned authenticated approval channel must grant the exact action before execution.
+
+## Inspect
+
+- Latest pointer: ${displayPath(runtime.latestPath)}
+- Action log: ${displayPath(runtime.actionLogPath)}
+- Action records: ${displayPath(runtime.actionDir)}
+- Artifact records: ${displayPath(runtime.artifactDir)}
+`
+}
+
+function summarizeAction(action: ActionRecord): DemoResult["actions"][number] {
+  const summary: DemoResult["actions"][number] = {
+    id: action.id,
+    type: action.type,
+    status: action.status,
+  }
+  if (action.capability !== undefined) summary.capability = action.capability
+  return summary
+}
+
+function requireArtifact(artifacts: ArtifactRecord[], type: string): ArtifactRecord {
+  const artifact = artifacts.find((entry) => entry.type === type)
+  if (artifact === undefined) throw new Error(`Gateway did not produce expected ${type} artifact.`)
+  return artifact
+}
+
+async function runCaseReviewDemo(options: { clean: boolean }): Promise<DemoResult> {
+  const bundle = await loadBundle()
+  const stateDir = resolve(EXAMPLE_ROOT, bundle.manifest.state.dir)
+  if (options.clean) await rm(stateDir, { recursive: true, force: true })
+
+  const runtime = new DemoRuntime(stateDir, `run-${safeTimestamp()}`)
+  await runtime.init()
+  const gateway = new ActionGateway(bundle, runtime)
+
+  const surface = findLoaded(bundle.surfaces, "case-intake-api", "surface").data
+  const schedule = findLoaded(bundle.schedules, "nightly-qc-sweep", "schedule").data
+  const hook = findLoaded(bundle.hooks, "validation-result.propose-handoff", "hook").data
+  const requestFixture = findLoaded(bundle.fixtures, "case-request-001", "fixture").data
+  const guidelineFixture = findLoaded(bundle.fixtures, "guideline-excerpt", "fixture").data
+  const casePacket = objectValue(requestFixture.case_packet)
+  const dataClass = stringValue(casePacket.data_class) ?? "unknown"
+
+  const receiveResult = await gateway.submit({
+    type: "surface.receive",
+    principal: stringValue(surface.principal) ?? "service:demo-api",
+    data_class: dataClass,
+    surface: "case-intake-api",
+    payload: {
+      route: stringValue(surface.route) ?? "unknown",
+      fixture: "case-request-001",
+    },
+  }, async ({ action_id }) => {
+    const requestArtifact = await runtime.writeArtifact({
+      id: runtime.nextId("art_case_review_request"),
+      type: "case-review-request",
+      title: `Case review request ${stringValue(requestFixture.request_id) ?? "unknown"}`,
+      status: "received",
+      data_class: dataClass,
+      tags: ["case-review", "surface:case-intake-api"],
+      body: requestFixture,
+      source: { surface: surface.id, fixture: "case-request-001" },
+      created_by_action_id: action_id,
+    })
+    const packetArtifact = await runtime.writeArtifact({
+      id: runtime.nextId("art_case_packet"),
+      type: "case-packet",
+      title: `Case packet ${stringValue(casePacket.case_id) ?? "unknown"}`,
+      status: "intake_ready",
+      data_class: dataClass,
+      tags: ["case-review", "queued-for-validation"],
+      body: casePacket,
+      source: { surface: surface.id, fixture: "case-request-001" },
+      derived_from: [requestArtifact.id],
+      created_by_action_id: action_id,
+    })
+    return { artifacts: [requestArtifact, packetArtifact] }
+  })
+  requireArtifact(receiveResult.artifacts, "case-review-request")
+  const packetArtifact = requireArtifact(receiveResult.artifacts, "case-packet")
+
+  await gateway.submit({
+    type: "schedule.tick",
+    principal: stringValue(schedule.principal) ?? "service:nightly-scheduler",
+    data_class: dataClass,
+    schedule: "nightly-qc-sweep",
+    input_artifact_ids: [packetArtifact.id],
+    payload: {
+      cron: stringValue(schedule.cron) ?? "unknown",
+      selected_artifacts: [packetArtifact.id],
+    },
+  })
+
+  const validateResult = await gateway.submit({
+    type: "case.validate",
+    principal: "agent:case-reviewer",
+    data_class: dataClass,
+    input_artifact_ids: [packetArtifact.id],
+    payload: {
+      guideline_fixture: "guideline-excerpt",
+    },
+  }, async ({ action_id }) => {
+    const validationResult = validateCase(packetArtifact.body, guidelineFixture)
+    const validationArtifact = await runtime.writeArtifact({
+      id: runtime.nextId("art_validation_result"),
+      type: "validation-result",
+      title: `Validation result for ${stringValue(casePacket.case_id) ?? packetArtifact.id}`,
+      status: stringValue(validationResult.status) ?? "unknown",
+      data_class: dataClass,
+      tags: ["case-review", "validation", `status:${stringValue(validationResult.status) ?? "unknown"}`],
+      body: validationResult,
+      derived_from: [packetArtifact.id],
+      created_by_action_id: action_id,
+    })
+    return { artifacts: [validationArtifact] }
+  })
+  if (validateResult.action.status !== "completed") {
+    throw new Error(validateResult.action.policy?.reason ?? "Case validation was not allowed.")
+  }
+  const validationArtifact = requireArtifact(validateResult.artifacts, "validation-result")
+
+  await gateway.submit({
+    type: "hook.run",
+    principal: "service:agentic-runtime",
+    data_class: dataClass,
+    hook: "validation-result.propose-handoff",
+    input_artifact_ids: [validationArtifact.id],
+    payload: {
+      trigger: objectValue(hook.on),
+      proposed_action: objectValue(hook.proposes).action ?? "external.handoff",
+    },
+  })
+
+  const handoffPayload: JsonObject = {
+    integration: "review-queue",
+    queue: "orthopedic-qc",
+    case_id: stringValue(casePacket.case_id) ?? "unknown",
+    artifact_ids: [packetArtifact.id, validationArtifact.id],
+    message: "Synthetic validation findings are ready for reviewer handoff.",
+  }
+  const handoffResult = await gateway.submit({
+    type: "external.handoff",
+    principal: "agent:case-reviewer",
+    data_class: dataClass,
+    input_artifact_ids: [packetArtifact.id, validationArtifact.id],
+    payload: handoffPayload,
+  })
+  const approvalRequestArtifact = handoffResult.approval_request_artifact
+  if (handoffResult.action.status !== "approval_required" || approvalRequestArtifact === undefined) {
+    throw new Error("Demo expected handoff.release to require approval.")
+  }
+
+  const latest: DemoResult = {
+    run_id: runtime.runId,
+    run_dir: displayPath(runtime.runDir),
+    summary_path: displayPath(runtime.summaryPath),
+    latest_path: displayPath(runtime.latestPath),
+    approval_required_action_id: handoffResult.action.id,
+    approval_request_artifact_id: approvalRequestArtifact.id,
+    actions: runtime.actions.map(summarizeAction),
+    artifacts: runtime.artifacts.map((artifact) => ({
+      id: artifact.id,
+      type: artifact.type,
+      title: artifact.title,
+      status: artifact.status,
+    })),
+  }
+
+  await runtime.writeSummary(renderSummary(bundle, runtime, latest), latest)
+  return latest
+}
+
+async function main(): Promise<void> {
+  const flags = new Set(process.argv.slice(2))
+  const latest = await runCaseReviewDemo({ clean: flags.has("--clean") })
+
+  if (flags.has("--json")) {
+    console.log(JSON.stringify(latest, null, 2))
+    return
+  }
+
+  console.log(`Agentic Next demo run: ${latest.run_id}`)
+  console.log(`Summary: ${latest.summary_path}`)
+  console.log(`Latest pointer: ${latest.latest_path}`)
+  console.log(`Approval required: ${latest.approval_required_action_id}`)
+  console.log(`Approval request artifact: ${latest.approval_request_artifact_id}`)
+}
+
+if (import.meta.main) {
+  await main()
+}
+
+export { loadBundle, runCaseReviewDemo }

@@ -1,0 +1,11 @@
+id: validation-result.propose-handoff
+kind: hook_declaration
+description: When validation finds reviewer-needed issues, propose a reviewer queue handoff.
+on:
+  artifact.type: validation-result
+  artifact.status: needs_reviewer
+proposes:
+  action: external.handoff
+  capability: handoff.release
+  reason: Validation produced findings that need human review.
+policy_note: This hook proposes the action only. The action still passes capability and approval gates.

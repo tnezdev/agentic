@@ -1,0 +1,10 @@
+id: schedule.tick
+kind: action_declaration
+description: Record timed ingress selecting artifacts and proposing follow-on actions.
+input_artifacts:
+  - case-packet
+output:
+  - action_request
+effects:
+  - action.propose:case.validate
+policy: schedule principal must be host-owned

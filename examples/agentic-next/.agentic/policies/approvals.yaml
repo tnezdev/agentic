@@ -1,0 +1,7 @@
+id: approvals
+kind: policy_declaration
+description: Approval grants are host-authenticated runtime records, not agent prose.
+rules:
+  - Approval binds to action id, action digest, capability, effects, input artifact ids, target resource, expiration, and approving principal.
+  - After approval is requested, the runtime executes the stored action payload. It does not accept a fresh agent-supplied payload.
+  - Agents may request approval and explain the request. They may not approve their own external effects.

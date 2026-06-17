@@ -1,0 +1,11 @@
+{
+  "id": "guideline-excerpt",
+  "kind": "fixture",
+  "description": "Synthetic excerpt of QC checks used by the local demo runner.",
+  "expected_minimum_views": 2,
+  "rules": [
+    "report_laterality_matches_packet_laterality",
+    "knee_xr_has_at_least_two_views",
+    "findings_require_reviewer_handoff_before_external_release"
+  ]
+}
