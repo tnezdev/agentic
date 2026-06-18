@@ -31,6 +31,10 @@ agentic eval . --json
 
 Use `serve` as the normal local lifecycle command for authored bundles. Use `run` when you need the lower-level runtime package entrypoint for workflow, artifact, or harness contexts.
 
+A future `agentic dev` command should stay a thin composition of this loop. See
+[`dev-command-shape.md`](dev-command-shape.md) for the narrow shape and
+non-goals.
+
 ## What You Author
 
 Authored bundle files live under `.agentic/` and should be reviewed like source code:
