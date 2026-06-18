@@ -80,8 +80,12 @@ The runtime may choose different keys, indices, or denormalized projections. Cor
 2. The runtime resolves declarations and calls `ActionGatewayPort.requestAction`.
 3. The gateway writes an `ActionRecord` with the policy decision and exact digest.
 4. If allowed, the runtime executes the handler and writes output artifacts.
-5. If approval is required, the runtime writes an `ApprovalRequest` and an approval-request artifact or equivalent approval record.
-6. A harness or caller later checks status with `checkActionStatus` and reads artifacts through `readArtifact`.
+5. If an allowed handler fails, the runtime records a `failed` action with the
+   handler error before surfacing the run failure.
+6. If approval is required, the runtime writes an `ApprovalRequest` and an
+   approval-request artifact or equivalent approval record.
+7. A harness or caller later checks status with `checkActionStatus` and reads
+   artifacts through `readArtifact`.
 
 ## Non-Goals
 

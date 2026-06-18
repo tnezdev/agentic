@@ -48,6 +48,12 @@ export fails the local run and writes inspectable failure state to the bundle ru
 `latest.json` and `summary.md`. That is local-runtime guidance, not core handler
 packaging or arbitrary-code execution.
 
+If an allowed local handler throws during execution, the runtime records the
+action as `failed` with the handler error before failing the bundle run. The
+failed action appears in the action log, action record, bundle `latest.json`, and
+runtime invocation failure state. This is still runtime-owned execution; core only
+defines the durable action status vocabulary.
+
 Effect-producing handlers must still enter through the action gateway. A handler
 module is not permission by itself; the runtime must resolve the action,
 capability, principal, data boundary, and approval state before executing it.
@@ -64,6 +70,8 @@ Minimum constraints:
   process lifecycle.
 - Runtime records the resolved handler source or digest in audit state before
   executing effects.
+- Runtime records handler execution failures as failed action records before
+  surfacing the run failure.
 - Action gateway policy and approval checks stay mandatory before every
   effect-producing handler call.
 - The same authored bundle can still validate without the handler package
