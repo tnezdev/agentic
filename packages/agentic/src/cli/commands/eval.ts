@@ -29,6 +29,7 @@ type SelectedRun = {
 type RuntimeRecords = {
   actions: JsonObject[]
   artifacts: JsonObject[]
+  approvalDecisions: JsonObject[]
   errors: AgenticEvalMessage[]
 }
 
@@ -205,10 +206,15 @@ async function selectRunById(runsDir: string, runId: string): Promise<SelectedRu
 async function readRuntimeRecords(run: SelectedRun): Promise<RuntimeRecords> {
   const actions = await readJsonObjects(join(run.runPath, "actions"), `state.runs.${run.runId}.actions`)
   const artifacts = await readJsonObjects(join(run.runPath, "artifacts"), `state.runs.${run.runId}.artifacts`)
+  const approvalDecisions = await readJsonObjects(
+    join(run.runPath, "approval-decisions"),
+    `state.runs.${run.runId}.approval-decisions`,
+  )
   return {
     actions: actions.records,
     artifacts: artifacts.records,
-    errors: actions.errors.concat(artifacts.errors),
+    approvalDecisions: approvalDecisions.records,
+    errors: actions.errors.concat(artifacts.errors, approvalDecisions.errors),
   }
 }
 
@@ -285,11 +291,25 @@ function evaluateChecks(parsed: ParsedAgenticEvalDeclaration, records: RuntimeRe
       actual,
     })
   }
+  if (parsed.expect.approval_status !== undefined) {
+    const latestDecision = [...records.approvalDecisions]
+      .sort((a, b) => optionalStringValue(a.decided_at).localeCompare(optionalStringValue(b.decided_at)))
+      .at(-1)
+    const actual = optionalStringValue(latestDecision?.decision) || null
+    checks.push({
+      name: "approval_status",
+      ok: actual === parsed.expect.approval_status,
+      expected: parsed.expect.approval_status,
+      actual,
+    })
+  }
   if (parsed.expect.external_write_executed !== undefined) {
-    const approvalRequired = parsed.expect.approval_required
-    const completed = approvalRequired === undefined
-      ? false
-      : records.actions.some((record) => record.type === approvalRequired && record.status === "completed")
+    const externalWriteAction = parsed.expect.external_write_action ?? parsed.expect.approval_required
+    const completed = externalWriteAction === undefined
+      ? records.actions.some((record) => {
+          return record.status === "completed" && stringArray(record.effects).some((effect) => effect.startsWith("external.write:"))
+        })
+      : records.actions.some((record) => record.type === externalWriteAction && record.status === "completed")
     checks.push({
       name: "external_write_executed",
       ok: completed === parsed.expect.external_write_executed,
@@ -322,6 +342,12 @@ function errorsForFailedCheck(evalId: string, check: AgenticEvalCheck): AgenticE
     return [{
       field: `evals.${evalId}.expect.approval_required`,
       message: `missing approval_required action: ${String(check.expected)}`,
+    }]
+  }
+  if (check.name === "approval_status") {
+    return [{
+      field: `evals.${evalId}.expect.approval_status`,
+      message: `expected approval_status to be ${String(check.expected)}`,
     }]
   }
   return [{
@@ -382,6 +408,14 @@ async function maybeStat(path: string): Promise<Stats | null> {
 function uniqueStringValues(records: JsonObject[], field: string): string[] {
   return [...new Set(records.map((record) => record[field]).filter((value): value is string => typeof value === "string"))]
     .sort((a, b) => a.localeCompare(b))
+}
+
+function optionalStringValue(value: unknown): string {
+  return typeof value === "string" ? value : ""
+}
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : []
 }
 
 function isJsonObject(value: unknown): value is JsonObject {

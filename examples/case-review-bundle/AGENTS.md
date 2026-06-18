@@ -50,3 +50,4 @@ The default run should show:
 - Validation writes a `validation-result` artifact with synthetic QC findings.
 - A hook proposes `external.handoff`.
 - `handoff.release` requires authenticated reviewer approval, so the runtime records `approval_required` and writes an `approval-request` artifact instead of executing an external write.
+- `agentic approve examples/case-review-bundle --action <action-id> --principal user:reviewer.alba` records a durable grant, resumes the stored `external.handoff` payload through the local handler, and writes a released `handoff-note` artifact.

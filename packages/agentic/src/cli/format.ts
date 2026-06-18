@@ -737,7 +737,7 @@ export type AgenticEvalMessage = {
 }
 
 export type AgenticEvalCheck = {
-  name: "artifacts" | "actions" | "approval_required" | "external_write_executed"
+  name: "artifacts" | "actions" | "approval_required" | "approval_status" | "external_write_executed"
   ok: boolean
   expected: string[] | string | boolean
   actual: string[] | string | boolean | null

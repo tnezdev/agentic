@@ -19,6 +19,13 @@ agentic serve . --clean --json
 agentic eval . --json
 ```
 
+After `agentic serve` prints the pending handoff action id, approve or reject it explicitly:
+
+```bash
+agentic approve . --action act_external_handoff_0008 --principal user:reviewer.alba --comment "Approved for demo" --json
+agentic reject . --action act_external_handoff_0008 --principal user:reviewer.alba --comment "Needs revision" --json
+```
+
 The local runtime writes state to:
 
 ```text
@@ -35,6 +42,7 @@ That directory is ignored because it is runtime state, not authored bundle conte
 - `hooks/validation-result.propose-handoff.yaml` reacts to findings and proposes `external.handoff`.
 - `capabilities/handoff.release.yaml` requires authenticated reviewer approval before external write effects.
 - The local runtime records `approval_required` instead of accepting agent text as approval.
+- `agentic approve` records a durable grant, resumes the stored action payload through the local handler, and writes a released `handoff-note` artifact.
 
 No model is called. No external system is contacted. The point is to make the bundle/runtime boundary concrete and inspectable.
 

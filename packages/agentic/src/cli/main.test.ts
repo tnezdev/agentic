@@ -246,11 +246,16 @@ async function writeInspectRuntimeState(workspace: string): Promise<void> {
 async function writeEvalRuntimeState(
   workspace: string,
   runId = "run-001",
-  options: { latestRunId?: string | undefined; includeApprovalArtifact?: boolean | undefined } = {},
+  options: {
+    latestRunId?: string | undefined
+    includeApprovalArtifact?: boolean | undefined
+    approved?: boolean | undefined
+  } = {},
 ): Promise<void> {
   const runDir = join(workspace, ".agentic", ".data", "runs", runId)
   await mkdir(join(runDir, "actions"), { recursive: true })
   await mkdir(join(runDir, "artifacts"), { recursive: true })
+  await mkdir(join(runDir, "approval-decisions"), { recursive: true })
   await writeJson(join(workspace, ".agentic", ".data", "latest.json"), { run_id: options.latestRunId ?? runId })
   await writeJson(join(runDir, "actions", "a1.json"), {
     id: "a1",
@@ -260,11 +265,26 @@ async function writeEvalRuntimeState(
   await writeJson(join(runDir, "actions", "a2.json"), {
     id: "a2",
     type: "external.handoff",
-    status: "approval_required",
+    status: options.approved === true ? "completed" : "approval_required",
+    effects: ["external.write:review-queue"],
   })
   await writeJson(join(runDir, "artifacts", "art1.json"), { id: "art1", type: "case-packet" })
   if (options.includeApprovalArtifact !== false) {
     await writeJson(join(runDir, "artifacts", "approval1.json"), { id: "approval1", type: "approval-request" })
+  }
+  if (options.approved === true) {
+    await writeJson(join(runDir, "artifacts", "handoff1.json"), { id: "handoff1", type: "handoff-note" })
+    await writeJson(join(runDir, "approval-decisions", "approval_decision_0001.json"), {
+      id: "approval_decision_0001",
+      action_id: "a2",
+      action_digest: "digest-123",
+      approval_request_id: "approval1",
+      principal: "user:reviewer.alba",
+      decision: "granted",
+      decided_at: "2026-06-18T00:00:00.000Z",
+      expires_at: "2026-06-19T00:00:00.000Z",
+      capability: "handoff.release",
+    })
   }
 }
 
@@ -660,6 +680,36 @@ describe("CLI", () => {
       ])
       expect(result.evals[0]?.checks.every((check) => check.ok)).toBe(true)
       expect(result.errors).toEqual([])
+    })
+
+    it("evaluates approved external write state", async () => {
+      await writeMinimalEvalBundle(tmpDir, [
+        defaultEvalDeclaration({
+          expect: {
+            artifacts: ["case-packet", "approval-request", "handoff-note"],
+            actions: ["surface.receive", "external.handoff"],
+            approval_status: "granted",
+            external_write_action: "external.handoff",
+            external_write_executed: true,
+          },
+        }),
+      ])
+      await writeEvalRuntimeState(tmpDir, "run-001", { approved: true })
+
+      const result = (await runJson(...base, "eval")) as {
+        ok: boolean
+        evals: Array<{ checks: Array<{ name: string; ok: boolean; actual: unknown }> }>
+      }
+
+      expect(result.ok).toBe(true)
+      expect(result.evals[0]?.checks.map((check) => check.name)).toEqual([
+        "artifacts",
+        "actions",
+        "approval_status",
+        "external_write_executed",
+      ])
+      expect(result.evals[0]?.checks.every((check) => check.ok)).toBe(true)
+      expect(result.evals[0]?.checks.find((check) => check.name === "approval_status")?.actual).toBe("granted")
     })
 
     it("selects one eval with --eval", async () => {

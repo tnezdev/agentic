@@ -10,6 +10,19 @@ From the repo root:
 agentic serve examples/case-review-bundle --clean --json
 ```
 
+That first run stops before external effects and prints an `approval_required_action_id`.
+To grant the demo handoff and resume the exact stored action payload:
+
+```bash
+agentic approve examples/case-review-bundle --action act_external_handoff_0008 --principal user:reviewer.alba --comment "Approved for demo" --json
+```
+
+To reject instead:
+
+```bash
+agentic reject examples/case-review-bundle --action act_external_handoff_0008 --principal user:reviewer.alba --comment "Needs revision" --json
+```
+
 `run.ts` remains as a compatibility wrapper for the earlier demo command. New docs and tests should prefer `agentic serve`.
 
 The local runtime writes state to:
@@ -49,6 +62,8 @@ examples/case-review-bundle/.agentic/.data/runs/<run-id>/artifacts/
 ```
 
 The important outcome is that `external.handoff` is not executed. It is recorded with an exact digest and `approval_required` policy result, and an `approval-request` artifact points at the exact action that needs an authenticated grant. The summary action table shows each gateway policy decision and digest prefix.
+
+After `agentic approve`, the runtime records an `approval_decision` under the same run, replays the stored `external.handoff` action through the registered local handler, writes a `handoff-note` artifact, and updates `latest.json` with `approval_status: granted` and `external_write_executed: true`. A retry of the same approval returns the existing grant instead of writing a duplicate handoff artifact.
 
 ## Bundle Layout
 

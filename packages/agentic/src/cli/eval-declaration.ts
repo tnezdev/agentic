@@ -8,6 +8,8 @@ export type ParsedAgenticEvalDeclaration = {
     artifacts?: string[] | undefined
     actions?: string[] | undefined
     approval_required?: string | undefined
+    approval_status?: string | undefined
+    external_write_action?: string | undefined
     external_write_executed?: boolean | undefined
   }
 }
@@ -43,12 +45,14 @@ export function parseAgenticEvalDeclaration(
   const artifacts = optionalStringArray(expect.artifacts, `evals.${entry.id}.expect.artifacts`, errors)
   const actions = optionalStringArray(expect.actions, `evals.${entry.id}.expect.actions`, errors)
   const approvalRequired = optionalString(expect.approval_required, `evals.${entry.id}.expect.approval_required`, errors)
+  const approvalStatus = optionalString(expect.approval_status, `evals.${entry.id}.expect.approval_status`, errors)
+  const externalWriteAction = optionalString(expect.external_write_action, `evals.${entry.id}.expect.external_write_action`, errors)
   const externalWriteExecuted = optionalBoolean(expect.external_write_executed, `evals.${entry.id}.expect.external_write_executed`, errors)
 
-  if (externalWriteExecuted !== undefined && approvalRequired === undefined) {
+  if (externalWriteExecuted !== undefined && approvalRequired === undefined && externalWriteAction === undefined) {
     errors.push({
       field: `evals.${entry.id}.expect.external_write_executed`,
-      message: "external_write_executed requires approval_required",
+      message: "external_write_executed requires approval_required or external_write_action",
     })
   }
 
@@ -57,6 +61,8 @@ export function parseAgenticEvalDeclaration(
   if (artifacts !== undefined) parsedExpect.artifacts = artifacts
   if (actions !== undefined) parsedExpect.actions = actions
   if (approvalRequired !== undefined) parsedExpect.approval_required = approvalRequired
+  if (approvalStatus !== undefined) parsedExpect.approval_status = approvalStatus
+  if (externalWriteAction !== undefined) parsedExpect.external_write_action = externalWriteAction
   if (externalWriteExecuted !== undefined) parsedExpect.external_write_executed = externalWriteExecuted
   return {
     id: entry.id,
