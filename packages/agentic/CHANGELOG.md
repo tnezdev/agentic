@@ -2,6 +2,38 @@
 
 All notable changes to `@tnezdev/agentic` (formerly `@tnezdev/spores`). Format follows [Keep a Changelog](https://keepachangelog.com/). Versioning follows [semver](https://semver.org/).
 
+## 0.6.0 — 2026-06-18
+
+The authored-bundle release. Agentic now has a portable bundle contract, local lifecycle commands, and a canonical case-review starter that can validate, inspect, run, and eval a bundle with inspectable runtime state.
+
+### Added
+
+- **Authored bundle contracts.** `agentic.yaml` bundles can now declare artifacts, actions, capabilities, integrations, surfaces, schedules, hooks, skills, prompts, fixtures, deploy targets, and evals through typed loaders and validation helpers.
+- **Bundle lifecycle CLI.** New `agentic validate`, `agentic inspect`, `agentic serve`, `agentic dev`, and `agentic eval` commands cover the local authoring loop from static validation through runtime execution and smoke evaluation.
+- **Local runtime package.** `@tnezdev/agentic-runtime-local` is now the official local runtime target behind `agentic runtime`, `agentic serve`, and `agentic dev`. It owns local handler execution, bundle run state, and runtime-specific harness behavior while core remains the portable front door.
+- **Canonical case-review bundle starter.** `agentic init --example case-review-bundle` scaffolds a runnable, public-safe case-review workspace with declarations, skills, handlers, fixtures, README guidance, and `agentic dev . --json` as the first command.
+- **Bundle init scaffolds.** `agentic init --bundle` scaffolds a blank authored bundle, and bundle/example init output now includes next-step commands in both JSON and human formats.
+- **Action gateway and artifact contracts.** Core now exports portable action gateway helpers, artifact attachment contracts, action declaration helpers, trigger declaration helpers, and related fixture coverage for runtime implementors.
+- **Inspectable local runtime state.** Local bundle runs write durable run directories, summaries, latest status, action records, invocation records, and generated artifacts under `.agentic/.data`.
+
+### Changed
+
+- **README quick starts lead with bundles.** Public docs now start with `agentic init --example case-review-bundle` and `agentic dev`, then frame direct primitive noun commands as legacy/internal surfaces.
+- **Runtime boundaries are documented.** New docs cover handler packaging boundaries, runtime adapter boundaries, runtime state layout, hosted runtime handoff, dev command shape, and the bundle authoring loop.
+- **`examples/agentic-next` became `examples/case-review-bundle`.** The old exploratory runner was replaced with the canonical bundle example and reusable template content.
+
+### Deprecated
+
+- **Direct primitive noun commands are now legacy.** `agentic memory`, `agentic workflow`, `agentic task`, `agentic skill`, `agentic persona`, `agentic artifact`, and `agentic capability` remain available in this release for dogfood and harness internals, but the supported product path is authored bundles plus `agentic validate`, `inspect`, `dev`, `serve`, and `eval`. Before `1.0`, these legacy command shapes may change or disappear quickly as the bundle/runtime path hardens.
+
+### Fixed
+
+- **Handler failures are inspectable.** Handler binding failures and allowed local handler execution failures now leave failed bundle, action, invocation, latest, and summary records instead of disappearing behind a thrown process error.
+
+### Release notes
+
+- The tag workflow now publishes both `@tnezdev/agentic-runtime-local` and `@tnezdev/agentic`. Verify npm Trusted Publishing for both package names before tagging this release.
+
 ## 0.5.0 — 2026-06-04
 
 The package identity is moving from `@tnezdev/spores` to `@tnezdev/agentic`. All compatibility behavior remains: existing `.spores/`, `spores` CLI, `SporesConfig`, and `SPORES_*` env vars continue to work throughout the migration window.

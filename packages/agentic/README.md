@@ -2,25 +2,25 @@
 
 > **Compatibility window.** This package was formerly `@tnezdev/spores`. New code should use `@tnezdev/agentic`, `agentic`, `.agentic/`, and `AGENTIC_*`. The `spores` CLI alias, `.spores/`, and `SPORES_*` remain supported during migration.
 
-**In-loop primitives for agents that run more than once.**
+**Authored bundles and local feedback loops for agents that run more than once.**
 
-Most agent tooling optimizes for the single prompt. Agentic optimizes for the agent that wakes up tomorrow — with memory, skills, workflows, tasks, and a persona that shape what it does next. It's the toolbelt inside the turn, not the runtime around it.
+Most agent tooling optimizes for the single prompt. Agentic optimizes for the agent that wakes up tomorrow — with authored bundles, inspectable local runs, action decisions, artifacts, evals, and the primitives needed to shape what it does next. It's the toolbelt inside the turn, not the hosted runtime around it.
 
-Agentic is a primitive layer, not a host runtime. It gives your agent building blocks — store and recall memories, load skills, advance workflows, track tasks, activate personas — without owning scheduling, auth, transport, or execution. That's your daemon's job. Agentic just makes it easier to build.
+Agentic is a bundle contract and primitive layer, not a host runtime. It gives your agent portable declarations and local feedback loops without owning scheduling, auth, transport, or production execution. That's your daemon's job. Agentic just makes it easier to build.
 
 Zero production dependencies. Runs on Bun. Works from the CLI.
 
 ## Why this exists
 
-Agents that run in production need more than a prompt and a model call. They need:
+Agents that run in production need more than a prompt and a model call. They need source-controlled bundles that describe:
 
-- **Memory** that persists across sessions — not just a growing context window.
-- **Skills** that are loaded on demand, not baked into a system prompt.
-- **Workflows** that define multi-step processes with real state machines, not ad-hoc prompt chains.
-- **Tasks** that track commitments inside the loop, not just on an external board.
-- **Personas** that activate a coherent hat — memory tags, skill set, task filter, and rendered instructions — in one declaration.
+- **Artifacts** the runtime can write, inspect, and hand off.
+- **Actions** with capability and approval boundaries.
+- **Surfaces, schedules, and hooks** that propose work without hard-coding a host.
+- **Skills and prompts** that are loaded on demand, not baked into one system prompt.
+- **Evals** that verify the local run produced the expected shape.
 
-Agentic ships all five as filesystem-backed primitives your agent can reach for inside any turn. No hosting, no webhooks, no session layer required.
+Agentic ships that authored-bundle path with filesystem-backed primitives underneath it. No hosting, no webhooks, no session layer required.
 
 ## Install
 
@@ -57,8 +57,10 @@ agentic validate . --json
 agentic inspect . --json
 ```
 
-The primitive commands remain available as lower-level building blocks for agents
-and harnesses:
+The direct primitive noun commands are legacy as of `0.6.0`. They remain
+available for dogfood and harness internals, but authored bundles are the
+supported product path and the pre-`1.0` primitive command shapes may change
+quickly:
 
 ```bash
 # Store and recall memory
@@ -115,7 +117,7 @@ evidence and should stay ignored unless you are deliberately capturing a fixture
 See [`docs/bundle-authoring-loop.md`](https://github.com/tnezdev/agentic/blob/main/docs/bundle-authoring-loop.md)
 for the full starter-to-serve loop.
 
-## Primitives
+## Legacy Primitive Commands
 
 | Primitive | What it does |
 |-----------|-------------|
@@ -134,7 +136,7 @@ exposes runtime package management. Core Agentic recognizes official targets
 such as `local`, but package install, discovery, and command delegation live
 outside core and are being backfilled through runtime packages.
 
-All five primitives read from `.agentic/` in your project root, with optional global overrides from `~/.agentic/`. Legacy `.spores/` and `~/.spores/` paths are honoured during the compatibility window when `.agentic/` is absent.
+The legacy primitive commands read from `.agentic/` in your project root, with optional global overrides from `~/.agentic/`. Legacy `.spores/` and `~/.spores/` paths are honoured during the compatibility window when `.agentic/` is absent.
 
 ## What Agentic is not
 

@@ -55,6 +55,10 @@ jobs:
           node "$TMP/bin/npm-cli.js" install -g "$TMP"
           npm --version
 
-      - name: Publish
+      - name: Publish local runtime package
+        working-directory: packages/agentic-runtime-local
+        run: npm publish --provenance --access public
+
+      - name: Publish Agentic package
         working-directory: packages/agentic
         run: npm publish --provenance --access public

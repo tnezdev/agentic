@@ -1,7 +1,8 @@
 import { existsSync, readFileSync } from "node:fs"
 import { mkdir, readFile, writeFile } from "node:fs/promises"
 import { createRequire } from "node:module"
-import { delimiter, join } from "node:path"
+import { homedir } from "node:os"
+import { delimiter, isAbsolute, join, relative, resolve } from "node:path"
 import { pathToFileURL } from "node:url"
 import { parseToml } from "../../config.js"
 import { FilesystemArtifactAdapter } from "../../artifact/filesystem.js"
@@ -268,10 +269,31 @@ function resolveRuntimePackage(baseDir: string, packageName: string): string {
 
   try {
     const requireFromWorkspace = createRequire(join(baseDir, "package.json"))
-    return requireFromWorkspace.resolve(packageName)
-  } catch {
+    const entry = requireFromWorkspace.resolve(packageName)
+    if (isBunGlobalInstallCachePath(entry)) {
+      throw new MissingRuntimePackageError(`Runtime package "${packageName}" is not installed.`)
+    }
+    return entry
+  } catch (err) {
+    if (err instanceof MissingRuntimePackageError) throw err
     throw new MissingRuntimePackageError(`Runtime package "${packageName}" is not installed.`)
   }
+}
+
+function isBunGlobalInstallCachePath(path: string): boolean {
+  const cacheRoots = [
+    process.env["BUN_INSTALL"] !== undefined
+      ? join(process.env["BUN_INSTALL"], "install", "cache")
+      : undefined,
+    join(homedir(), ".bun", "install", "cache"),
+  ].filter((root): root is string => root !== undefined)
+
+  return [...new Set(cacheRoots)].some((root) => isPathInside(path, root))
+}
+
+function isPathInside(path: string, root: string): boolean {
+  const rel = relative(resolve(root), resolve(path))
+  return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel))
 }
 
 function resolveRuntimePackageFromDirs(packageName: string): string | undefined {

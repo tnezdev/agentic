@@ -1,6 +1,6 @@
 # Bundle Authoring Loop
 
-Use this loop when you want to start from Agentic's authored-bundle path rather than the lower-level primitive CLI.
+Use this loop when you want to start from Agentic's authored-bundle path rather than the legacy primitive noun CLI.
 
 ## Start From A Scaffold
 

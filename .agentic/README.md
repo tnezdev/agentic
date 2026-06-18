@@ -37,7 +37,7 @@ bun packages/agentic/src/cli/main.ts skill run release-check
 bun packages/agentic/src/cli/main.ts task next
 
 # Kick off a release run
-bun packages/agentic/src/cli/main.ts workflow run agentic-release --name "0.5.0-cut"
+bun packages/agentic/src/cli/main.ts workflow run agentic-release --name "0.6.0-cut"
 
 # Query memories when you need the "why"
 bun packages/agentic/src/cli/main.ts memory recall "runtime scope"

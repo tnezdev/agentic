@@ -18,7 +18,9 @@ if (!consumerDir) {
 
 const require = createRequire(`${consumerDir}/`)
 const pkgName = "@tnezdev/agentic"
+const runtimePkgName = "@tnezdev/agentic-runtime-local"
 const mod = await import(require.resolve(pkgName))
+const runtimeMod = await import(require.resolve(runtimePkgName))
 
 const errors = []
 function check(name, condition) {
@@ -42,6 +44,10 @@ check("loadPersona is a function", typeof mod.loadPersona === "function")
 check("activatePersona is a function", typeof mod.activatePersona === "function")
 check("resolveSituational is a function", typeof mod.resolveSituational === "function")
 check("fireHook is a function", typeof mod.fireHook === "function")
+
+check("local runtime manifest is exported", runtimeMod.runtime?.kind === "agentic-runtime")
+check("local runtime default export is manifest", runtimeMod.default?.kind === "agentic-runtime")
+check("local runtime run command is a function", typeof runtimeMod.runtime?.commands?.run === "function")
 
 // New in 0.4.0+
 check("InMemorySource is a constructor", typeof mod.InMemorySource === "function")

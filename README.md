@@ -53,7 +53,7 @@ agentic init --example case-review-bundle
 agentic dev . --json
 ```
 
-`agentic serve` remains the stable local run path inside that loop. `agentic run` remains the lower-level runtime entrypoint for workflow, artifact, and harness-oriented contexts.
+`agentic serve` remains the stable local run path inside that loop. The older direct primitive noun commands (`memory`, `workflow`, `task`, etc.) are legacy in `0.6.0`: still available for dogfood and harness internals, but not the supported product path or a long-term pre-`1.0` compatibility promise.
 
 ## Design Docs
 
