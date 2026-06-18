@@ -90,4 +90,8 @@ Keep these boundaries intact as the bundle grows:
 - Secrets belong in the host runtime or handler environment, not prompts, fixtures, or declarations.
 - Hosted deployment, queues, auth, provider clients, and approval UI remain outside core Agentic.
 
-See [`runtime-state-layout.md`](runtime-state-layout.md) for record layout details and [`runtime-adapter-boundary.md`](runtime-adapter-boundary.md) for the core/runtime/harness split.
+See [`runtime-state-layout.md`](runtime-state-layout.md) for record layout details,
+[`runtime-adapter-boundary.md`](runtime-adapter-boundary.md) for the
+core/runtime/harness split, and
+[`handler-packaging-boundary.md`](handler-packaging-boundary.md) for the current
+handler packaging stance.
