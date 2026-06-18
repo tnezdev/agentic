@@ -55,7 +55,7 @@ export const evalCommand: Command = async (ctx, args, flags) => {
   if (!result.ok) process.exitCode = 1
 }
 
-async function evaluateBundle(
+export async function evaluateBundle(
   root: string,
   selection: { evalId?: string | undefined; runId?: string | undefined },
 ): Promise<AgenticEvalResult> {

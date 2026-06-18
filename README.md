@@ -23,7 +23,13 @@ The dogfood workspace still lives at `.agentic/`. Start with [`.agentic/ONRAMP.m
 
 ## Bundle Lifecycle
 
-Use `serve` as the normal local lifecycle command for authored bundles:
+Use `dev` for a one-shot local authoring loop over validate, inspect, serve, and eval:
+
+```bash
+agentic dev examples/case-review-bundle --json
+```
+
+Use the explicit lifecycle commands when you want phase-by-phase output:
 
 ```bash
 agentic validate examples/case-review-bundle --json
@@ -47,12 +53,12 @@ agentic init --example case-review-bundle
 agentic serve . --clean --json
 ```
 
-`agentic run` remains the lower-level runtime entrypoint for workflow, artifact, and harness-oriented contexts. New bundle docs should prefer `serve`, then use `validate`, `inspect`, and `eval` around it.
+`agentic serve` remains the stable local run path inside that loop. `agentic run` remains the lower-level runtime entrypoint for workflow, artifact, and harness-oriented contexts.
 
 ## Design Docs
 
 - [`docs/bundle-authoring-loop.md`](docs/bundle-authoring-loop.md) describes the starter-to-serve authored bundle workflow.
-- [`docs/dev-command-shape.md`](docs/dev-command-shape.md) defines the narrow future `agentic dev` loop.
+- [`docs/dev-command-shape.md`](docs/dev-command-shape.md) documents the narrow `agentic dev` loop.
 - [`docs/framework-boundaries.md`](docs/framework-boundaries.md) explains the package-vs-host boundary.
 - [`docs/handler-packaging-boundary.md`](docs/handler-packaging-boundary.md) explains why executable handlers remain runtime-owned code.
 - [`docs/hosted-runtime-handoff.md`](docs/hosted-runtime-handoff.md) maps Agentic bundle contracts to a hosted runtime without adding hosting to core.

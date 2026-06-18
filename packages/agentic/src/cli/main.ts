@@ -69,6 +69,7 @@ import {
   runtimeStatusCommand,
 } from "./commands/runtime.js"
 import { evalCommand } from "./commands/eval.js"
+import { devCommand } from "./commands/dev.js"
 import { inspectCommand } from "./commands/inspect.js"
 import { validateCommand } from "./commands/validate.js"
 
@@ -109,6 +110,7 @@ function parseArgs(argv: string[]): Parsed {
 }
 
 const commands: Record<string, Command> = {
+  dev: devCommand,
   eval: evalCommand,
   init: initCommand,
   inspect: inspectCommand,
@@ -168,6 +170,7 @@ const USAGE = `Usage: agentic <command> [args] [flags]
 
 Commands:
   init [--bundle|--example <name>]    Scaffold .agentic/ directory
+  dev [target]                        Run validate, inspect, serve --clean, eval once
   run [target]                        Run current workspace with default runtime
   serve [target]                      Serve a target with the default runtime
   eval [path]                         Evaluate local run state against bundle evals

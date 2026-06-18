@@ -36,7 +36,7 @@ export const validateCommand: Command = async (ctx, args) => {
   if (!result.valid) process.exitCode = 1
 }
 
-async function validateBundle(root: string): Promise<AgenticValidateResult> {
+export async function validateBundle(root: string): Promise<AgenticValidateResult> {
   let loadedManifest: LoadedAgenticBundleManifest
   try {
     loadedManifest = await loadAgenticBundleManifest(root)

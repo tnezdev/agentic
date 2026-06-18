@@ -94,6 +94,7 @@ Current command surface:
 - `agentic persona list/view/activate`
 - `agentic artifact create/read/write/edit/inspect/list/finalize`
 - `agentic validate [path]` / `agentic inspect [path]` / `agentic eval [path]` — bundle lifecycle checks
+- `agentic dev [target]` — one-shot local bundle authoring loop: validate, inspect, serve --clean, eval
 - `agentic serve [target]` — preferred local lifecycle entrypoint for authored bundles
 - `agentic run` — lower-level runtime entrypoint for workflow, artifact, and harness contexts
 - `agentic runtime list/add/init/run/status` — runtime package discovery and delegation in core; runtime behavior belongs to runtime packages

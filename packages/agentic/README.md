@@ -60,6 +60,7 @@ agentic persona activate spores-maintainer | llm --system -
 agentic runtime list
 
 # Run an authored bundle through the local runtime
+agentic dev examples/case-review-bundle --json
 agentic serve examples/case-review-bundle --clean --json
 
 # Inspect and evaluate the latest bundle run
@@ -87,6 +88,7 @@ starter with declarations, fixtures, and local demo handlers already filled in:
 
 ```bash
 agentic init --example case-review-bundle
+agentic dev . --json
 agentic serve . --clean --json
 agentic eval . --json
 ```
@@ -116,7 +118,9 @@ for the full starter-to-serve loop.
 | **Tasks** | ULID-keyed task queue with status transitions and annotations |
 | **Persona** | Activate a "hat" at the start of a turn: memory tags, skills, task filter, workflow, and a rendered body with live situational facts |
 
-`agentic serve` is the preferred local lifecycle command for authored bundles.
+`agentic dev` is the one-shot local authoring loop for authored bundles:
+validate, inspect, `serve --clean`, then eval. `agentic serve` remains the stable
+local run command inside that loop.
 `agentic run` delegates lower-level workflow, artifact, and harness-oriented
 contexts to the default runtime package. The `agentic runtime ...` namespace
 exposes runtime package management. Core Agentic recognizes official targets

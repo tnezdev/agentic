@@ -50,7 +50,7 @@ export const inspectCommand: Command = async (ctx, args) => {
   if (!result.ok) process.exitCode = 1
 }
 
-async function inspectBundle(root: string): Promise<AgenticInspectResult> {
+export async function inspectBundle(root: string): Promise<AgenticInspectResult> {
   let loadedManifest: LoadedAgenticBundleManifest
   try {
     loadedManifest = await loadAgenticBundleManifest(root)

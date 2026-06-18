@@ -304,6 +304,7 @@ describe("CLI", () => {
     expect(exitCode).toBe(0)
     expect(stdout).toContain("Usage: agentic")
     expect(stdout).toContain("eval [path]")
+    expect(stdout).toContain("dev [target]")
     expect(stdout).toContain("inspect [path]")
     expect(stdout).toContain("validate [path]")
     expect(stdout).toContain("runtime list")
@@ -758,6 +759,75 @@ describe("CLI", () => {
       expect(result.evals[0]?.ok).toBe(false)
       expect(result.evals[0]?.errors.some((error) => error.field === "evals.smoke.expect.artifacts")).toBe(true)
       expect(result.evals[0]?.errors.some((error) => error.field === "evals.smoke.expect.external_write_executed")).toBe(true)
+    })
+  })
+
+  describe("dev", () => {
+    it("runs validate, inspect, serve, and eval as a one-shot loop", async () => {
+      await runJson(...base, "init", "--example", "case-review-bundle")
+
+      const result = (await runJsonWithEnv(
+        { AGENTIC_RUNTIME_PACKAGE_DIRS: join(REPO_ROOT, "packages") },
+        ...base,
+        "dev",
+        ".",
+      )) as {
+        command: string
+        ok: boolean
+        phases: Array<{ name: string; ok: boolean; result?: { command?: string; ok?: boolean } }>
+      }
+
+      expect(result.command).toBe("dev")
+      expect(result.ok).toBe(true)
+      expect(result.phases.map((phase) => phase.name)).toEqual(["validate", "inspect", "serve", "eval"])
+      expect(result.phases.every((phase) => phase.ok)).toBe(true)
+      expect(result.phases.find((phase) => phase.name === "serve")?.result?.command).toBe("serve")
+      expect(result.phases.find((phase) => phase.name === "eval")?.result?.ok).toBe(true)
+    })
+
+    it("stops before serve when validation fails", async () => {
+      await mkdir(join(tmpDir, ".agentic"), { recursive: true })
+
+      const { stdout, exitCode } = await run("--json", ...base, "dev")
+      expect(exitCode).toBe(1)
+      const result = JSON.parse(stdout) as {
+        ok: boolean
+        phases: Array<{ name: string; ok: boolean; result?: unknown }>
+      }
+
+      expect(result.ok).toBe(false)
+      expect(result.phases).toEqual([{ name: "validate", ok: false, result: expect.any(Object) }])
+    })
+
+    it("stops before eval when serve fails", async () => {
+      await writeMinimalEvalBundle(tmpDir)
+      await writeRuntimePackage(
+        tmpDir,
+        `export const runtime = {
+  kind: "agentic-runtime",
+  api_version: 1,
+  name: "local",
+  package_name: "@tnezdev/agentic-runtime-local",
+  description: "Failing runtime",
+  capabilities: ["run"],
+  commands: {
+    run: async () => { throw new Error("serve exploded") },
+  },
+}
+`,
+      )
+
+      const { stdout, exitCode } = await run("--json", ...base, "dev")
+      expect(exitCode).toBe(1)
+      const result = JSON.parse(stdout) as {
+        ok: boolean
+        phases: Array<{ name: string; ok: boolean; error?: string }>
+      }
+
+      expect(result.ok).toBe(false)
+      expect(result.phases.map((phase) => phase.name)).toEqual(["validate", "inspect", "serve"])
+      expect(result.phases[2]?.ok).toBe(false)
+      expect(result.phases[2]?.error).toContain("serve exploded")
     })
   })
 

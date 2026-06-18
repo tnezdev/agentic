@@ -1,15 +1,14 @@
 # `agentic dev` Command Shape
 
-This note defines the narrow product shape for a future `agentic dev` command. It
-does not implement the command.
+This note defines the narrow product shape for `agentic dev`.
 
 ## Purpose
 
-`agentic dev` should be the local feedback loop for an authored bundle while a
-user is editing declarations. It should compose existing lifecycle commands
-rather than introduce a new runtime model.
+`agentic dev` is the local feedback loop for an authored bundle while a user is
+editing declarations. It composes existing lifecycle commands rather than
+introducing a new runtime model.
 
-The expected first version is equivalent to a deliberate one-shot loop:
+The first version is equivalent to a deliberate one-shot loop:
 
 ```bash
 agentic validate . --json
@@ -49,8 +48,7 @@ Do not use the first `agentic dev` slice to add:
 Those may become separate runtime or host features later. They are not needed for
 the first local feedback loop.
 
-## Implementation Gate
+## Implementation Posture
 
-Implement this only after the existing lifecycle commands remain stable enough
-that `dev` can be a thin orchestration layer. If implementation needs new runtime
-semantics, stop and split that runtime work first.
+Keep `dev` thin. If a future change needs new runtime semantics, split that
+runtime work first instead of hiding it inside the orchestration command.

@@ -773,6 +773,21 @@ export type AgenticEvalResult = {
   warnings: AgenticEvalMessage[]
 }
 
+export type AgenticDevPhase =
+  | { name: "validate"; ok: boolean; result: AgenticValidateResult }
+  | { name: "inspect"; ok: boolean; result: AgenticInspectResult }
+  | { name: "serve"; ok: boolean; result: RuntimeCommandOutput }
+  | { name: "serve"; ok: false; error: string }
+  | { name: "eval"; ok: boolean; result: AgenticEvalResult }
+
+export type AgenticDevResult = {
+  command: "dev"
+  ok: boolean
+  target: string | null
+  root: string
+  phases: AgenticDevPhase[]
+}
+
 export function formatAgenticValidate(result: AgenticValidateResult): string {
   const subject = result.bundle === null
     ? result.root
@@ -875,6 +890,37 @@ export function formatAgenticEval(result: AgenticEvalResult): string {
   }
 
   return lines.join("\n")
+}
+
+export function formatAgenticDev(result: AgenticDevResult): string {
+  const lines = [
+    `agentic dev${result.target === null ? "" : ` ${result.target}`}: ${result.ok ? "passed" : "failed"}`,
+    `root: ${result.root}`,
+    "phases:",
+    ...result.phases.map((phase) => `  - ${phase.name}: ${phase.ok ? "passed" : "failed"}`),
+  ]
+  const errors = result.phases.flatMap(formatAgenticDevPhaseErrors)
+  if (errors.length > 0) {
+    lines.push("errors:")
+    lines.push(...errors.map((error) => `  - ${error}`))
+  }
+  return lines.join("\n")
+}
+
+function formatAgenticDevPhaseErrors(phase: AgenticDevPhase): string[] {
+  if (phase.name === "serve" && "error" in phase) return [`serve: ${phase.error}`]
+  if (phase.name === "validate") {
+    return phase.result.errors.map((error) => `validate ${error.field}: ${error.message}`)
+  }
+  if (phase.name === "inspect") {
+    return phase.result.errors.map((error) => `inspect ${error.field}: ${error.message}`)
+  }
+  if (phase.name === "eval") {
+    return phase.result.errors
+      .concat(phase.result.evals.flatMap((entry) => entry.errors))
+      .map((error) => `eval ${error.field}: ${error.message}`)
+  }
+  return []
 }
 
 function formatAgenticInspectSection(section: AgenticInspectInventorySection): string {

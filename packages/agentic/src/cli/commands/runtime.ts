@@ -471,7 +471,7 @@ async function delegateRuntimeCommand(
   runtime: ResolvedRuntime,
   args: RuntimeInitArgs | RuntimeRunArgs | RuntimeStatusArgs,
   options?: { outputCommand?: RuntimeCommandName | undefined },
-): Promise<void> {
+): Promise<RuntimeCommandOutput> {
   const manifest = await loadRuntimeForDelegation(ctx, runtime)
   const handler = manifest.commands[command]
   if (handler === undefined) {
@@ -483,19 +483,35 @@ async function delegateRuntimeCommand(
 
   const result = await handler(runtimeContext(ctx, runtime), args as never)
   const message = result?.summary ?? `Runtime "${runtime.name}" ${command} completed.`
-  output(
+  return runtimeAction(
+    options?.outputCommand ?? command,
+    runtimeRef(runtime, "configured", manifest),
+    "delegated",
+    message,
+    {
+      target: "target" in args ? args.target : undefined,
+      result: result ?? undefined,
+    },
+  )
+}
+
+export async function delegateDefaultRuntimeRun(
+  ctx: Ctx,
+  args: string[],
+  flags: Record<string, string | true>,
+  options?: { outputCommand?: RuntimeCommandName | undefined },
+): Promise<RuntimeCommandOutput> {
+  const runtime = resolveRuntime(ctx, defaultRuntimeName(ctx))
+  return delegateRuntimeCommand(
     ctx,
-    runtimeAction(
-      options?.outputCommand ?? command,
-      runtimeRef(runtime, "configured", manifest),
-      "delegated",
-      message,
-      {
-        target: "target" in args ? args.target : undefined,
-        result: result ?? undefined,
-      },
-    ),
-    formatRuntimeAction,
+    "run",
+    runtime,
+    {
+      target: args[0],
+      args: args.slice(1),
+      flags,
+    },
+    options,
   )
 }
 
@@ -585,34 +601,19 @@ export const runtimeAddCommand: Command = async (ctx, args) => {
 export const runtimeInitCommand: Command = async (ctx, args, flags) => {
   const name = args[0] ?? defaultRuntimeName(ctx)
   const runtime = resolveRuntime(ctx, name)
-  await delegateRuntimeCommand(ctx, "init", runtime, {
+  const result = await delegateRuntimeCommand(ctx, "init", runtime, {
     args: args[0] === undefined ? [] : args.slice(1),
     flags,
   })
+  output(ctx, result, formatRuntimeAction)
 }
 
 export const runtimeRunCommand: Command = async (ctx, args, flags) => {
-  const runtime = resolveRuntime(ctx, defaultRuntimeName(ctx))
-  await delegateRuntimeCommand(ctx, "run", runtime, {
-    target: args[0],
-    args: args.slice(1),
-    flags,
-  })
+  output(ctx, await delegateDefaultRuntimeRun(ctx, args, flags), formatRuntimeAction)
 }
 
 export const serveCommand: Command = async (ctx, args, flags) => {
-  const runtime = resolveRuntime(ctx, defaultRuntimeName(ctx))
-  await delegateRuntimeCommand(
-    ctx,
-    "run",
-    runtime,
-    {
-      target: args[0],
-      args: args.slice(1),
-      flags,
-    },
-    { outputCommand: "serve" },
-  )
+  output(ctx, await delegateDefaultRuntimeRun(ctx, args, flags, { outputCommand: "serve" }), formatRuntimeAction)
 }
 
 export const runtimeStatusCommand: Command = async (ctx, args, flags) => {
@@ -632,8 +633,9 @@ export const runtimeStatusCommand: Command = async (ctx, args, flags) => {
   }
   if (!discovery.ok) throw new Error(discovery.message)
 
-  await delegateRuntimeCommand(ctx, "status", runtime, {
+  const result = await delegateRuntimeCommand(ctx, "status", runtime, {
     args: args[0] === undefined ? [] : args.slice(1),
     flags,
   })
+  output(ctx, result, formatRuntimeAction)
 }

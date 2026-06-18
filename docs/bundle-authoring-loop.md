@@ -20,7 +20,13 @@ agentic init --example case-review-bundle
 
 The starter writes portable authored files plus a local `handlers.ts` demo module. It does not copy generated `.agentic/.data` state.
 
-Run the lifecycle from the workspace root:
+Run the one-shot authoring loop from the workspace root:
+
+```bash
+agentic dev . --json
+```
+
+Use the explicit lifecycle commands when you want to inspect each phase:
 
 ```bash
 agentic validate . --json
@@ -29,11 +35,7 @@ agentic serve . --clean --json
 agentic eval . --json
 ```
 
-Use `serve` as the normal local lifecycle command for authored bundles. Use `run` when you need the lower-level runtime package entrypoint for workflow, artifact, or harness contexts.
-
-A future `agentic dev` command should stay a thin composition of this loop. See
-[`dev-command-shape.md`](dev-command-shape.md) for the narrow shape and
-non-goals.
+Use `serve` as the stable local run command inside the loop. Use `run` when you need the lower-level runtime package entrypoint for workflow, artifact, or harness contexts. See [`dev-command-shape.md`](dev-command-shape.md) for the `dev` boundary and non-goals.
 
 ## What You Author
 
@@ -78,10 +80,10 @@ The starter includes `.gitignore` entries for `.agentic/.data/` and `.agentic/ru
 ## Edit Loop
 
 1. Change one authored declaration or handler behavior.
-2. Run `agentic validate . --json` to catch broken refs and declaration mismatches.
-3. Run `agentic serve . --clean --json` to create a fresh local run.
-4. Run `agentic inspect . --json` to inspect bundle inventory and generated state.
-5. Run `agentic eval . --json` to confirm the expected run shape still holds.
+2. Run `agentic dev . --json` for the full one-shot local feedback loop.
+3. If something fails, run the explicit `validate`, `inspect`, `serve --clean`, or `eval` phase you need to inspect.
+4. Confirm generated `.agentic/.data/` state is not part of the authored bundle.
+5. Keep handler changes local-runtime owned; do not move executable code into core declarations.
 6. Commit authored files, tests, and docs. Do not commit `.agentic/.data/`.
 
 ## Boundary Checks
