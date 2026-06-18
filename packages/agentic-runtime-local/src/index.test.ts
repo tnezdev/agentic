@@ -3,14 +3,27 @@ import { chmod, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs
 import { dirname, join, resolve } from "node:path"
 import { tmpdir } from "node:os"
 import { fileURLToPath } from "node:url"
-import { FilesystemArtifactAdapter, loadAgenticBundle, type ActionRecord, type ApprovalRequest } from "@tnezdev/agentic"
+import {
+  FilesystemArtifactAdapter,
+  loadAgenticBundle,
+  type ActionRecord,
+  type ApprovalRequest,
+  type HookDeclaration,
+  type LoadedAgenticBundleData,
+  type ScheduleDeclaration,
+  type SurfaceDeclaration,
+} from "@tnezdev/agentic"
 import type { RuntimeContext } from "@tnezdev/agentic/runtime"
 import {
   createLocalActionGatewayDeclarations,
+  createLocalBundlePorts,
   createFilesystemArtifactPort,
   LocalActionGateway,
   LocalAgenticPorts,
   LocalBundleRunStore,
+  requestLocalBundleHookAction,
+  requestLocalBundleScheduleAction,
+  requestLocalBundleSurfaceAction,
   runtime,
   type LocalActionGatewayStore,
 } from "./index.js"
@@ -311,6 +324,12 @@ function createGatewayStore(): {
   }
 }
 
+function loadedDeclaration<T>(entries: LoadedAgenticBundleData[], id: string): T {
+  const entry = entries.find((item) => item.id === id)
+  if (entry === undefined) throw new Error(`Missing loaded declaration: ${id}`)
+  return entry.data as unknown as T
+}
+
 describe("local action gateway declarations", () => {
   it("derives action gateway declarations from the agentic-next bundle", async () => {
     const bundle = await loadAgenticBundle(AGENTIC_NEXT_BUNDLE_ROOT)
@@ -347,6 +366,85 @@ describe("local action gateway declarations", () => {
     expect(declarations.data_boundary).toMatchObject({
       allowed_data_classes: ["synthetic_regulated_demo"],
       disallowed: ["real_phi", "real_patient_data", "private_customer_data"],
+    })
+  })
+})
+
+describe("local bundle trigger helpers", () => {
+  let tmpDir: string
+
+  beforeEach(async () => {
+    tmpDir = await mkdtemp(join(tmpdir(), "agentic-bundle-trigger-helper-test-"))
+  })
+
+  afterEach(async () => {
+    await rm(tmpDir, { recursive: true, force: true })
+  })
+
+  it("routes declared surface, schedule, and hook proposals through bundle ports", async () => {
+    const bundle = await loadAgenticBundle(AGENTIC_NEXT_BUNDLE_ROOT)
+    const store = new LocalBundleRunStore(join(tmpDir, ".agentic", ".data"), "run-test")
+    await store.init()
+    const ports = createLocalBundlePorts(bundle, store)
+    const surface = loadedDeclaration<SurfaceDeclaration>(bundle.surfaces, "case-intake-api")
+    const schedule = loadedDeclaration<ScheduleDeclaration>(bundle.schedules, "nightly-qc-sweep")
+    const hook = loadedDeclaration<HookDeclaration>(bundle.hooks, "validation-result.propose-handoff")
+
+    const receive = await requestLocalBundleSurfaceAction(ports, surface, {
+      data_class: "synthetic_regulated_demo",
+      payload: { fixture: "case-request-001" },
+    })
+    const validate = await requestLocalBundleScheduleAction(ports, schedule, {
+      principal: "agent:case-reviewer",
+      data_class: "synthetic_regulated_demo",
+      input_artifact_ids: ["art_case_packet_0001"],
+      payload: { guideline_fixture: "guideline-excerpt" },
+    })
+    const handoff = await requestLocalBundleHookAction(ports, hook, {
+      principal: "agent:case-reviewer",
+      data_class: "synthetic_regulated_demo",
+      input_artifact_ids: ["art_case_packet_0001", "art_validation_result_0001"],
+      payload: { integration: "review-queue", queue: "orthopedic-qc" },
+    })
+
+    expect(receive.action).toMatchObject({
+      type: "surface.receive",
+      status: "completed",
+      principal: "service:demo-api",
+      surface: "case-intake-api",
+    })
+    expect(validate.action).toMatchObject({
+      type: "case.validate",
+      status: "completed",
+      principal: "agent:case-reviewer",
+      capability: "case.validate",
+      schedule: "nightly-qc-sweep",
+    })
+    expect(handoff.action).toMatchObject({
+      type: "external.handoff",
+      status: "approval_required",
+      principal: "agent:case-reviewer",
+      capability: "handoff.release",
+      hook: "validation-result.propose-handoff",
+    })
+    expect(handoff.approval_request_artifact_id).toBeString()
+    expect(handoff.approval_request).toMatchObject({
+      action_id: handoff.action.id,
+      action_digest: handoff.action.digest,
+      capability: "handoff.release",
+      status: "pending",
+    })
+    expect(store.actions.map((action) => action.type)).toEqual([
+      "surface.receive",
+      "case.validate",
+      "approval.request",
+      "external.handoff",
+    ])
+    expect(store.artifacts).toHaveLength(1)
+    expect(store.artifacts[0]).toMatchObject({
+      type: "approval-request",
+      status: "pending",
+      created_by_action_id: store.actions[2]?.id,
     })
   })
 })

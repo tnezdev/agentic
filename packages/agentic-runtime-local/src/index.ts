@@ -25,6 +25,7 @@ import type {
   ActionExecutionResult,
   ActionGatewayPort,
   ActionIntegrationDeclaration,
+  ActionProposalTemplate,
   ActionProposal,
   ActionRecord,
   ActionStatus,
@@ -37,6 +38,7 @@ import type {
   CheckActionStatusRequest,
   CheckActionStatusResult,
   GraphDef,
+  HookDeclaration,
   JsonObject,
   JsonValue,
   LoadedAgenticBundle,
@@ -48,7 +50,9 @@ import type {
   ResolvedActionProposal,
   RequestActionRequest,
   RequestActionResult,
+  ScheduleDeclaration,
   Skill,
+  SurfaceDeclaration,
   Task,
   TaskQuery,
   WriteDraftArtifactRequest,
@@ -446,6 +450,124 @@ export class LocalAgenticPorts<
   async checkActionStatus(input: CheckActionStatusRequest): Promise<CheckActionStatusResult> {
     return this.gateway.checkActionStatus(input)
   }
+}
+
+export type LocalBundlePorts = LocalAgenticPorts<
+  LocalBundleArtifactRecord,
+  LocalBundleArtifactRecord,
+  LocalBundleArtifactRecord
+>
+
+export type LocalBundlePortsOptions = LocalAgenticPortsOptions<LocalBundleArtifactRecord> & {
+  approvalRequestTags?: string[] | undefined
+}
+
+export function createLocalBundlePorts(
+  bundle: LoadedAgenticBundle,
+  store: LocalBundleRunStore,
+  options: LocalBundlePortsOptions = {},
+): LocalBundlePorts {
+  const { approvalRequestTags = [], ...portsOptions } = options
+  const gateway = new LocalActionGateway<LocalBundleArtifactRecord>(
+    createLocalActionGatewayDeclarations(bundle),
+    {
+      nextId: (prefix) => store.nextId(prefix),
+      recordAction: (input) => store.recordAction(input),
+      readAction: (actionId) => store.readAction(actionId),
+      writeApprovalRequest: (input) => store.writeArtifact({
+        id: input.id,
+        type: input.type,
+        title: input.title,
+        status: input.status,
+        data_class: input.data_class,
+        tags: [...approvalRequestTags, ...input.tags],
+        body: input.body as unknown as JsonObject,
+        derived_from: input.derived_from,
+        created_by_action_id: input.created_by_action_id,
+      }),
+    },
+  )
+  return new LocalAgenticPorts(
+    gateway,
+    {
+      readArtifact: (input) => store.readArtifact(input),
+      writeDraftArtifact: (input) => store.writeDraftArtifact(input),
+    },
+    portsOptions,
+  )
+}
+
+export type LocalBundleActionRequestOptions = {
+  principal?: string | undefined
+  data_class?: string | undefined
+  input_artifact_ids?: string[] | undefined
+  payload?: JsonObject | undefined
+}
+
+export async function requestLocalBundleSurfaceAction(
+  ports: Pick<ActionGatewayPort, "requestAction">,
+  surface: SurfaceDeclaration,
+  options: LocalBundleActionRequestOptions = {},
+): Promise<RequestActionResult> {
+  return ports.requestAction(createLocalBundleActionRequest(surface.proposes, options, {
+    context: "surface",
+    contextId: surface.id,
+    defaultPrincipal: surface.principal,
+  }))
+}
+
+export async function requestLocalBundleScheduleAction(
+  ports: Pick<ActionGatewayPort, "requestAction">,
+  schedule: ScheduleDeclaration,
+  options: LocalBundleActionRequestOptions = {},
+): Promise<RequestActionResult> {
+  return ports.requestAction(createLocalBundleActionRequest(schedule.proposes, options, {
+    context: "schedule",
+    contextId: schedule.id,
+  }))
+}
+
+export async function requestLocalBundleHookAction(
+  ports: Pick<ActionGatewayPort, "requestAction">,
+  hook: HookDeclaration,
+  options: LocalBundleActionRequestOptions = {},
+): Promise<RequestActionResult> {
+  return ports.requestAction(createLocalBundleActionRequest(hook.proposes, options, {
+    context: "hook",
+    contextId: hook.id,
+  }))
+}
+
+function createLocalBundleActionRequest(
+  template: ActionProposalTemplate,
+  options: LocalBundleActionRequestOptions,
+  source: {
+    context: "surface" | "schedule" | "hook"
+    contextId: string
+    defaultPrincipal?: string | undefined
+  },
+): RequestActionRequest {
+  const principal = template.principal ?? options.principal ?? source.defaultPrincipal
+  if (principal === undefined) {
+    throw new Error(`${source.context} ${source.contextId} action proposal requires a principal.`)
+  }
+  const dataClass = template.data_class ?? options.data_class
+  if (dataClass === undefined) {
+    throw new Error(`${source.context} ${source.contextId} action proposal requires data_class.`)
+  }
+
+  const request: RequestActionRequest = {
+    type: template.action,
+    principal,
+    data_class: dataClass,
+    [source.context]: source.contextId,
+  }
+  if (template.capability !== undefined) request.capability = template.capability
+  const inputArtifactIds = template.input_artifact_ids ?? options.input_artifact_ids
+  if (inputArtifactIds !== undefined) request.input_artifact_ids = inputArtifactIds
+  const payload = template.payload ?? options.payload
+  if (payload !== undefined) request.payload = payload
+  return request
 }
 
 export class LocalActionGateway<TArtifact extends LocalActionGatewayArtifact> implements ActionGatewayPort {

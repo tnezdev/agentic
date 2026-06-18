@@ -23,13 +23,14 @@ import {
   validateArtifactDeclaration,
 } from "../../packages/agentic/src/index.ts"
 import {
-  LocalActionGateway,
-  LocalAgenticPorts,
   LocalBundleRunStore,
-  createLocalActionGatewayDeclarations,
+  createLocalBundlePorts,
   createLocalBundleRunId,
+  requestLocalBundleHookAction,
+  requestLocalBundleScheduleAction,
+  requestLocalBundleSurfaceAction,
   type LocalBundleArtifactRecord,
-  type LocalArtifactPort,
+  type LocalBundlePorts,
 } from "../../packages/agentic-runtime-local/src/index.ts"
 
 type ArtifactRecord = LocalBundleArtifactRecord
@@ -45,7 +46,7 @@ type DemoResult = {
   artifacts: Pick<ArtifactRecord, "id" | "type" | "title" | "status">[]
 }
 
-type DemoAgenticPorts = LocalAgenticPorts<ArtifactRecord, ArtifactRecord, ArtifactRecord>
+type DemoAgenticPorts = LocalBundlePorts
 
 const EXAMPLE_ROOT = dirname(fileURLToPath(import.meta.url))
 const BUNDLE_ROOT = join(EXAMPLE_ROOT, ".agentic")
@@ -265,21 +266,6 @@ async function runCaseReviewDemo(options: { clean: boolean }): Promise<DemoResul
 
   const runtime = new LocalBundleRunStore(stateDir, createLocalBundleRunId())
   await runtime.init()
-  const gateway = new LocalActionGateway<ArtifactRecord>(createLocalActionGatewayDeclarations(bundle), {
-    nextId: (prefix) => runtime.nextId(prefix),
-    recordAction: (input) => runtime.recordAction(input),
-    writeApprovalRequest: (input) => runtime.writeArtifact({
-      id: input.id,
-      type: input.type,
-      title: input.title,
-      status: input.status,
-      data_class: input.data_class,
-      tags: ["case-review", ...input.tags],
-      body: input.body as unknown as JsonObject,
-      derived_from: input.derived_from,
-      created_by_action_id: input.created_by_action_id,
-    }),
-  })
 
   const surface = findDeclaration<SurfaceDeclaration>(bundle.surfaces, "case-intake-api", "surface")
   const schedule = findDeclaration<ScheduleDeclaration>(bundle.schedules, "nightly-qc-sweep", "schedule")
@@ -291,13 +277,10 @@ async function runCaseReviewDemo(options: { clean: boolean }): Promise<DemoResul
   assertValidArtifactData(casePacket, `fixtures.${requestFixtureId}.case_packet`)
   const dataClass = stringValue(casePacket.data_class) ?? "unknown"
 
-  const artifactPort: LocalArtifactPort<ArtifactRecord, ArtifactRecord> = {
-    readArtifact: (input) => runtime.readArtifact(input),
-    writeDraftArtifact: (input) => runtime.writeDraftArtifact(input),
-  }
   let packetArtifact: ArtifactRecord | undefined
   let validationArtifact: ArtifactRecord | undefined
-  const ports = new LocalAgenticPorts(gateway, artifactPort, {
+  const ports = createLocalBundlePorts(bundle, runtime, {
+    approvalRequestTags: ["case-review"],
     handlers: {
       "surface.receive": async ({ action_id }) => {
         const requestArtifact = await runtime.writeArtifact({
@@ -344,12 +327,8 @@ async function runCaseReviewDemo(options: { clean: boolean }): Promise<DemoResul
     },
   })
 
-  const receiveResult = await ports.requestAction({
-    type: surface.proposes.action,
-    principal: surface.proposes.principal ?? surface.principal,
+  const receiveResult = await requestLocalBundleSurfaceAction(ports, surface, {
     data_class: surface.proposes.data_class ?? dataClass,
-    surface: surface.id,
-    ...(surface.proposes.capability === undefined ? {} : { capability: surface.proposes.capability }),
     payload: {
       route: surface.route ?? "unknown",
       fixture: requestFixtureId,
@@ -371,11 +350,9 @@ async function runCaseReviewDemo(options: { clean: boolean }): Promise<DemoResul
     },
   })
 
-  const validateResult = await ports.requestAction({
-    type: schedule.proposes.action,
+  const validateResult = await requestLocalBundleScheduleAction(ports, schedule, {
     principal: schedule.proposes.principal ?? "agent:case-reviewer",
     data_class: schedule.proposes.data_class ?? dataClass,
-    ...(schedule.proposes.capability === undefined ? {} : { capability: schedule.proposes.capability }),
     input_artifact_ids: [packetArtifact.id],
     payload: {
       guideline_fixture: "guideline-excerpt",
@@ -405,11 +382,9 @@ async function runCaseReviewDemo(options: { clean: boolean }): Promise<DemoResul
     artifact_ids: [packetArtifact.id, validationArtifact.id],
     message: "Synthetic validation findings are ready for reviewer handoff.",
   }
-  const handoffResult = await ports.requestAction({
-    type: hook.proposes.action,
+  const handoffResult = await requestLocalBundleHookAction(ports, hook, {
     principal: hook.proposes.principal ?? "agent:case-reviewer",
     data_class: hook.proposes.data_class ?? dataClass,
-    ...(hook.proposes.capability === undefined ? {} : { capability: hook.proposes.capability }),
     input_artifact_ids: [packetArtifact.id, validationArtifact.id],
     payload: handoffPayload,
   })
