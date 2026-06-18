@@ -10,6 +10,7 @@ import type {
   LocalActionHandler,
   LocalBundleArtifactRecord,
   LocalBundleHandlerFactoryContext,
+  LocalBundleProposalPayloadFactoryContext,
 } from "../../packages/agentic-runtime-local/src/index.ts"
 
 function findDeclaration<T>(section: LoadedAgenticBundleData[], id: string, kind: string): T {
@@ -169,4 +170,20 @@ export function createCaseReviewHandoffPayload(input: {
     artifact_ids: [input.packet.id, input.validation.id],
     message: "Synthetic validation findings are ready for reviewer handoff.",
   }
+}
+
+function requireInputArtifact(
+  artifacts: LocalBundleArtifactRecord[],
+  type: string,
+): LocalBundleArtifactRecord {
+  const artifact = artifacts.find((entry) => entry.type === type)
+  if (artifact === undefined) throw new Error(`Handoff payload requires ${type} input artifact.`)
+  return artifact
+}
+
+export function createHandoffPayload(context: LocalBundleProposalPayloadFactoryContext): JsonObject {
+  return createCaseReviewHandoffPayload({
+    packet: requireInputArtifact(context.input_artifacts, "case-packet"),
+    validation: requireInputArtifact(context.input_artifacts, "validation-result"),
+  })
 }

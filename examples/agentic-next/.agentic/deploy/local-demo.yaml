@@ -11,6 +11,8 @@ runtime:
       actions:
         surface.receive: receiveSurface
         case.validate: validateCase
+      proposal_payloads:
+        validation-result.propose-handoff: createHandoffPayload
 materializes:
   - surfaces
   - schedules

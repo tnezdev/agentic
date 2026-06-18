@@ -19,6 +19,7 @@ import {
   createLocalBundlePorts,
   createFilesystemArtifactPort,
   loadLocalBundleHandlers,
+  loadLocalBundleRuntimeBindings,
   LocalActionGateway,
   LocalAgenticPorts,
   LocalBundleRunStore,
@@ -453,15 +454,17 @@ describe("local bundle trigger helpers", () => {
     const bundle = await loadAgenticBundle(AGENTIC_NEXT_BUNDLE_ROOT)
     const store = new LocalBundleRunStore(join(tmpDir, ".agentic", ".data"), "run-test")
     await store.init()
-    const handlers = await loadLocalBundleHandlers(bundle, store, {
+    const bindings = await loadLocalBundleRuntimeBindings(bundle, store, {
       deployId: "local-demo",
       workspaceRoot: resolve(AGENTIC_NEXT_BUNDLE_ROOT, ".."),
     })
+    const handlers = bindings.handlers
     const ports = createLocalBundlePorts(bundle, store, { handlers })
     const surface = loadedDeclaration<SurfaceDeclaration>(bundle.surfaces, "case-intake-api")
     const schedule = loadedDeclaration<ScheduleDeclaration>(bundle.schedules, "nightly-qc-sweep")
 
     expect(Object.keys(handlers).sort()).toEqual(["case.validate", "surface.receive"])
+    expect(Object.keys(bindings.proposalPayloads)).toEqual(["validation-result.propose-handoff"])
     const receive = await requestLocalBundleSurfaceAction(ports, surface, {
       payload: { fixture: "case-request-001" },
     })
@@ -905,10 +908,10 @@ describe("local runtime package", () => {
       run_id: runId,
       context_mode: "bundle",
       status: "prepared",
-      message: "Bundle execution is prepared; trigger execution is not implemented yet.",
+      message: "Bundle execution is prepared; no local trigger sequence was executed.",
     })
     const summary = await readFile(join(tmpDir, ".agentic", ".data", "runs", runId, "summary.md"), "utf-8")
-    expect(summary).toContain("Trigger execution, action proposal handling, handler loading")
+    expect(summary).toContain("No local trigger sequence was executed")
 
     const invocation = JSON.parse(
       await readFile(

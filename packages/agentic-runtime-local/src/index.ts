@@ -109,6 +109,7 @@ type LocalRunContext = {
   bundle_run_dir?: string | undefined
   bundle_summary_path?: string | undefined
   bundle_latest_path?: string | undefined
+  bundle_latest?: LocalBundleRunLatest | undefined
   graph?: GraphDef | undefined
   persona?: PersonaFile | undefined
   activated_persona?: Persona | undefined
@@ -475,6 +476,24 @@ export type LocalBundleActionHandlerFactory = (
   context: LocalBundleHandlerFactoryContext,
 ) => LocalActionHandler<LocalBundleArtifactRecord> | Promise<LocalActionHandler<LocalBundleArtifactRecord>>
 
+export type LocalBundleProposalPayloadFactoryContext = LocalBundleHandlerFactoryContext & {
+  trigger: "hook"
+  trigger_id: string
+  proposed_action: string
+  input_artifacts: LocalBundleArtifactRecord[]
+}
+
+export type LocalBundleProposalPayloadFactory = (
+  context: LocalBundleProposalPayloadFactoryContext,
+) => JsonObject | Promise<JsonObject>
+
+export type LocalBundleRuntimeBindings = {
+  handlers: Partial<Record<string, LocalActionHandler<LocalBundleArtifactRecord>>>
+  proposalPayloads: Partial<Record<string, LocalBundleProposalPayloadFactory>>
+  deploy?: LoadedAgenticBundleData | undefined
+  handlerModulePath?: string | undefined
+}
+
 export type LoadLocalBundleHandlersOptions = {
   deployId?: string | undefined
   workspaceRoot?: string | undefined
@@ -483,6 +502,7 @@ export type LoadLocalBundleHandlersOptions = {
 type LocalBundleHandlerSpec = {
   module: string
   actions: Record<string, string>
+  proposalPayloads: Record<string, string>
 }
 
 export function createLocalBundlePorts(
@@ -525,11 +545,19 @@ export async function loadLocalBundleHandlers(
   store: LocalBundleRunStore,
   options: LoadLocalBundleHandlersOptions = {},
 ): Promise<Partial<Record<string, LocalActionHandler<LocalBundleArtifactRecord>>>> {
+  return (await loadLocalBundleRuntimeBindings(bundle, store, options)).handlers
+}
+
+export async function loadLocalBundleRuntimeBindings(
+  bundle: LoadedAgenticBundle,
+  store: LocalBundleRunStore,
+  options: LoadLocalBundleHandlersOptions = {},
+): Promise<LocalBundleRuntimeBindings> {
   const deploy = selectLocalBundleHandlerDeploy(bundle, options.deployId)
-  if (deploy === undefined) return {}
+  if (deploy === undefined) return { handlers: {}, proposalPayloads: {} }
 
   const spec = localBundleHandlerSpec(deploy)
-  if (spec === undefined) return {}
+  if (spec === undefined) return { handlers: {}, proposalPayloads: {} }
 
   const modulePath = resolveLocalBundleHandlerModulePath(bundle, spec.module, options.workspaceRoot)
   let moduleExports: Record<string, unknown>
@@ -559,7 +587,16 @@ export async function loadLocalBundleHandlers(
     handlers[actionType] = handler
   }
 
-  return handlers
+  const proposalPayloads: Partial<Record<string, LocalBundleProposalPayloadFactory>> = {}
+  for (const [triggerId, exportName] of Object.entries(spec.proposalPayloads)) {
+    const factory = moduleExports[exportName]
+    if (typeof factory !== "function") {
+      throw new Error(`Local bundle proposal payload ${triggerId} references missing export ${exportName}.`)
+    }
+    proposalPayloads[triggerId] = factory as LocalBundleProposalPayloadFactory
+  }
+
+  return { handlers, proposalPayloads, deploy, handlerModulePath: modulePath }
 }
 
 function selectLocalBundleHandlerDeploy(
@@ -583,10 +620,14 @@ function localBundleHandlerSpec(deploy: LoadedAgenticBundleData): LocalBundleHan
     throw new Error(`deploy ${deploy.id} runtime.local.handlers.module must be a non-empty string.`)
   }
   const actions = stringRecordConfig(handlers.actions, `deploy ${deploy.id} runtime.local.handlers.actions`)
-  if (Object.keys(actions).length === 0) {
-    throw new Error(`deploy ${deploy.id} runtime.local.handlers.actions must declare at least one action handler.`)
+  const proposalPayloads = stringRecordConfig(
+    handlers.proposal_payloads,
+    `deploy ${deploy.id} runtime.local.handlers.proposal_payloads`,
+  )
+  if (Object.keys(actions).length === 0 && Object.keys(proposalPayloads).length === 0) {
+    throw new Error(`deploy ${deploy.id} runtime.local.handlers must declare at least one handler or payload factory.`)
   }
-  return { module: moduleRef, actions }
+  return { module: moduleRef, actions, proposalPayloads }
 }
 
 function localBundleHandlersConfig(deploy: JsonObject): JsonObject | undefined {
@@ -712,6 +753,305 @@ function createLocalBundleActionRequest(
   const payload = template.payload ?? options.payload
   if (payload !== undefined) request.payload = payload
   return request
+}
+
+type LocalBundleTriggerExecutionResult = {
+  latest: LocalBundleRunLatest
+  summary: string
+}
+
+async function executeLocalBundleTriggers(
+  target: LocalRunTarget,
+  bundle: LoadedAgenticBundle,
+  store: LocalBundleRunStore,
+  invocation: RuntimeInvocation,
+  options: LoadLocalBundleHandlersOptions,
+): Promise<LocalBundleTriggerExecutionResult> {
+  if (bundle.surfaces.length === 0 && bundle.schedules.length === 0 && bundle.hooks.length === 0) {
+    const latest = preparedBundleLatest(target, bundle, store, invocation)
+    return { latest, summary: renderBundlePreparedSummary(target, bundle, store, invocation) }
+  }
+
+  const bindings = await loadLocalBundleRuntimeBindings(bundle, store, options)
+  const ports = createLocalBundlePorts(bundle, store, { handlers: bindings.handlers })
+  const surfaces = bundle.surfaces.map((entry) => entry.data as unknown as SurfaceDeclaration)
+  const schedules = bundle.schedules.map((entry) => entry.data as unknown as ScheduleDeclaration)
+  const hooks = bundle.hooks.map((entry) => entry.data as unknown as HookDeclaration)
+
+  for (const surface of surfaces) {
+    await requestLocalBundleSurfaceAction(ports, surface, {
+      payload: surfacePayload(surface),
+    })
+  }
+
+  for (const schedule of schedules) {
+    const selected = selectScheduleArtifacts(store, schedule)
+    if (selected.length === 0) continue
+    const inputArtifactIds = selected.map((artifact) => artifact.id)
+    const dataClass = schedule.proposes.data_class ?? selected[0]!.data_class
+    await ports.requestAction({
+      type: "schedule.tick",
+      principal: schedule.principal,
+      data_class: dataClass,
+      schedule: schedule.id,
+      input_artifact_ids: inputArtifactIds,
+      payload: {
+        cron: schedule.cron,
+        selected_artifacts: inputArtifactIds,
+      },
+    })
+    await requestLocalBundleScheduleAction(ports, schedule, {
+      data_class: dataClass,
+      input_artifact_ids: inputArtifactIds,
+    })
+  }
+
+  for (const hook of hooks) {
+    const matches = selectHookArtifacts(store, hook)
+    for (const artifact of matches) {
+      const inputArtifacts = relatedHookArtifacts(store, artifact)
+      const inputArtifactIds = inputArtifacts.map((entry) => entry.id)
+      const dataClass = hook.proposes.data_class ?? artifact.data_class
+      await ports.requestAction({
+        type: "hook.run",
+        principal: "service:agentic-runtime",
+        data_class: dataClass,
+        hook: hook.id,
+        input_artifact_ids: [artifact.id],
+        payload: {
+          trigger: hook.on as unknown as JsonObject,
+          proposed_action: hook.proposes.action,
+        },
+      })
+      const payload = await localBundleProposalPayload(bindings, {
+        bundle,
+        store,
+        trigger: "hook",
+        trigger_id: hook.id,
+        proposed_action: hook.proposes.action,
+        input_artifacts: inputArtifacts,
+      }) ?? hook.proposes.payload
+      await requestLocalBundleHookAction(ports, hook, {
+        data_class: dataClass,
+        input_artifact_ids: inputArtifactIds,
+        payload,
+      })
+    }
+  }
+
+  const latest = completedBundleLatest(target, bundle, store, invocation)
+  return { latest, summary: renderBundleCompletedSummary(target, bundle, store, latest) }
+}
+
+function surfacePayload(surface: SurfaceDeclaration): JsonObject | undefined {
+  const payload: JsonObject = { ...(surface.proposes.payload ?? {}) }
+  if (surface.route !== undefined && payload.route === undefined) payload.route = surface.route
+  if (surface.fixture !== undefined && payload.fixture === undefined) payload.fixture = surface.fixture
+  return Object.keys(payload).length > 0 ? payload : undefined
+}
+
+function selectScheduleArtifacts(
+  store: LocalBundleRunStore,
+  schedule: ScheduleDeclaration,
+): LocalBundleArtifactRecord[] {
+  const selector = schedule.selects
+  if (selector === undefined) return [...store.artifacts]
+  return store.artifacts.filter((artifact) => {
+    if (artifact.type !== selector.artifact) return false
+    if (selector.status !== undefined && artifact.status !== selector.status) return false
+    return (selector.tags ?? []).every((tag) => artifact.tags.includes(tag))
+  })
+}
+
+function selectHookArtifacts(
+  store: LocalBundleRunStore,
+  hook: HookDeclaration,
+): LocalBundleArtifactRecord[] {
+  return store.artifacts.filter((artifact) => {
+    if (artifact.type !== hook.on["artifact.type"]) return false
+    return hook.on["artifact.status"] === undefined || artifact.status === hook.on["artifact.status"]
+  })
+}
+
+function relatedHookArtifacts(
+  store: LocalBundleRunStore,
+  artifact: LocalBundleArtifactRecord,
+): LocalBundleArtifactRecord[] {
+  const ids = [...(artifact.derived_from ?? []), artifact.id]
+  return ids.map((id) => store.artifacts.find((entry) => entry.id === id)).filter((entry): entry is LocalBundleArtifactRecord => {
+    return entry !== undefined
+  })
+}
+
+async function localBundleProposalPayload(
+  bindings: LocalBundleRuntimeBindings,
+  context: Omit<LocalBundleProposalPayloadFactoryContext, "deploy" | "handler_module_path">,
+): Promise<JsonObject | undefined> {
+  const factory = bindings.proposalPayloads[context.trigger_id]
+  if (factory === undefined) return undefined
+  if (bindings.deploy === undefined || bindings.handlerModulePath === undefined) {
+    throw new Error(`Local bundle proposal payload ${context.trigger_id} has no loaded deploy handler context.`)
+  }
+  return factory({
+    ...context,
+    deploy: bindings.deploy,
+    handler_module_path: bindings.handlerModulePath,
+  })
+}
+
+function preparedBundleLatest(
+  target: LocalRunTarget,
+  bundle: LoadedAgenticBundle,
+  store: LocalBundleRunStore,
+  invocation: RuntimeInvocation,
+): LocalBundleRunLatest {
+  return {
+    ...bundleLatestBase(target, bundle, store, invocation),
+    status: "prepared",
+    message: "Bundle execution is prepared; no local trigger sequence was executed.",
+  }
+}
+
+function completedBundleLatest(
+  target: LocalRunTarget,
+  bundle: LoadedAgenticBundle,
+  store: LocalBundleRunStore,
+  invocation: RuntimeInvocation,
+): LocalBundleRunLatest {
+  const approvalAction = [...store.actions].reverse().find((action) => action.status === "approval_required")
+  const approvalArtifact = store.artifacts.find((artifact) => artifact.type === "approval-request")
+  const latest: LocalBundleRunLatest = {
+    ...bundleLatestBase(target, bundle, store, invocation),
+    status: "completed",
+    message: "Bundle execution completed through local trigger declarations.",
+    external_write_executed: false,
+    actions: store.actions.map(summarizeBundleAction),
+    artifacts: store.artifacts.map(summarizeBundleArtifact),
+  }
+  if (approvalAction !== undefined) latest.approval_required_action_id = approvalAction.id
+  if (approvalArtifact !== undefined) latest.approval_request_artifact_id = approvalArtifact.id
+  return latest
+}
+
+function bundleLatestBase(
+  target: LocalRunTarget,
+  bundle: LoadedAgenticBundle,
+  store: LocalBundleRunStore,
+  invocation: RuntimeInvocation,
+): LocalBundleRunLatest {
+  return {
+    run_id: store.runId,
+    context_mode: "bundle",
+    bundle: {
+      name: bundle.manifest.name,
+      version: bundle.manifest.version,
+    },
+    runtime_invocation_id: invocation.id,
+    run_dir: pathRelative(target.workspace_root, store.runDir),
+    summary_path: pathRelative(target.workspace_root, store.summaryPath),
+    latest_path: pathRelative(target.workspace_root, store.latestPath),
+  }
+}
+
+function summarizeBundleAction(action: ActionRecord): Pick<ActionRecord, "id" | "type" | "status" | "capability"> {
+  const summary: Pick<ActionRecord, "id" | "type" | "status" | "capability"> = {
+    id: action.id,
+    type: action.type,
+    status: action.status,
+  }
+  if (action.capability !== undefined) summary.capability = action.capability
+  return summary
+}
+
+function summarizeBundleArtifact(
+  artifact: LocalBundleArtifactRecord,
+): Pick<LocalBundleArtifactRecord, "id" | "type" | "title" | "status"> {
+  return {
+    id: artifact.id,
+    type: artifact.type,
+    title: artifact.title,
+    status: artifact.status,
+  }
+}
+
+function renderBundleCompletedSummary(
+  target: LocalRunTarget,
+  bundle: LoadedAgenticBundle,
+  store: LocalBundleRunStore,
+  latest: LocalBundleRunLatest,
+): string {
+  const inventoryRows = [
+    ["prompts", bundle.prompts.map((entry) => entry.id)],
+    ["skills", bundle.skills.map((entry) => entry.id)],
+    ["artifacts", bundle.artifacts.map((entry) => entry.id)],
+    ["actions", bundle.actions.map((entry) => entry.id)],
+    ["capabilities", bundle.capabilities.map((entry) => entry.id)],
+    ["hooks", bundle.hooks.map((entry) => entry.id)],
+    ["surfaces", bundle.surfaces.map((entry) => entry.id)],
+    ["schedules", bundle.schedules.map((entry) => entry.id)],
+  ]
+    .map(([section, ids]) => `| ${section} | ${(ids as string[]).join(", ")} |`)
+    .join("\n")
+  const actionRows = store.actions
+    .map((action) => {
+      const policy = action.policy?.decision ?? "not_checked"
+      const reason = action.policy?.reason ?? "none"
+      const digest = action.digest === undefined ? "none" : action.digest.slice(0, 12)
+      return `| ${action.id} | ${action.type} | ${action.status} | ${action.capability ?? "none"} | ${policy} | ${digest} | ${reason} |`
+    })
+    .join("\n")
+  const artifactRows = store.artifacts
+    .map((artifact) => `| ${artifact.id} | ${artifact.type} | ${artifact.status} | ${artifact.title} |`)
+    .join("\n")
+  const approvalActionId = typeof latest.approval_required_action_id === "string"
+    ? latest.approval_required_action_id
+    : "none"
+  const approvalArtifactId = typeof latest.approval_request_artifact_id === "string"
+    ? latest.approval_request_artifact_id
+    : "none"
+
+  return `# Local Bundle Run: ${bundle.manifest.name}
+
+Run id: ${store.runId}
+Bundle: ${bundle.manifest.name}@${bundle.manifest.version}
+
+## What Happened
+
+The local runtime loaded the authored bundle from \`${pathRelative(target.workspace_root, bundle.manifestPath)}\`, processed declared surfaces, schedules, and hooks, and stopped at any approval gate before external effects.
+
+## Authored Bundle Inventory
+
+| Section | Loaded ids |
+| --- | --- |
+${inventoryRows}
+
+## Actions
+
+| ID | Type | Status | Capability | Policy | Digest | Reason |
+| --- | --- | --- | --- | --- | --- | --- |
+${actionRows}
+
+## Artifacts
+
+| ID | Type | Status | Title |
+| --- | --- | --- | --- |
+${artifactRows}
+
+## Approval Gate
+
+- Action requiring approval: ${approvalActionId}
+- Approval request artifact: ${approvalArtifactId}
+- External write executed: no
+
+The runtime created exact action digests and approval requests. A host-owned authenticated approval channel must grant the exact action before approval-gated external effects execute.
+
+## Inspect
+
+- Latest pointer: ${pathRelative(target.workspace_root, store.latestPath)}
+- Action log: ${pathRelative(target.workspace_root, store.actionLogPath)}
+- Action records: ${pathRelative(target.workspace_root, store.actionDir)}
+- Artifact records: ${pathRelative(target.workspace_root, store.artifactDir)}
+`
 }
 
 export class LocalActionGateway<TArtifact extends LocalActionGatewayArtifact> implements ActionGatewayPort {
@@ -1941,21 +2281,11 @@ async function prepareBundleLocalRun(
   const store = new LocalBundleRunStore(stateDir, createLocalBundleRunId())
   await store.init()
 
-  const latest: LocalBundleRunLatest = {
-    run_id: store.runId,
-    context_mode: "bundle",
-    status: "prepared",
-    bundle: {
-      name: bundle.manifest.name,
-      version: bundle.manifest.version,
-    },
-    runtime_invocation_id: invocation.id,
-    run_dir: pathRelative(target.workspace_root, store.runDir),
-    summary_path: pathRelative(target.workspace_root, store.summaryPath),
-    latest_path: pathRelative(target.workspace_root, store.latestPath),
-    message: "Bundle execution is prepared; trigger execution is not implemented yet.",
-  }
-  await store.writeSummary(renderBundlePreparedSummary(target, bundle, store, invocation), latest)
+  const execution = await executeLocalBundleTriggers(target, bundle, store, invocation, {
+    deployId: stringFlag(args.flags, "deploy"),
+    workspaceRoot: target.workspace_root,
+  })
+  await store.writeSummary(execution.summary, execution.latest)
 
   return {
     context_mode: "bundle",
@@ -1965,6 +2295,7 @@ async function prepareBundleLocalRun(
     bundle_run_dir: store.runDir,
     bundle_summary_path: store.summaryPath,
     bundle_latest_path: store.latestPath,
+    bundle_latest: execution.latest,
     skills: [],
     input_artifacts: [],
     artifact_id: "pending",
@@ -1985,7 +2316,7 @@ function renderBundlePreparedSummary(
 
 The local runtime loaded this authored Agentic bundle, initialized filesystem runtime state, and recorded a dry bundle invocation.
 
-Trigger execution, action proposal handling, handler loading, and domain artifact materialization are not implemented in this path yet.
+No local trigger sequence was executed for this bundle. Bundles with explicit local runtime handlers can be served through declared surfaces, schedules, and hooks.
 
 ## Bundle
 
@@ -2131,6 +2462,7 @@ async function runLocalRuntime(
   const bundleData = run.bundle === undefined
     ? {}
     : {
+        ...(run.bundle_latest ?? {}),
         bundle: {
           name: run.bundle.manifest.name,
           version: run.bundle.manifest.version,
