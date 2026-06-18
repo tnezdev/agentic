@@ -325,7 +325,7 @@ export class LocalBundleRunStore {
       created_at: timestamp,
       completed_at: timestamp,
     }
-    this.actions.push(action)
+    this.rememberAction(action)
     await writeJson(join(this.actionDir, `${action.id}.json`), action)
     await appendFile(this.actionLogPath, `${JSON.stringify(action)}\n`, "utf-8")
     return action
@@ -336,7 +336,7 @@ export class LocalBundleRunStore {
     if (existing !== undefined) return existing
     try {
       const action = JSON.parse(await readFile(join(this.actionDir, `${actionId}.json`), "utf-8")) as ActionRecord
-      this.actions.push(action)
+      this.rememberAction(action)
       return action
     } catch {
       return undefined
@@ -441,6 +441,15 @@ export class LocalBundleRunStore {
   async writeSummary(markdown: string, latest: LocalBundleRunLatest): Promise<void> {
     await writeFile(this.summaryPath, markdown, "utf-8")
     await writeJson(this.latestPath, latest)
+  }
+
+  private rememberAction(action: ActionRecord): void {
+    const index = this.actions.findIndex((entry) => entry.id === action.id)
+    if (index === -1) {
+      this.actions.push(action)
+    } else {
+      this.actions[index] = action
+    }
   }
 
   private rememberArtifact(artifact: LocalBundleArtifactRecord): void {
@@ -586,6 +595,32 @@ export type LocalBundlePortsOptions = LocalAgenticPortsOptions<LocalBundleArtifa
   approvalRequestTags?: string[] | undefined
 }
 
+function createLocalBundleActionGateway(
+  bundle: LoadedAgenticBundle,
+  store: LocalBundleRunStore,
+  approvalRequestTags: string[] = [],
+): LocalActionGateway<LocalBundleArtifactRecord> {
+  return new LocalActionGateway<LocalBundleArtifactRecord>(
+    createLocalActionGatewayDeclarations(bundle),
+    {
+      nextId: (prefix) => store.nextId(prefix),
+      recordAction: (input) => store.recordAction(input),
+      readAction: (actionId) => store.readAction(actionId),
+      writeApprovalRequest: (input) => store.writeArtifact({
+        id: input.id,
+        type: input.type,
+        title: input.title,
+        status: input.status,
+        data_class: input.data_class,
+        tags: [...approvalRequestTags, ...input.tags],
+        body: input.body as unknown as JsonObject,
+        derived_from: input.derived_from,
+        created_by_action_id: input.created_by_action_id,
+      }),
+    },
+  )
+}
+
 export type LocalBundleHandlerFactoryContext = {
   bundle: LoadedAgenticBundle
   store: LocalBundleRunStore
@@ -632,25 +667,7 @@ export function createLocalBundlePorts(
   options: LocalBundlePortsOptions = {},
 ): LocalBundlePorts {
   const { approvalRequestTags = [], ...portsOptions } = options
-  const gateway = new LocalActionGateway<LocalBundleArtifactRecord>(
-    createLocalActionGatewayDeclarations(bundle),
-    {
-      nextId: (prefix) => store.nextId(prefix),
-      recordAction: (input) => store.recordAction(input),
-      readAction: (actionId) => store.readAction(actionId),
-      writeApprovalRequest: (input) => store.writeArtifact({
-        id: input.id,
-        type: input.type,
-        title: input.title,
-        status: input.status,
-        data_class: input.data_class,
-        tags: [...approvalRequestTags, ...input.tags],
-        body: input.body as unknown as JsonObject,
-        derived_from: input.derived_from,
-        created_by_action_id: input.created_by_action_id,
-      }),
-    },
-  )
+  const gateway = createLocalBundleActionGateway(bundle, store, approvalRequestTags)
   return new LocalAgenticPorts(
     gateway,
     {
@@ -1058,17 +1075,23 @@ function completedBundleLatest(
 ): LocalBundleRunLatest {
   const approvalAction = [...store.actions].reverse().find((action) => action.status === "approval_required")
   const approvalArtifact = store.artifacts.find((artifact) => artifact.type === "approval-request")
+  const approvalActionId = approvalAction?.id ?? (
+    approvalArtifact === undefined ? undefined : stringJsonValue(approvalArtifact.body.action_id)
+  )
   const approvalDecisions = store.approvalDecisions.map(summarizeApprovalDecision)
   const latestDecision = approvalDecisions.at(-1)
+  const externalWriteExecuted = store.actions.some((action) => {
+    return action.status === "completed" && (action.effects ?? []).some((effect) => effect.startsWith("external.write:"))
+  })
   const latest: LocalBundleRunLatest = {
     ...bundleLatestBase(target, bundle, store, invocation),
     status: "completed",
     message: "Bundle execution completed through local trigger declarations.",
-    external_write_executed: false,
+    external_write_executed: externalWriteExecuted,
     actions: store.actions.map(summarizeBundleAction),
     artifacts: store.artifacts.map(summarizeBundleArtifact),
   }
-  if (approvalAction !== undefined) latest.approval_required_action_id = approvalAction.id
+  if (approvalActionId !== undefined) latest.approval_required_action_id = approvalActionId
   if (approvalArtifact !== undefined) latest.approval_request_artifact_id = approvalArtifact.id
   if (approvalDecisions.length > 0) latest.approval_decisions = approvalDecisions
   if (latestDecision !== undefined) {
@@ -1216,7 +1239,7 @@ ${artifactRows}
 
 - Action requiring approval: ${approvalActionId}
 - Approval request artifact: ${approvalArtifactId}
-- External write executed: no
+- External write executed: ${latest.external_write_executed === true ? "yes" : "no"}
 
 The runtime created exact action digests and approval requests. A host-owned authenticated approval channel must grant the exact action before approval-gated external effects execute.
 
@@ -1356,6 +1379,54 @@ export class LocalActionGateway<TArtifact extends LocalActionGatewayArtifact> im
     return { action, artifacts }
   }
 
+  async resumeApprovedAction(
+    storedAction: ActionRecord,
+    execute?: LocalActionHandler<TArtifact> | undefined,
+  ): Promise<LocalActionGatewayResult<TArtifact>> {
+    const actionDeclaration = this.declarations.actions.find((action) => action.id === storedAction.type)
+    if (actionDeclaration === undefined) throw new Error(`Missing action declaration: ${storedAction.type}.`)
+    const resolved = resolvedProposalFromActionRecord(storedAction)
+    const digest = computeActionDigest(resolved)
+    if (storedAction.digest !== digest) {
+      throw new Error(`Stored action digest does not match action ${storedAction.id}.`)
+    }
+    const policy: ActionDecision = {
+      decision: "allow",
+      code: "allowed",
+      capability: storedAction.capability,
+      reason: `Action ${storedAction.id} was resumed after a runtime-authenticated approval grant.`,
+    }
+    const context: ActionExecutionContext = {
+      action_id: resolved.id,
+      digest,
+      proposal: resolved,
+      action: actionDeclaration as unknown as JsonObject,
+    }
+    const capability = resolved.capability === undefined
+      ? undefined
+      : this.declarations.capabilities?.find((entry) => entry.id === resolved.capability)
+    if (capability !== undefined) context.capability = capability as unknown as JsonObject
+
+    let execution: LocalActionExecutionResult<TArtifact>
+    try {
+      execution = execute === undefined ? {} : await execute(context)
+    } catch (err) {
+      await this.recordAction(resolved, "failed", policy, digest, [], resolved.payload, errorMessage(err))
+      throw err
+    }
+    const artifacts = execution.artifacts ?? []
+    const outputArtifactIds = execution.output_artifact_ids ?? artifacts.map((artifact) => artifact.id)
+    const action = await this.recordAction(
+      resolved,
+      "completed",
+      policy,
+      digest,
+      outputArtifactIds,
+      execution.payload ?? resolved.payload,
+    )
+    return { action, artifacts }
+  }
+
   private async requestApproval(
     proposal: ResolvedActionProposal,
     policy: ActionDecision,
@@ -1414,6 +1485,7 @@ export class LocalActionGateway<TArtifact extends LocalActionGatewayArtifact> im
       type: proposal.type,
       status,
       principal: proposal.principal,
+      data_class: proposal.data_class,
       policy,
       digest,
     }
@@ -1465,6 +1537,26 @@ function artifactPortBodyToString(body: JsonValue): string {
 function requiredPortString(value: string | undefined, field: string): string {
   if (typeof value === "string" && value.trim() !== "") return value
   throw new Error(`writeDraftArtifact requires ${field} when artifact_id is omitted.`)
+}
+
+function resolvedProposalFromActionRecord(action: ActionRecord): ResolvedActionProposal {
+  if (action.data_class === undefined) {
+    throw new Error(`Action ${action.id} cannot be resumed because it has no data_class.`)
+  }
+  const proposal: ResolvedActionProposal = {
+    id: action.id,
+    type: action.type,
+    principal: action.principal,
+    data_class: action.data_class,
+    effects: action.effects ?? [],
+  }
+  if (action.capability !== undefined) proposal.capability = action.capability
+  if (action.surface !== undefined) proposal.surface = action.surface
+  if (action.schedule !== undefined) proposal.schedule = action.schedule
+  if (action.hook !== undefined) proposal.hook = action.hook
+  if (action.input_artifact_ids !== undefined) proposal.input_artifact_ids = action.input_artifact_ids
+  if (action.payload !== undefined) proposal.payload = action.payload
+  return proposal
 }
 
 function encodeTime(now: number, len: number): string {
@@ -2653,6 +2745,7 @@ type LocalApprovalDecisionContext = {
 async function loadApprovalDecisionContext(
   ctx: RuntimeContext,
   args: RuntimeApprovalDecisionArgs,
+  options: { allowCompleted?: boolean | undefined } = {},
 ): Promise<LocalApprovalDecisionContext> {
   const target = await resolveRunTarget(ctx, args)
   if (!(await hasAgenticWorkspace(target.workspace_root))) {
@@ -2688,7 +2781,7 @@ async function loadApprovalDecisionContext(
 
   const action = await store.readAction(args.action_id)
   if (action === undefined) throw new Error(`Action not found: ${args.action_id}`)
-  if (action.status !== "approval_required") {
+  if (action.status !== "approval_required" && !(options.allowCompleted === true && action.status === "completed")) {
     throw new Error(`Action ${args.action_id} is ${action.status}; only approval_required actions can be decided.`)
   }
   if (action.digest === undefined) throw new Error(`Action ${args.action_id} has no digest to bind approval against.`)
@@ -2738,12 +2831,118 @@ function approvalRequestFromArtifact(artifact: LocalBundleArtifactRecord): Appro
   return request
 }
 
-function assertHumanApprovalPrincipal(bundle: LoadedAgenticBundle, principal: string): void {
+function approvalPrincipalDeclaration(
+  bundle: LoadedAgenticBundle,
+  principal: string,
+): LoadedAgenticBundle["manifest"]["principals"][number] {
   const declaration = bundle.manifest.principals.find((entry) => entry.id === principal)
   if (declaration === undefined) throw new Error(`Approval principal is not declared in the bundle: ${principal}`)
+  return declaration
+}
+
+function assertHumanApprovalPrincipal(bundle: LoadedAgenticBundle, principal: string): void {
+  const declaration = approvalPrincipalDeclaration(bundle, principal)
   if (declaration.kind !== "human") {
     throw new Error(`Approval principal must be human, got ${declaration.kind ?? "unknown"}.`)
   }
+}
+
+function assertApproverRule(
+  bundle: LoadedAgenticBundle,
+  principal: string,
+  action: ActionRecord,
+  approvalRequest: ApprovalRequest,
+): void {
+  const declaration = approvalPrincipalDeclaration(bundle, principal)
+  const clauses = Array.isArray(approvalRequest.approver_rule.all_of)
+    ? approvalRequest.approver_rule.all_of.filter((item): item is string => typeof item === "string")
+    : []
+  for (const clause of clauses) {
+    if (clause === "principal.kind == human") {
+      if (declaration.kind !== "human") throw new Error("Approval principal must be human.")
+      continue
+    }
+    if (clause.startsWith("principal.roles includes ")) {
+      const role = clause.slice("principal.roles includes ".length).trim()
+      if (!(declaration.roles ?? []).includes(role)) throw new Error(`Approval principal lacks required role: ${role}`)
+      continue
+    }
+    if (clause === "grant.action_digest == action.digest") {
+      if (approvalRequest.action_digest !== action.digest) throw new Error("Approval grant digest does not match action digest.")
+      continue
+    }
+    if (clause.startsWith("grant.capability == ")) {
+      const capability = clause.slice("grant.capability == ".length).trim()
+      if (approvalRequest.capability !== capability || action.capability !== capability) {
+        throw new Error(`Approval grant capability does not match required capability: ${capability}`)
+      }
+      continue
+    }
+    throw new Error(`Unsupported approver rule clause: ${clause}`)
+  }
+}
+
+function assertApprovalNotExpired(approvalRequest: ApprovalRequest): void {
+  const expiresAt = Date.parse(approvalRequest.expires_at)
+  if (!Number.isFinite(expiresAt)) throw new Error("Approval request has an invalid expiration timestamp.")
+  if (expiresAt <= Date.now()) throw new Error("Approval request has expired.")
+}
+
+async function approveLocalRuntime(
+  ctx: RuntimeContext,
+  args: RuntimeApprovalDecisionArgs,
+): Promise<RuntimeCommandResult> {
+  const decisionContext = await loadApprovalDecisionContext(ctx, args, { allowCompleted: true })
+  const { target, bundle, store, invocation, action, approvalRequestArtifact, approvalRequest } = decisionContext
+
+  const existing = await store.readApprovalDecisionByAction(action.id)
+  if (existing !== undefined) {
+    if (existing.decision !== "granted") {
+      throw new Error(`Action ${action.id} already has approval decision ${existing.decision}.`)
+    }
+    return approvalDecisionResult(ctx, target, store, existing, approvalRequestArtifact.id, {
+      existing: true,
+      externalWriteExecuted: action.status === "completed",
+      outputArtifactIds: action.output_artifact_ids,
+    })
+  }
+
+  if (action.status === "completed") {
+    throw new Error(`Action ${action.id} is already completed without a recorded approval grant.`)
+  }
+
+  assertApprovalNotExpired(approvalRequest)
+  assertApproverRule(bundle, args.principal, action, approvalRequest)
+
+  const input: Omit<ApprovalDecisionRecord, "decided_at"> = {
+    id: await store.nextApprovalDecisionId(),
+    approval_request_id: approvalRequestArtifact.id,
+    action_id: action.id,
+    action_digest: approvalRequest.action_digest,
+    principal: args.principal,
+    decision: "granted",
+    expires_at: approvalRequest.expires_at,
+  }
+  if (approvalRequest.capability !== undefined) input.capability = approvalRequest.capability
+  if (args.comment !== undefined) input.comment = args.comment
+  const decision = await store.recordApprovalDecision(input)
+
+  const bindings = await loadLocalBundleRuntimeBindings(bundle, store, {
+    deployId: stringFlag(args.flags, "deploy"),
+    workspaceRoot: target.workspace_root,
+  })
+  const handler = bindings.handlers[action.type]
+  if (handler === undefined) throw new Error(`No local handler registered for approved action ${action.type}.`)
+
+  const gateway = createLocalBundleActionGateway(bundle, store)
+  const resumed = await gateway.resumeApprovedAction(action, handler)
+  const latest = completedBundleLatest(target, bundle, store, invocation)
+  await store.writeSummary(renderBundleCompletedSummary(target, bundle, store, latest), latest)
+  return approvalDecisionResult(ctx, target, store, decision, approvalRequestArtifact.id, {
+    existing: false,
+    externalWriteExecuted: true,
+    outputArtifactIds: resumed.action.output_artifact_ids,
+  })
 }
 
 async function rejectLocalRuntime(
@@ -2758,7 +2957,10 @@ async function rejectLocalRuntime(
     if (existing.decision !== "rejected") {
       throw new Error(`Action ${action.id} already has approval decision ${existing.decision}.`)
     }
-    return approvalDecisionResult(ctx, target, store, existing, approvalRequestArtifact.id, true)
+    return approvalDecisionResult(ctx, target, store, existing, approvalRequestArtifact.id, {
+      existing: true,
+      externalWriteExecuted: false,
+    })
   }
 
   const input: Omit<ApprovalDecisionRecord, "decided_at"> = {
@@ -2776,7 +2978,10 @@ async function rejectLocalRuntime(
   const decision = await store.recordApprovalDecision(input)
   const latest = completedBundleLatest(target, bundle, store, invocation)
   await store.writeSummary(renderBundleCompletedSummary(target, bundle, store, latest), latest)
-  return approvalDecisionResult(ctx, target, store, decision, approvalRequestArtifact.id, false)
+  return approvalDecisionResult(ctx, target, store, decision, approvalRequestArtifact.id, {
+    existing: false,
+    externalWriteExecuted: false,
+  })
 }
 
 function approvalDecisionResult(
@@ -2785,12 +2990,17 @@ function approvalDecisionResult(
   store: LocalBundleRunStore,
   decision: ApprovalDecisionRecord,
   approvalRequestId: string,
-  existing: boolean,
+  options: {
+    existing: boolean
+    externalWriteExecuted: boolean
+    outputArtifactIds?: string[] | undefined
+  },
 ): RuntimeCommandResult {
+  const verb = decision.decision === "granted" ? "Granted" : "Rejected"
   return {
-    summary: existing
+    summary: options.existing
       ? `Approval for action ${decision.action_id} was already ${decision.decision}.`
-      : `Rejected approval for action ${decision.action_id}.`,
+      : `${verb} approval for action ${decision.action_id}.`,
     data: {
       run_id: store.runId,
       run_dir: pathRelative(ctx.workspace_root, store.runDir),
@@ -2805,7 +3015,8 @@ function approvalDecisionResult(
       decision: decision.decision,
       decided_at: decision.decided_at,
       comment: decision.comment ?? null,
-      external_write_executed: false,
+      output_artifact_ids: options.outputArtifactIds ?? [],
+      external_write_executed: options.externalWriteExecuted,
       workspace: pathRelative(ctx.workspace_root, target.workspace_root),
     },
   }
@@ -2956,10 +3167,11 @@ export const runtime: AgenticRuntimePackage = {
   name: RUNTIME_NAME,
   package_name: PACKAGE_NAME,
   description: "Run Agentic workspaces on the local machine.",
-  capabilities: ["init", "run", "reject", "status"],
+  capabilities: ["init", "run", "approve", "reject", "status"],
   commands: {
     init: initLocalRuntime,
     run: runLocalRuntime,
+    approve: approveLocalRuntime,
     reject: rejectLocalRuntime,
     status: statusLocalRuntime,
   },

@@ -11,6 +11,7 @@ runtime:
       actions:
         surface.receive: receiveSurface
         case.validate: validateCase
+        external.handoff: releaseHandoff
       proposal_payloads:
         validation-result.propose-handoff: createHandoffPayload
 materializes:

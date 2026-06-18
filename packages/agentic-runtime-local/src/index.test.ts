@@ -467,7 +467,7 @@ describe("local bundle trigger helpers", () => {
     const surface = loadedDeclaration<SurfaceDeclaration>(bundle.surfaces, "case-intake-api")
     const schedule = loadedDeclaration<ScheduleDeclaration>(bundle.schedules, "nightly-qc-sweep")
 
-    expect(Object.keys(handlers).sort()).toEqual(["case.validate", "surface.receive"])
+    expect(Object.keys(handlers).sort()).toEqual(["case.validate", "external.handoff", "surface.receive"])
     expect(Object.keys(bindings.proposalPayloads)).toEqual(["validation-result.propose-handoff"])
     const receive = await requestLocalBundleSurfaceAction(ports, surface, {
       payload: { fixture: "case-request-001" },
@@ -850,9 +850,10 @@ describe("local runtime package", () => {
     expect(runtime.api_version).toBe(1)
     expect(runtime.name).toBe("local")
     expect(runtime.package_name).toBe("@tnezdev/agentic-runtime-local")
-    expect(runtime.capabilities).toEqual(["init", "run", "reject", "status"])
+    expect(runtime.capabilities).toEqual(["init", "run", "approve", "reject", "status"])
     expect(runtime.commands.init).toBeFunction()
     expect(runtime.commands.run).toBeFunction()
+    expect(runtime.commands.approve).toBeFunction()
     expect(runtime.commands.reject).toBeFunction()
     expect(runtime.commands.status).toBeFunction()
   })
@@ -1078,6 +1079,10 @@ export async function validateCase() {
 export function createHandoffPayload() {
   return {}
 }
+
+export async function releaseHandoff() {
+  return async () => ({})
+}
 `,
     )
 
@@ -1215,6 +1220,104 @@ export function createHandoffPayload() {
     const decisionFiles = (await readdir(join(runDir, "approval-decisions")))
       .filter((entry) => entry.endsWith(".json"))
     expect(decisionFiles).toEqual(["approval_decision_0001.json"])
+  })
+
+  it("approves and resumes stored approval-gated actions", async () => {
+    const workspace = join(tmpDir, "case-review-bundle")
+    await cp(CASE_REVIEW_BUNDLE_TEMPLATE, workspace, { recursive: true })
+
+    const runResult = await runtime.commands.run!(ctx, {
+      target: "case-review-bundle",
+      args: [],
+      flags: { clean: true },
+    })
+    const runData = dataOf(runResult)
+    const runId = runData["run_id"] as string
+    const actionId = runData["approval_required_action_id"] as string
+
+    const approveResult = await runtime.commands.approve!(ctx, {
+      target: "case-review-bundle",
+      action_id: actionId,
+      principal: "user:reviewer.alba",
+      comment: "Approved for handoff.",
+      args: [],
+      flags: {},
+    })
+    const approveData = approveResult?.data as Record<string, unknown>
+
+    expect(approveResult?.summary).toContain(`Granted approval for action ${actionId}`)
+    expect(approveData).toMatchObject({
+      run_id: runId,
+      approval_decision_id: "approval_decision_0001",
+      approval_request_id: runData["approval_request_artifact_id"],
+      action_id: actionId,
+      capability: "handoff.release",
+      principal: "user:reviewer.alba",
+      decision: "granted",
+      comment: "Approved for handoff.",
+      external_write_executed: true,
+    })
+    expect(approveData.output_artifact_ids).toEqual(["art_handoff_note_0001"])
+
+    const runDir = join(workspace, ".agentic", ".data", "runs", runId)
+    const latest = JSON.parse(await readFile(join(workspace, ".agentic", ".data", "latest.json"), "utf-8"))
+    expect(latest).toMatchObject({
+      run_id: runId,
+      approval_decision_id: "approval_decision_0001",
+      approval_status: "granted",
+      external_write_executed: true,
+    })
+    expect(latest.artifacts.map((artifact: { type: string }) => artifact.type)).toContain("handoff-note")
+    expect(latest.actions.find((action: { id: string }) => action.id === actionId)).toMatchObject({
+      status: "completed",
+    })
+
+    const handoff = JSON.parse(
+      await readFile(join(runDir, "artifacts", "art_handoff_note_0001.json"), "utf-8"),
+    )
+    expect(handoff).toMatchObject({
+      type: "handoff-note",
+      status: "released",
+      created_by_action_id: actionId,
+      body: {
+        target_queue: "orthopedic-qc",
+        external_delivery: {
+          integration: "review-queue",
+          status: "mock-delivered",
+        },
+      },
+    })
+
+    const secondApprove = await runtime.commands.approve!(ctx, {
+      target: "case-review-bundle",
+      action_id: actionId,
+      principal: "user:reviewer.alba",
+      args: [],
+      flags: {},
+    })
+    expect(secondApprove?.summary).toContain("already granted")
+    const handoffFiles = (await readdir(join(runDir, "artifacts"))).filter((entry) => entry.includes("handoff_note"))
+    expect(handoffFiles).toEqual(["art_handoff_note_0001.json"])
+  })
+
+  it("rejects approval grants from non-human principals", async () => {
+    const workspace = join(tmpDir, "case-review-bundle")
+    await cp(CASE_REVIEW_BUNDLE_TEMPLATE, workspace, { recursive: true })
+
+    const runResult = await runtime.commands.run!(ctx, {
+      target: "case-review-bundle",
+      args: [],
+      flags: { clean: true },
+    })
+    const runData = dataOf(runResult)
+
+    await expect(runtime.commands.approve!(ctx, {
+      target: "case-review-bundle",
+      action_id: runData["approval_required_action_id"] as string,
+      principal: "agent:case-reviewer",
+      args: [],
+      flags: {},
+    })).rejects.toThrow("Approval principal must be human")
   })
 
   it("uses ready task metadata for no-arg run selection", async () => {

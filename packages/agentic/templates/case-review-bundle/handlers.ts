@@ -226,3 +226,50 @@ export function createHandoffPayload(context: ProposalPayloadContext): JsonObjec
     validation: requireInputArtifact(context.input_artifacts, "validation-result"),
   })
 }
+
+export function releaseHandoff(
+  context: HandlerContext,
+): LocalActionHandler<{ artifacts: LocalBundleArtifactRecord[]; payload: JsonObject }> {
+  return async ({ action_id, proposal }) => {
+    const packetArtifactId = proposal.input_artifact_ids?.[0]
+    const validationArtifactId = proposal.input_artifact_ids?.[1]
+    if (packetArtifactId === undefined || validationArtifactId === undefined) {
+      throw new Error("external.handoff requires case-packet and validation-result input artifacts.")
+    }
+    const packet = (await context.store.readArtifact({ artifact_id: packetArtifactId })).artifact
+    const validation = (await context.store.readArtifact({ artifact_id: validationArtifactId })).artifact
+    const queue = stringValue(proposal.payload?.queue) ?? "orthopedic-qc"
+    const integration = stringValue(proposal.payload?.integration) ?? "review-queue"
+    const body: JsonObject = {
+      case_id: stringValue(packet.body.case_id) ?? "unknown",
+      validation_result_id: validation.id,
+      message: stringValue(proposal.payload?.message) ?? "Synthetic validation findings are ready for reviewer handoff.",
+      target_queue: queue,
+      external_delivery: {
+        integration,
+        status: "mock-delivered",
+      },
+    }
+    assertRequiredFields(body, ["case_id", "validation_result_id", "message", "target_queue"], "handoff-note")
+    const handoff = await context.store.writeArtifact({
+      id: context.store.nextId("art_handoff_note"),
+      type: "handoff-note",
+      title: `Handoff note for ${stringValue(packet.body.case_id) ?? packet.id}`,
+      status: "released",
+      data_class: stringValue(packet.body.data_class) ?? packet.data_class,
+      tags: ["case-review", "handoff", "released", `queue:${queue}`],
+      body,
+      derived_from: [packet.id, validation.id],
+      created_by_action_id: action_id,
+    })
+    return {
+      artifacts: [handoff],
+      payload: {
+        external_write_executed: true,
+        integration,
+        queue,
+        handoff_note_artifact_id: handoff.id,
+      },
+    }
+  }
+}

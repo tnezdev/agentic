@@ -611,6 +611,7 @@ export type ActionRecord = {
   principal: string
   created_at: string
   completed_at?: string | undefined
+  data_class?: string | undefined
   capability?: string | undefined
   surface?: string | undefined
   schedule?: string | undefined
