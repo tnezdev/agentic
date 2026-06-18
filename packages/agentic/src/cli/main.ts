@@ -66,6 +66,8 @@ import {
   runtimeListCommand,
   runtimeRunCommand,
   serveCommand,
+  approveCommand,
+  rejectCommand,
   runtimeStatusCommand,
 } from "./commands/runtime.js"
 import { evalCommand } from "./commands/eval.js"
@@ -156,6 +158,8 @@ const commands: Record<string, Command> = {
   runtime: runtimeHelpCommand,
   run: runtimeRunCommand,
   serve: serveCommand,
+  approve: approveCommand,
+  reject: rejectCommand,
   "runtime help": runtimeHelpCommand,
   "runtime list": runtimeListCommand,
   "runtime add": runtimeAddCommand,
@@ -173,6 +177,8 @@ Commands:
   dev [target]                        Run validate, inspect, serve --clean, eval once
   run [target]                        Run current workspace with default runtime
   serve [target]                      Serve a target with the default runtime
+  approve [target]                    Grant approval for a pending runtime action
+  reject [target]                     Reject approval for a pending runtime action
   eval [path]                         Evaluate local run state against bundle evals
   inspect [path]                      Inspect an Agentic bundle and local state
   validate [path]                     Validate an Agentic bundle
@@ -235,6 +241,9 @@ Flags:
   --wide                              Disable column truncation in list output
   --base-dir <path>                   Override working directory
   --identity <name>                   Override identity for transitions
+  --action <id>                       Runtime action id for approve/reject
+  --principal <principal>             Approving or rejecting principal
+  --comment <text>                    Optional approval decision comment
   --reason <text>                     Reason for done/fail transitions
   --name <text>                       Name for a new run`
 

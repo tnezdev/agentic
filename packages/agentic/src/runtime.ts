@@ -7,6 +7,7 @@ export type {
   RuntimeCommandMap,
   RuntimeCommandResult,
   RuntimeContext,
+  RuntimeApprovalDecisionArgs,
   RuntimeDeployArgs,
   RuntimeDevArgs,
   RuntimeInvocation,

@@ -124,6 +124,7 @@ export type {
   RuntimeCommandName,
   RuntimeCommandResult,
   RuntimeContext,
+  RuntimeApprovalDecisionArgs,
   RuntimeDeployArgs,
   RuntimeDevArgs,
   RuntimeInvocation,

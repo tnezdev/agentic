@@ -745,6 +745,8 @@ export type RuntimeConfig = {
 export type RuntimeCapability =
   | "init"
   | "run"
+  | "approve"
+  | "reject"
   | "status"
   | "dev"
   | "deploy"
@@ -752,7 +754,14 @@ export type RuntimeCapability =
   | "json-events"
   | "harness-sessions"
 
-export type RuntimeCommandName = "add" | "init" | "run" | "serve" | "status"
+export type RuntimeCommandName =
+  | "add"
+  | "init"
+  | "run"
+  | "serve"
+  | "approve"
+  | "reject"
+  | "status"
 
 export type RuntimeCommandFlags = Record<string, string | true>
 
@@ -763,6 +772,15 @@ export type RuntimeInitArgs = {
 
 export type RuntimeRunArgs = {
   target?: string | undefined
+  args: string[]
+  flags: RuntimeCommandFlags
+}
+
+export type RuntimeApprovalDecisionArgs = {
+  target?: string | undefined
+  action_id: string
+  principal: string
+  comment?: string | undefined
   args: string[]
   flags: RuntimeCommandFlags
 }
@@ -818,6 +836,8 @@ export type RuntimeCommandHandler<TArgs> = (
 export type RuntimeCommandMap = {
   init?: RuntimeCommandHandler<RuntimeInitArgs> | undefined
   run?: RuntimeCommandHandler<RuntimeRunArgs> | undefined
+  approve?: RuntimeCommandHandler<RuntimeApprovalDecisionArgs> | undefined
+  reject?: RuntimeCommandHandler<RuntimeApprovalDecisionArgs> | undefined
   status?: RuntimeCommandHandler<RuntimeStatusArgs> | undefined
   dev?: RuntimeCommandHandler<RuntimeDevArgs> | undefined
   deploy?: RuntimeCommandHandler<RuntimeDeployArgs> | undefined

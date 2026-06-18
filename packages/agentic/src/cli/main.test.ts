@@ -61,7 +61,7 @@ async function writeRuntimePackage(baseDir: string, source?: string): Promise<vo
   name: "local",
   package_name: "@tnezdev/agentic-runtime-local",
   description: "Test local runtime",
-  capabilities: ["init", "run", "status"],
+  capabilities: ["init", "run", "approve", "reject", "status"],
   commands: {
     init: async (ctx, args) => ({
       summary: "initialized local runtime",
@@ -70,6 +70,28 @@ async function writeRuntimePackage(baseDir: string, source?: string): Promise<vo
     run: async (ctx, args) => ({
       summary: "ran local target",
       data: { target: args.target, args: args.args, flags: args.flags, json: ctx.json },
+    }),
+    approve: async (ctx, args) => ({
+      summary: "approved local action",
+      data: {
+        target: args.target,
+        action_id: args.action_id,
+        principal: args.principal,
+        comment: args.comment,
+        flags: args.flags,
+        json: ctx.json,
+      },
+    }),
+    reject: async (ctx, args) => ({
+      summary: "rejected local action",
+      data: {
+        target: args.target,
+        action_id: args.action_id,
+        principal: args.principal,
+        comment: args.comment,
+        flags: args.flags,
+        json: ctx.json,
+      },
     }),
     status: async () => ({
       summary: "runtime ready",
@@ -1037,6 +1059,88 @@ describe("CLI", () => {
     expect(result.result.data.args).toEqual(["extra"])
     expect(result.result.data.flags.interactive).toBe(true)
     expect(result.result.data.json).toBe(true)
+  })
+
+  it("top-level approve delegates approval grants to the default runtime", async () => {
+    await writeRuntimePackage(tmpDir)
+
+    const result = (await runJson(
+      ...base,
+      "approve",
+      ".",
+      "--action",
+      "act_external_handoff_0008",
+      "--principal",
+      "user:reviewer.alba",
+      "--comment",
+      "approved for demo",
+    )) as {
+      command: string
+      status: string
+      result: {
+        data: {
+          target: string
+          action_id: string
+          principal: string
+          comment: string
+          json: boolean
+        }
+      }
+    }
+
+    expect(result.command).toBe("approve")
+    expect(result.status).toBe("delegated")
+    expect(result.result.data.target).toBe(".")
+    expect(result.result.data.action_id).toBe("act_external_handoff_0008")
+    expect(result.result.data.principal).toBe("user:reviewer.alba")
+    expect(result.result.data.comment).toBe("approved for demo")
+    expect(result.result.data.json).toBe(true)
+  })
+
+  it("top-level reject delegates approval rejections to the default runtime", async () => {
+    await writeRuntimePackage(tmpDir)
+
+    const result = (await runJson(
+      ...base,
+      "reject",
+      "--action",
+      "act_external_handoff_0008",
+      "--principal",
+      "user:reviewer.alba",
+    )) as {
+      command: string
+      status: string
+      result: {
+        data: {
+          action_id: string
+          principal: string
+          comment?: string | undefined
+          json: boolean
+        }
+      }
+    }
+
+    expect(result.command).toBe("reject")
+    expect(result.status).toBe("delegated")
+    expect(result.result.data.action_id).toBe("act_external_handoff_0008")
+    expect(result.result.data.principal).toBe("user:reviewer.alba")
+    expect(result.result.data.comment).toBeUndefined()
+    expect(result.result.data.json).toBe(true)
+  })
+
+  it("top-level approve requires an action id and principal", async () => {
+    const { stdout, exitCode } = await run(
+      "--json",
+      ...base,
+      "approve",
+      ".",
+      "--action",
+      "act_external_handoff_0008",
+    )
+    expect(exitCode).toBe(1)
+    const result = JSON.parse(stdout) as { error: string }
+    expect(result.error).toContain("Usage: agentic approve")
+    expect(result.error).toContain("--principal <principal>")
   })
 
   it("runtime init passes opaque runtime config to the package", async () => {

@@ -13,6 +13,7 @@ import { NestedFileSource } from "../../sources/nested-file.js"
 import { resolveGlobalDir, resolveProjectDir } from "../../resolve-dir.js"
 import type {
   AgenticRuntimePackage,
+  RuntimeApprovalDecisionArgs,
   RuntimeCommandName,
   RuntimeCommandOutput,
   RuntimeCommandResult,
@@ -35,6 +36,8 @@ import { output } from "../output.js"
 const PACKAGE_DISCOVERY_NOTE =
   "Runtime packages are optional. Use `agentic runtime add <name>` to record a target; install guidance is printed when a package is missing."
 const RUNTIME_PACKAGE_DIRS_ENV = "AGENTIC_RUNTIME_PACKAGE_DIRS"
+const APPROVAL_DECISION_USAGE =
+  "Usage: agentic <approve|reject> [target] --action <action-id> --principal <principal> [--comment <text>]"
 
 type OfficialRuntime = Omit<RuntimeRef, "status" | "error">
 
@@ -43,7 +46,7 @@ type ResolvedRuntime = OfficialRuntime & {
   runtime_config: Record<string, string>
 }
 
-type RuntimeDelegatedCommandName = "init" | "run" | "status"
+type RuntimeDelegatedCommandName = "init" | "run" | "approve" | "reject" | "status"
 
 const OFFICIAL_RUNTIMES: OfficialRuntime[] = [
   {
@@ -392,7 +395,7 @@ function validateRuntimePackage(
   }
 
   const commands = value["commands"]
-  for (const command of ["init", "run", "status", "dev", "deploy"]) {
+  for (const command of ["init", "run", "approve", "reject", "status", "dev", "deploy"]) {
     const handler = commands[command]
     if (handler !== undefined && typeof handler !== "function") {
       throw new InvalidRuntimePackageError(
@@ -491,7 +494,7 @@ async function delegateRuntimeCommand(
   ctx: Ctx,
   command: RuntimeDelegatedCommandName,
   runtime: ResolvedRuntime,
-  args: RuntimeInitArgs | RuntimeRunArgs | RuntimeStatusArgs,
+  args: RuntimeInitArgs | RuntimeRunArgs | RuntimeApprovalDecisionArgs | RuntimeStatusArgs,
   options?: { outputCommand?: RuntimeCommandName | undefined },
 ): Promise<RuntimeCommandOutput> {
   const manifest = await loadRuntimeForDelegation(ctx, runtime)
@@ -535,6 +538,50 @@ export async function delegateDefaultRuntimeRun(
     },
     options,
   )
+}
+
+function runtimeApprovalDecisionArgs(
+  command: "approve" | "reject",
+  args: string[],
+  flags: Record<string, string | true>,
+): RuntimeApprovalDecisionArgs {
+  if (args.length > 1) throw new Error(approvalDecisionUsage(command))
+  const actionId = requiredStringFlag(flags, "action", command)
+  const principal = requiredStringFlag(flags, "principal", command)
+  const comment = optionalStringFlag(flags, "comment", command)
+  return {
+    target: args[0],
+    action_id: actionId,
+    principal,
+    comment,
+    args: [],
+    flags,
+  }
+}
+
+function requiredStringFlag(
+  flags: Record<string, string | true>,
+  name: string,
+  command: "approve" | "reject",
+): string {
+  const value = flags[name]
+  if (typeof value === "string" && value.trim() !== "") return value
+  throw new Error(approvalDecisionUsage(command))
+}
+
+function optionalStringFlag(
+  flags: Record<string, string | true>,
+  name: string,
+  command: "approve" | "reject",
+): string | undefined {
+  const value = flags[name]
+  if (value === undefined) return undefined
+  if (typeof value === "string") return value
+  throw new Error(approvalDecisionUsage(command))
+}
+
+function approvalDecisionUsage(command: "approve" | "reject"): string {
+  return APPROVAL_DECISION_USAGE.replace("<approve|reject>", command)
 }
 
 export const runtimeHelpCommand: Command = async (ctx) => {
@@ -636,6 +683,28 @@ export const runtimeRunCommand: Command = async (ctx, args, flags) => {
 
 export const serveCommand: Command = async (ctx, args, flags) => {
   output(ctx, await delegateDefaultRuntimeRun(ctx, args, flags, { outputCommand: "serve" }), formatRuntimeAction)
+}
+
+export const approveCommand: Command = async (ctx, args, flags) => {
+  const runtime = resolveRuntime(ctx, defaultRuntimeName(ctx))
+  const result = await delegateRuntimeCommand(
+    ctx,
+    "approve",
+    runtime,
+    runtimeApprovalDecisionArgs("approve", args, flags),
+  )
+  output(ctx, result, formatRuntimeAction)
+}
+
+export const rejectCommand: Command = async (ctx, args, flags) => {
+  const runtime = resolveRuntime(ctx, defaultRuntimeName(ctx))
+  const result = await delegateRuntimeCommand(
+    ctx,
+    "reject",
+    runtime,
+    runtimeApprovalDecisionArgs("reject", args, flags),
+  )
+  output(ctx, result, formatRuntimeAction)
 }
 
 export const runtimeStatusCommand: Command = async (ctx, args, flags) => {
