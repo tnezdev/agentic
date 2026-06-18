@@ -43,6 +43,7 @@ agentic serve . --clean --json
 
 ## Design Docs
 
+- [`docs/bundle-authoring-loop.md`](docs/bundle-authoring-loop.md) describes the starter-to-serve authored bundle workflow.
 - [`docs/framework-boundaries.md`](docs/framework-boundaries.md) explains the package-vs-host boundary.
 - [`docs/runtime-adapter-boundary.md`](docs/runtime-adapter-boundary.md) defines the core ports, runtime adapter, and harness adapter split.
 - [`docs/runtime-state-layout.md`](docs/runtime-state-layout.md) describes authored bundle files versus runtime-generated records.

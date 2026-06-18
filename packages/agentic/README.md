@@ -98,6 +98,8 @@ Agentic is intentionally scoped. It does not ship:
 
 Those are host-runtime responsibilities. Agentic provides the vocabulary and primitives that make hosts easier to build, test, and reason about. See [`docs/framework-boundaries.md`](https://github.com/tnezdev/agentic/blob/main/docs/framework-boundaries.md) for the full boundary design.
 
+For the authored-bundle starter workflow, see [`docs/bundle-authoring-loop.md`](https://github.com/tnezdev/agentic/blob/main/docs/bundle-authoring-loop.md).
+
 ## Flags
 
 ```
