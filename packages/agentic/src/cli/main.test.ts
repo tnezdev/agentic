@@ -1035,6 +1035,31 @@ describe("CLI", () => {
       expect(exitCode).toBe(0)
     })
 
+    it("scaffolds a blank authored bundle", async () => {
+      const result = (await runJson(...base, "init", "--bundle")) as {
+        initialized: boolean
+        bundle: boolean
+        filesWritten: number
+      }
+
+      expect(result.initialized).toBe(true)
+      expect(result.bundle).toBe(true)
+      expect(result.filesWritten).toBeGreaterThan(0)
+
+      const manifest = await readFile(join(tmpDir, ".agentic", "agentic.yaml"), "utf-8")
+      expect(manifest).toContain("schema_version: agentic.bundle.v0")
+      expect(manifest).toContain("actions: []")
+      expect(manifest).toContain("fixtures: []")
+
+      const validate = (await runJson(...base, "validate", ".")) as { valid: boolean }
+      expect(validate.valid).toBe(true)
+
+      await run(...base, "init", "--bundle")
+      const gitignore = await readFile(join(tmpDir, ".gitignore"), "utf-8")
+      expect(gitignore.match(/\.agentic\/\.data\//g)).toHaveLength(1)
+      expect(gitignore.match(/\.agentic\/runtime\//g)).toHaveLength(1)
+    })
+
     it("scaffolds the second-brain example", async () => {
       const result = (await runJson(...base, "init", "--example", "second-brain")) as {
         initialized: boolean

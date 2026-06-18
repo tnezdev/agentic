@@ -35,6 +35,9 @@ npm install @tnezdev/agentic
 # Scaffold .agentic/ directory in your project
 agentic init
 
+# Or scaffold a blank authored bundle
+agentic init --bundle
+
 # Or scaffold the canonical authored bundle starter
 agentic init --example case-review-bundle
 
@@ -70,13 +73,20 @@ agentic run
 ## Authored bundle path
 
 Use the bundle path when you want a portable agent workspace that can be
-validated, inspected, served locally, and evaluated without hand-wiring the
-runtime package yourself.
+validated and inspected as source, then served locally and evaluated once it has
+runtime-ready declarations.
+
+```bash
+agentic init --bundle
+agentic validate . --json
+agentic inspect . --json
+```
+
+Use `agentic init --example case-review-bundle` instead when you want a runnable
+starter with declarations, fixtures, and local demo handlers already filled in:
 
 ```bash
 agentic init --example case-review-bundle
-agentic validate . --json
-agentic inspect . --json
 agentic serve . --clean --json
 agentic eval . --json
 ```

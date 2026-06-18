@@ -2,9 +2,17 @@
 
 Use this loop when you want to start from Agentic's authored-bundle path rather than the lower-level primitive CLI.
 
-## Start From The Starter
+## Start From A Scaffold
 
-Create a scratch bundle workspace:
+Create a blank bundle workspace when you want to author declarations from
+scratch:
+
+```bash
+agentic init --bundle
+```
+
+Create the runnable case-review starter when you want concrete declarations,
+fixtures, and local demo handlers:
 
 ```bash
 agentic init --example case-review-bundle

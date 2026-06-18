@@ -32,7 +32,15 @@ agentic serve examples/case-review-bundle --clean --json
 agentic eval examples/case-review-bundle --json
 ```
 
-To scaffold a starter copy in a new workspace:
+To scaffold a blank authored bundle in a new workspace:
+
+```bash
+agentic init --bundle
+agentic validate . --json
+agentic inspect . --json
+```
+
+To scaffold the runnable case-review starter:
 
 ```bash
 agentic init --example case-review-bundle
