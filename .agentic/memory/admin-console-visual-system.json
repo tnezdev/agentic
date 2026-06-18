@@ -1,0 +1,13 @@
+{
+  "key": "admin-console-visual-system",
+  "content": "Local runtime admin console visual direction: restrained professional control panel, not marketing page or raw record browser. Use warm off-white page background with subtle grid texture, dark plum/ink text, muted secondary text, pale blush selected/primary controls, hairline borders, modest radii, light elevation, native system sans typography, moderate font weights, compact rectangular buttons/chips, and progressive disclosure for raw JSON. Approval pages should lead with the human review decision before exposing ids, digests, policy rules, and raw records.",
+  "weight": 0.7,
+  "confidence": 1,
+  "tier": "L1",
+  "tags": [
+    "spores",
+    "runtime",
+    "admin-console"
+  ],
+  "timestamp": "2026-06-18T22:06:12Z"
+}

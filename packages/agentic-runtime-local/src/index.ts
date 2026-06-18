@@ -3405,12 +3405,235 @@ function renderApprovalRequestSummary(approval: LocalAdminApproval): string {
 }
 
 function renderArtifactSummary(artifact: LocalBundleArtifactRecord): string {
-  return `<div class="artifact card">
+  return `<div class="artifact card inset-card">
     <div class="artifact-title"><strong>${escapeHtml(artifact.title)}</strong><span class="meta mono">${escapeHtml(artifact.id)}</span></div>
     <div class="meta">${escapeHtml(artifact.type)} - ${escapeHtml(artifact.status)} - created by ${escapeHtml(artifact.created_by_action_id)}</div>
     ${renderObjectSummary(artifact.body)}
     ${rawJsonDetails("Raw artifact JSON", artifact.body)}
   </div>`
+}
+
+function renderAdminDesignSystemStyles(): string {
+  return `
+    :root {
+      color-scheme: light;
+      --bg: #f8f6f1;
+      --surface: #fffefb;
+      --surface-strong: #ffffff;
+      --surface-tint: #fbfaf6;
+      --ink: #20182d;
+      --muted: #746d78;
+      --subtle: #9a94a0;
+      --line: #dfdad1;
+      --line-strong: #bdb5c7;
+      --accent: #7665a8;
+      --accent-strong: #3b2d5a;
+      --accent-soft: #f2effb;
+      --accent-warm: #fff0ee;
+      --good: #116145;
+      --good-bg: #def7ea;
+      --bad: #9c1f2e;
+      --bad-bg: #ffe4e4;
+      --pending: #8a5a11;
+      --pending-bg: #fff1c2;
+      --code-bg: #17151f;
+      --radius-sm: 4px;
+      --radius: 7px;
+      --radius-lg: 11px;
+      --shadow-sm: 0 5px 18px rgba(32, 24, 45, 0.045);
+      --shadow: 0 16px 42px rgba(32, 24, 45, 0.08);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background:
+        linear-gradient(rgba(32, 24, 45, 0.022) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(32, 24, 45, 0.022) 1px, transparent 1px),
+        radial-gradient(circle at 50% 0%, rgba(255, 255, 255, 0.82), transparent 34rem),
+        var(--bg);
+      background-size: 28px 28px, 28px 28px, auto, auto;
+      color: var(--ink);
+      font: 14px/1.52 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    a { color: var(--accent-strong); text-decoration: none; }
+    a:hover { text-decoration: underline; text-underline-offset: 3px; }
+    .shell { max-width: 1180px; margin: 0 auto; padding: 20px 18px 42px; }
+    header {
+      display: flex;
+      justify-content: space-between;
+      gap: 18px;
+      align-items: center;
+      margin-bottom: 18px;
+      border: 1px solid var(--line);
+      background: rgba(255, 254, 251, 0.9);
+      border-radius: var(--radius-lg);
+      padding: 12px;
+      box-shadow: var(--shadow-sm);
+      backdrop-filter: blur(8px);
+    }
+    h1, h2, h3, p { margin-top: 0; }
+    h1 { font-size: 20px; line-height: 1.1; margin-bottom: 3px; font-weight: 680; letter-spacing: -0.025em; }
+    h2 { font-size: 18px; line-height: 1.2; margin-bottom: 8px; font-weight: 640; letter-spacing: -0.015em; }
+    h3 { font-size: 12px; margin-bottom: 10px; color: var(--muted); font-weight: 620; text-transform: uppercase; letter-spacing: 0.1em; }
+    .brand-cluster { display: flex; align-items: center; gap: 11px; min-width: 0; }
+    .brand-mark {
+      display: grid;
+      place-items: center;
+      width: 38px;
+      height: 30px;
+      border: 1px solid var(--ink);
+      border-radius: 2px;
+      background: var(--ink);
+      color: #fffefb;
+      font-weight: 760;
+      letter-spacing: -0.08em;
+      box-shadow: none;
+    }
+    .eyebrow { color: var(--muted); font-size: 11px; font-weight: 620; text-transform: uppercase; letter-spacing: 0.11em; }
+    .meta { color: var(--muted); }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
+    .nav { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .nav a {
+      border: 1px solid var(--line-strong);
+      background: var(--surface-strong);
+      border-radius: var(--radius-sm);
+      padding: 7px 12px;
+      color: var(--ink);
+      font-size: 13px;
+      font-weight: 580;
+      box-shadow: 0 1px 0 rgba(255, 255, 255, 0.7) inset;
+    }
+    .nav a[aria-current="page"] { background: var(--accent-warm); border-color: var(--line-strong); color: var(--ink); }
+    .grid { display: grid; gap: 12px; }
+    .card {
+      background: rgba(255, 254, 251, 0.94);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 14px;
+      box-shadow: var(--shadow-sm);
+    }
+    .hero-card {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(240px, 0.42fr);
+      gap: 18px;
+      align-items: end;
+      margin-bottom: 14px;
+      padding: 18px;
+      border-radius: var(--radius-lg);
+      background:
+        linear-gradient(135deg, rgba(255, 254, 251, 0.97), rgba(251, 250, 246, 0.94)),
+        var(--surface);
+    }
+    .hero-card h2 { font-size: 24px; margin-bottom: 7px; }
+    .hero-copy { max-width: 650px; margin-bottom: 0; color: var(--muted); font-size: 15px; }
+    .workspace-card {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--surface-strong);
+      padding: 12px;
+    }
+    .workspace-card dl { grid-template-columns: 82px minmax(0, 1fr); gap: 5px 10px; }
+    .stats { grid-template-columns: repeat(4, minmax(0, 1fr)); margin-bottom: 14px; }
+    .metric-card {
+      position: relative;
+      min-height: 112px;
+      overflow: hidden;
+      background: var(--surface-strong);
+    }
+    .metric-card::after { content: ""; position: absolute; inset: auto 0 0; height: 3px; background: var(--accent-warm); }
+    .metric-label { color: var(--muted); font-size: 12px; font-weight: 620; text-transform: uppercase; letter-spacing: 0.1em; }
+    .stat-value { font-size: 30px; line-height: 1; font-weight: 680; letter-spacing: -0.035em; margin-top: 9px; }
+    .metric-detail { color: var(--subtle); margin-top: 9px; }
+    .section-heading { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; margin-bottom: 10px; }
+    .section-heading p { margin-bottom: 0; color: var(--muted); }
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; min-width: 720px; border-collapse: separate; border-spacing: 0; }
+    th, td { padding: 11px 10px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+    th { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.09em; }
+    tr:last-child td { border-bottom: 0; }
+    tbody tr:hover td { background: rgba(254, 231, 229, 0.32); }
+    .record-link { color: var(--ink); font-weight: 620; }
+    .status { display: inline-flex; align-items: center; border-radius: var(--radius-sm); padding: 3px 7px; font-size: 12px; font-weight: 600; border: 1px solid transparent; }
+    .status-pending { background: var(--pending-bg); color: var(--pending); border-color: rgba(138, 90, 17, 0.16); }
+    .status-good { background: var(--good-bg); color: var(--good); border-color: rgba(17, 97, 69, 0.14); }
+    .status-bad { background: var(--bad-bg); color: var(--bad); border-color: rgba(156, 31, 46, 0.14); }
+    .status-muted { background: #ece8df; color: #5b544b; border-color: rgba(91, 84, 75, 0.12); }
+    .breadcrumb { margin: 0 0 12px; color: var(--muted); }
+    .detail-hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 14px;
+      align-items: start;
+      margin-bottom: 12px;
+      padding: 18px;
+      border-radius: var(--radius-lg);
+    }
+    .detail-hero h2 { font-size: 22px; margin-bottom: 6px; }
+    .hero-meta { min-width: 230px; padding: 10px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface-tint); }
+    .review-top { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 12px; align-items: start; margin-bottom: 12px; }
+    .review-sections { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.65fr); gap: 12px; align-items: start; margin-bottom: 14px; }
+    .review-summary { border-color: rgba(118, 101, 168, 0.24); }
+    .summary-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 9px; margin-top: 6px; }
+    .summary-item { border: 1px solid var(--line); background: var(--surface-tint); border-radius: var(--radius-sm); padding: 10px; min-width: 0; }
+    .summary-label { color: var(--muted); font-size: 10px; font-weight: 620; text-transform: uppercase; letter-spacing: 0.09em; }
+    .summary-value { margin-top: 3px; font-weight: 600; overflow-wrap: anywhere; }
+    .summary-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 14px; margin: 13px 0 8px; }
+    .summary-list div { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 10px; align-items: baseline; }
+    .summary-list span { color: var(--muted); }
+    .summary-list strong { font-weight: 600; overflow-wrap: anywhere; }
+    .approval-reason p { margin-bottom: 10px; }
+    .rule-row { margin-top: 8px; }
+    .technical-details { margin-bottom: 14px; background: rgba(255, 254, 251, 0.82); }
+    .technical-details > summary { cursor: pointer; color: var(--accent-strong); font-weight: 760; }
+    .technical-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 12px; }
+    dl { display: grid; grid-template-columns: 140px minmax(0, 1fr); gap: 7px 12px; margin: 0; }
+    .kv { grid-template-columns: 118px minmax(0, 1fr); }
+    dt { color: var(--muted); }
+    dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+    pre { margin: 0; padding: 11px; overflow: auto; border-radius: var(--radius-sm); background: var(--code-bg); color: #ece8ff; font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    details.raw-json { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 8px; }
+    details.raw-json summary { cursor: pointer; color: var(--accent-strong); font-weight: 680; }
+    details.raw-json pre { margin-top: 8px; max-height: 420px; }
+    form { display: grid; gap: 11px; }
+    label { display: grid; gap: 5px; color: var(--muted); font-size: 11px; font-weight: 620; text-transform: uppercase; letter-spacing: 0.09em; }
+    select, textarea {
+      width: 100%;
+      border: 1px solid var(--line-strong);
+      border-radius: var(--radius-sm);
+      padding: 8px 9px;
+      font: inherit;
+      background: var(--surface-strong);
+      color: var(--ink);
+      outline: none;
+    }
+    select:focus, textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(118, 101, 168, 0.13); }
+    textarea { min-height: 76px; resize: vertical; }
+    .button-row { display: flex; gap: 9px; flex-wrap: wrap; }
+    button { border: 1px solid var(--line-strong); border-radius: var(--radius-sm); padding: 8px 13px; font: inherit; font-weight: 600; cursor: pointer; }
+    .primary { background: var(--accent-warm); color: var(--ink); box-shadow: none; }
+    .primary:hover { background: #fbd9d6; }
+    .danger { background: var(--surface-strong); color: var(--bad); border-color: rgba(156, 31, 46, 0.28); }
+    .danger:hover { background: var(--bad-bg); }
+    .empty { padding: 28px; text-align: center; color: var(--muted); background: var(--surface-tint); border-radius: var(--radius); }
+    .artifact { display: grid; gap: 8px; margin-top: 10px; }
+    .artifact-title { display: flex; justify-content: space-between; gap: 10px; }
+    .inset-card { background: var(--surface-strong); }
+    .pills { display: flex; gap: 6px; flex-wrap: wrap; }
+    .pill { display: inline-flex; align-items: center; border: 1px solid var(--line); background: var(--surface-tint); border-radius: var(--radius-sm); padding: 2px 7px; color: #3f3a33; }
+    @media (max-width: 980px) {
+      .hero-card, .detail-hero, .review-sections, .technical-grid, .summary-grid { grid-template-columns: 1fr; }
+      .review-top { grid-template-columns: 1fr; }
+      .hero-meta { min-width: 0; }
+    }
+    @media (max-width: 760px) {
+      .shell { padding: 12px 10px 28px; }
+      header { display: grid; align-items: start; }
+      .stats { grid-template-columns: 1fr 1fr; }
+      dl, .kv, .workspace-card dl { grid-template-columns: 1fr; }
+      .summary-list, .summary-list div { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 520px) { .stats { grid-template-columns: 1fr; } }
+  `
 }
 
 function renderLayout(title: string, state: LocalAdminConsoleState, body: string): string {
@@ -3421,90 +3644,36 @@ function renderLayout(title: string, state: LocalAdminConsoleState, body: string
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${escapeHtml(title)} - Agentic Local Admin</title>
   <style>
-    :root { color-scheme: light; --bg: #f5f3ef; --panel: #fffdf8; --ink: #1f2933; --muted: #64748b; --line: #ded7cc; --accent: #3b5bdb; --accent-soft: #e7ecff; --good: #166534; --good-bg: #dcfce7; --bad: #991b1b; --bad-bg: #fee2e2; --pending: #92400e; --pending-bg: #fef3c7; --code-bg: #111827; }
-    * { box-sizing: border-box; }
-    body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-    a { color: var(--accent); text-decoration: none; }
-    a:hover { text-decoration: underline; }
-    .shell { max-width: 1120px; margin: 0 auto; padding: 20px 18px 36px; }
-    header { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; margin-bottom: 16px; }
-    h1 { font-size: 22px; line-height: 1.15; margin: 0 0 4px; letter-spacing: -0.02em; }
-    h2 { font-size: 17px; margin: 0 0 10px; }
-    h3 { font-size: 14px; margin: 0 0 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
-    .eyebrow { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.1em; }
-    .meta { color: var(--muted); }
-    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
-    .nav { display: flex; gap: 10px; align-items: center; }
-    .nav a { border: 1px solid var(--line); background: var(--panel); border-radius: 8px; padding: 5px 10px; color: var(--ink); }
-    .grid { display: grid; gap: 10px; }
-    .stats { grid-template-columns: repeat(4, minmax(0, 1fr)); margin-bottom: 12px; }
-    .card { background: var(--panel); border: 1px solid var(--line); border-radius: 9px; padding: 12px; box-shadow: 0 4px 12px rgba(31, 41, 51, 0.04); }
-    .stat-value { font-size: 22px; font-weight: 700; letter-spacing: -0.03em; }
-    table { width: 100%; border-collapse: collapse; }
-    th, td { padding: 8px 8px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
-    th { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; }
-    tr:last-child td { border-bottom: 0; }
-    .status { display: inline-flex; border-radius: 6px; padding: 2px 7px; font-size: 12px; font-weight: 650; }
-    .status-pending { background: var(--pending-bg); color: var(--pending); }
-    .status-good { background: var(--good-bg); color: var(--good); }
-    .status-bad { background: var(--bad-bg); color: var(--bad); }
-    .status-muted { background: #e5e7eb; color: #475569; }
-    .review-top { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 10px; align-items: start; margin-bottom: 10px; }
-    .review-sections { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.65fr); gap: 10px; align-items: start; margin-bottom: 14px; }
-    .summary-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 6px; }
-    .summary-item { border: 1px solid var(--line); background: #fbfaf7; border-radius: 7px; padding: 9px; min-width: 0; }
-    .summary-label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
-    .summary-value { margin-top: 2px; font-weight: 700; overflow-wrap: anywhere; }
-    .summary-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px 14px; margin: 12px 0 8px; }
-    .summary-list div { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 10px; align-items: baseline; }
-    .summary-list span { color: var(--muted); }
-    .summary-list strong { font-weight: 650; overflow-wrap: anywhere; }
-    .approval-reason p { margin: 0 0 10px; }
-    .rule-row { margin-top: 8px; }
-    .technical-details { margin-bottom: 14px; }
-    .technical-details > summary { cursor: pointer; color: var(--accent); font-weight: 700; }
-    .technical-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
-    dl { display: grid; grid-template-columns: 140px minmax(0, 1fr); gap: 6px 12px; margin: 0; }
-    .kv { grid-template-columns: 118px minmax(0, 1fr); }
-    dt { color: var(--muted); }
-    dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
-    pre { margin: 0; padding: 10px; overflow: auto; border-radius: 7px; background: var(--code-bg); color: #e5e7eb; font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
-    details.raw-json { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 8px; }
-    details.raw-json summary { cursor: pointer; color: var(--accent); font-weight: 650; }
-    details.raw-json pre { margin-top: 8px; max-height: 420px; }
-    form { display: grid; gap: 10px; }
-    label { display: grid; gap: 5px; color: var(--muted); font-size: 12px; font-weight: 650; text-transform: uppercase; letter-spacing: 0.08em; }
-    select, textarea { width: 100%; border: 1px solid var(--line); border-radius: 7px; padding: 7px 8px; font: inherit; background: white; color: var(--ink); }
-    textarea { min-height: 68px; resize: vertical; }
-    .button-row { display: flex; gap: 10px; flex-wrap: wrap; }
-    button { border: 0; border-radius: 7px; padding: 7px 11px; font: inherit; font-weight: 700; cursor: pointer; }
-    .primary { background: var(--accent); color: white; }
-    .danger { background: var(--bad-bg); color: var(--bad); }
-    .empty { padding: 24px; text-align: center; color: var(--muted); }
-    .artifact { display: grid; gap: 8px; margin-top: 10px; }
-    .artifact-title { display: flex; justify-content: space-between; gap: 10px; }
-    .pills { display: flex; gap: 5px; flex-wrap: wrap; }
-    .pill { display: inline-flex; align-items: center; border: 1px solid var(--line); background: #f8fafc; border-radius: 5px; padding: 1px 5px; color: #334155; }
-    @media (max-width: 980px) { .review-sections, .technical-grid, .summary-grid { grid-template-columns: 1fr; } .review-top { grid-template-columns: 1fr; } }
-    @media (max-width: 760px) { .stats { grid-template-columns: 1fr; } header { display: grid; } dl, .kv { grid-template-columns: 1fr; } }
+${renderAdminDesignSystemStyles()}
   </style>
 </head>
 <body>
   <div class="shell">
     <header>
-      <div>
-        <div class="eyebrow">Agentic Local Admin</div>
-        <h1>${escapeHtml(state.bundle.name)} <span class="meta">${escapeHtml(state.bundle.version)}</span></h1>
-        <div class="meta mono" title="${escapeHtml(state.run.id)}">run ${escapeHtml(compactId(state.run.id))} - ${escapeHtml(state.run.status)}</div>
+      <div class="brand-cluster">
+        <div class="brand-mark" aria-hidden="true">A</div>
+        <div>
+          <div class="eyebrow">Agentic Local Admin</div>
+          <h1>${escapeHtml(state.bundle.name)} <span class="meta">${escapeHtml(state.bundle.version)}</span></h1>
+          <div class="meta mono" title="${escapeHtml(state.run.id)}">run ${escapeHtml(compactId(state.run.id))} - ${escapeHtml(state.run.status)}</div>
+        </div>
       </div>
       <nav class="nav" aria-label="Admin navigation">
-        <a href="/approvals">Approvals</a>
+        <a href="/approvals" aria-current="page">Approvals</a>
       </nav>
     </header>
     ${body}
   </div>
 </body>
 </html>`
+}
+
+function renderMetricCard(label: string, value: string | number, detail: string): string {
+  return `<div class="card metric-card">
+    <div class="metric-label">${escapeHtml(label)}</div>
+    <div class="stat-value">${escapeHtml(value)}</div>
+    <div class="metric-detail">${escapeHtml(detail)}</div>
+  </div>`
 }
 
 function renderApprovalsPage(state: LocalAdminConsoleState): string {
@@ -3514,24 +3683,43 @@ function renderApprovalsPage(state: LocalAdminConsoleState): string {
     const status = approvalDisplayStatus(approval)
     return `<tr>
       <td>${renderStatusPill(status)}</td>
-      <td><a class="mono" href="/approvals/${encodeURIComponent(approval.action.id)}">${escapeHtml(approval.action.id)}</a><br><span class="meta">${escapeHtml(approval.action.type)}</span></td>
+      <td><a class="record-link mono" href="/approvals/${encodeURIComponent(approval.action.id)}">${escapeHtml(approval.action.id)}</a><br><span class="meta">${escapeHtml(approval.action.type)}</span></td>
       <td>${escapeHtml(approval.action.capability ?? "none")}</td>
       <td class="mono">${escapeHtml(approval.action.principal)}</td>
-      <td class="mono">${escapeHtml(approval.approval_request.expires_at)}</td>
+      <td><span class="mono" title="${escapeHtml(approval.approval_request.expires_at)}">${escapeHtml(formatAdminDateTime(approval.approval_request.expires_at))}</span></td>
     </tr>`
   }).join("")
-  const body = `<section class="grid stats">
-    <div class="card"><div class="meta">Pending</div><div class="stat-value">${pendingCount}</div></div>
-    <div class="card"><div class="meta">Decided</div><div class="stat-value">${decidedCount}</div></div>
-    <div class="card"><div class="meta">Actions</div><div class="stat-value">${state.actions.length}</div></div>
-    <div class="card"><div class="meta">Artifacts</div><div class="stat-value">${state.artifacts.length}</div></div>
+  const body = `<section class="card hero-card">
+    <div>
+      <div class="eyebrow">Runtime control plane</div>
+      <h2>Approval Inbox</h2>
+      <p class="hero-copy">Review approval-gated actions from the latest local run, then grant or reject the exact stored action payload.</p>
+    </div>
+    <div class="workspace-card">
+      <dl>
+        <dt>Workspace</dt><dd>${escapeHtml(state.workspace.label)}</dd>
+        <dt>Manifest</dt><dd class="mono">${escapeHtml(state.bundle.manifest_path)}</dd>
+        <dt>Summary</dt><dd class="mono">${escapeHtml(state.run.summary_path)}</dd>
+      </dl>
+    </div>
+  </section>
+  <section class="grid stats">
+    ${renderMetricCard("Pending", pendingCount, "Need a human decision")}
+    ${renderMetricCard("Decided", decidedCount, "Granted or rejected")}
+    ${renderMetricCard("Actions", state.actions.length, "Recorded in this run")}
+    ${renderMetricCard("Artifacts", state.artifacts.length, "Available for review")}
   </section>
   <section class="card">
-    <h2>Approval Inbox</h2>
-    ${state.approvals.length === 0 ? `<div class="empty">No approval requests in the latest run.</div>` : `<table>
+    <div class="section-heading">
+      <div>
+        <h2>Approval Inbox</h2>
+        <p>${state.approvals.length} request${state.approvals.length === 1 ? "" : "s"} in the latest run</p>
+      </div>
+    </div>
+    ${state.approvals.length === 0 ? `<div class="empty">No approval requests in the latest run.</div>` : `<div class="table-wrap"><table>
       <thead><tr><th>Status</th><th>Action</th><th>Capability</th><th>Requester</th><th>Expires</th></tr></thead>
       <tbody>${rows}</tbody>
-    </table>`}
+    </table></div>`}
   </section>`
   return renderLayout("Approvals", state, body)
 }
@@ -3550,12 +3738,12 @@ function renderDecisionForm(
 ): string {
   const status = approvalDisplayStatus(approval)
   if (status !== "pending") {
-    return `<div class="card"><h2>Decision</h2>${approval.decision === undefined ? `<p class="meta">No decision can be recorded because this approval is ${escapeHtml(status)}.</p>` : renderJsonBlock(approval.decision)}</div>`
+    return `<div class="card decision-card"><h2>Decision</h2>${approval.decision === undefined ? `<p class="meta">No decision can be recorded because this approval is ${escapeHtml(status)}.</p>` : renderJsonBlock(approval.decision)}</div>`
   }
   if (state.human_principals.length === 0) {
-    return `<div class="card"><h2>Decision</h2><p class="meta">No human principals are declared in this bundle.</p></div>`
+    return `<div class="card decision-card"><h2>Decision</h2><p class="meta">No human principals are declared in this bundle.</p></div>`
   }
-  return `<div class="card">
+  return `<div class="card decision-card">
     <h2>Decision</h2>
     <form method="post" action="/approvals/${encodeURIComponent(approval.action.id)}/approve">
       <input type="hidden" name="_csrf" value="${escapeHtml(csrfToken)}">
@@ -3576,10 +3764,24 @@ function renderApprovalDetailPage(
 ): string {
   const status = approvalDisplayStatus(approval)
   const artifacts = approval.input_artifacts.map(renderArtifactSummary).join("")
-  const body = `<p class="meta"><a href="/approvals">Approvals</a> / <span class="mono">${escapeHtml(approval.action.id)}</span></p>
+  const body = `<p class="breadcrumb"><a href="/approvals">Approvals</a> / <span class="mono">${escapeHtml(approval.action.id)}</span></p>
+  <section class="card detail-hero">
+    <div>
+      <div class="eyebrow">Approval review</div>
+      <h2>Approval Detail ${renderStatusPill(status)}</h2>
+      <p class="hero-copy">Confirm the requested effect, the reason approval is required, and the human principal before resuming this action.</p>
+    </div>
+    <div class="hero-meta">
+      <dl class="kv">
+        <dt>Status</dt><dd>${renderStatusPill(status)}</dd>
+        <dt>Expires</dt><dd title="${escapeHtml(approval.approval_request.expires_at)}">${escapeHtml(formatAdminDateTime(approval.approval_request.expires_at))}</dd>
+        <dt>Capability</dt><dd>${escapeHtml(approval.action.capability ?? "none")}</dd>
+      </dl>
+    </div>
+  </section>
   <section class="review-top">
     <div class="card">
-      <h2>Approval Detail ${renderStatusPill(status)}</h2>
+      <h2>Action at a glance</h2>
       <dl>
         <dt>Action</dt><dd class="mono">${escapeHtml(approval.action.id)}</dd>
         <dt>Type</dt><dd>${escapeHtml(approval.action.type)}</dd>

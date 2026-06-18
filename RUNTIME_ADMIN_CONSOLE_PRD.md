@@ -359,6 +359,20 @@ If the filesystem local runtime remains JSON-record based, the console can build
 - Keep generic views useful without domain-specific renderers.
 - Allow product faces to provide domain-specific rendering separately.
 
+### Lite Visual System
+
+The admin console should feel like a professional control panel, not a marketing page or raw record browser. Use a restrained, readable visual system:
+
+- Warm off-white page background with a very subtle grid texture.
+- Dark plum/ink text, muted secondary text, and pale blush accents for selected/primary controls.
+- Thin hairline borders, light elevation, and modest card radius.
+- Native system sans typography by default; avoid decorative/editorial type treatments in the app UI.
+- Moderate font weights; reserve bold text for headings, primary identifiers, and key decision values.
+- Compact rectangular buttons, pills, and status chips rather than highly rounded badges.
+- Metrics and summaries should be scannable but not oversized or splashy.
+- Technical JSON and raw records should stay progressively disclosed behind details panels.
+- The approvals page should lead with the human review question, then expose action ids, digests, policy rules, and raw records as supporting detail.
+
 ## Milestones
 
 ### Milestone 1: Local Approval Inbox
