@@ -526,7 +526,7 @@ export type ActionDigest = string
 
 export type ActionDecisionStatus = "allow" | "deny" | "approval_required"
 
-export type ActionStatus = "completed" | "denied" | "approval_required"
+export type ActionStatus = "completed" | "denied" | "approval_required" | "failed"
 
 export type ActionPolicyReason =
   | "allowed"
@@ -621,6 +621,7 @@ export type ActionRecord = {
   policy?: ActionDecision | undefined
   digest?: ActionDigest | undefined
   payload?: JsonObject | undefined
+  error?: string | undefined
 }
 
 export type ActionExecutionContext = {

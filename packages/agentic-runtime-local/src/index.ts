@@ -970,13 +970,14 @@ function bundleLatestBase(
   }
 }
 
-function summarizeBundleAction(action: ActionRecord): Pick<ActionRecord, "id" | "type" | "status" | "capability"> {
-  const summary: Pick<ActionRecord, "id" | "type" | "status" | "capability"> = {
+function summarizeBundleAction(action: ActionRecord): Pick<ActionRecord, "id" | "type" | "status" | "capability" | "error"> {
+  const summary: Pick<ActionRecord, "id" | "type" | "status" | "capability" | "error"> = {
     id: action.id,
     type: action.type,
     status: action.status,
   }
   if (action.capability !== undefined) summary.capability = action.capability
+  if (action.error !== undefined) summary.error = action.error
   return summary
 }
 
@@ -1174,7 +1175,13 @@ export class LocalActionGateway<TArtifact extends LocalActionGatewayArtifact> im
       : this.declarations.capabilities?.find((entry) => entry.id === resolved.capability)
     if (capability !== undefined) context.capability = capability as unknown as JsonObject
 
-    const execution = execute === undefined ? {} : await execute(context)
+    let execution: LocalActionExecutionResult<TArtifact>
+    try {
+      execution = execute === undefined ? {} : await execute(context)
+    } catch (err) {
+      await this.recordAction(resolved, "failed", policy, digest, [], resolved.payload, errorMessage(err))
+      throw err
+    }
     const artifacts = execution.artifacts ?? []
     const outputArtifactIds = execution.output_artifact_ids ?? artifacts.map((artifact) => artifact.id)
     const action = await this.recordAction(
@@ -1239,6 +1246,7 @@ export class LocalActionGateway<TArtifact extends LocalActionGatewayArtifact> im
     digest: string,
     outputArtifactIds: string[] = [],
     payload: JsonObject | undefined = proposal.payload,
+    error?: string | undefined,
   ): Promise<ActionRecord> {
     const input: Omit<ActionRecord, "created_at" | "completed_at"> = {
       id: proposal.id,
@@ -1256,6 +1264,7 @@ export class LocalActionGateway<TArtifact extends LocalActionGatewayArtifact> im
     if (outputArtifactIds.length > 0) input.output_artifact_ids = outputArtifactIds
     if (proposal.effects.length > 0) input.effects = proposal.effects
     if (payload !== undefined) input.payload = payload
+    if (error !== undefined) input.error = error
 
     const action = await this.store.recordAction(input)
     this.#actions.set(action.id, action)

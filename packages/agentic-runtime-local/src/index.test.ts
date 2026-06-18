@@ -619,6 +619,31 @@ describe("local action gateway", () => {
     expect(status.action).toEqual(requested.action)
   })
 
+  it("records failed allowed handler actions before rethrowing", async () => {
+    const { store, actions } = createGatewayStore()
+    const gateway = new LocalActionGateway(declarations, store)
+
+    await expect(gateway.submit({
+      type: "case.validate",
+      principal: "agent:case-reviewer",
+      data_class: "synthetic_regulated_demo",
+      input_artifact_ids: ["art_packet_001"],
+    }, async () => {
+      throw new Error("case.validate handler exploded")
+    })).rejects.toThrow("case.validate handler exploded")
+
+    expect(actions).toHaveLength(1)
+    expect(actions[0]).toMatchObject({
+      type: "case.validate",
+      status: "failed",
+      principal: "agent:case-reviewer",
+      policy: {
+        decision: "allow",
+      },
+      error: "case.validate handler exploded",
+    })
+  })
+
   it("does not execute denied action handlers", async () => {
     const { store } = createGatewayStore()
     const gateway = new LocalActionGateway(declarations, store)
@@ -997,6 +1022,75 @@ materializes:
       status: "failed",
       artifact_ids: [],
       error: "Local bundle handler surface.receive references missing export missingReceiveSurface.",
+    })
+  })
+
+  it("writes inspectable bundle failure state for throwing local handlers", async () => {
+    const workspace = join(tmpDir, "case-review-bundle")
+    await cp(CASE_REVIEW_BUNDLE_TEMPLATE, workspace, { recursive: true })
+    await writeText(
+      join(workspace, "handlers.ts"),
+      `export async function receiveSurface() {
+  return async () => {
+    throw new Error("surface.receive handler exploded")
+  }
+}
+
+export async function validateCase() {
+  return async () => ({})
+}
+
+export function createHandoffPayload() {
+  return {}
+}
+`,
+    )
+
+    await expect(runtime.commands.run!(ctx, {
+      target: "case-review-bundle",
+      args: [],
+      flags: { clean: true },
+    })).rejects.toThrow("surface.receive handler exploded")
+
+    const latest = JSON.parse(await readFile(join(workspace, ".agentic", ".data", "latest.json"), "utf-8"))
+    expect(latest).toMatchObject({
+      context_mode: "bundle",
+      status: "failed",
+      message: "Bundle execution failed before completion.",
+      error: "surface.receive handler exploded",
+      actions: [
+        {
+          type: "surface.receive",
+          status: "failed",
+          error: "surface.receive handler exploded",
+        },
+      ],
+      artifacts: [],
+    })
+    expect(latest.runtime_invocation_id).toBeString()
+
+    const runDir = join(workspace, ".agentic", ".data", "runs", latest.run_id)
+    const summary = await readFile(join(runDir, "summary.md"), "utf-8")
+    expect(summary).toContain("failed before completing the local trigger sequence")
+    expect(summary).toContain("surface.receive handler exploded")
+
+    const actionsLog = await readFile(join(runDir, "actions.jsonl"), "utf-8")
+    expect(actionsLog).toContain('"status":"failed"')
+    expect(actionsLog).toContain("surface.receive handler exploded")
+
+    const invocation = JSON.parse(
+      await readFile(
+        join(workspace, ".agentic", "runtime", "local", "invocations", `${latest.runtime_invocation_id}.json`),
+        "utf-8",
+      ),
+    )
+    expect(invocation).toMatchObject({
+      id: latest.runtime_invocation_id,
+      target: "case-review-bundle",
+      workspace_root: workspace,
+      status: "failed",
+      artifact_ids: [],
+      error: "surface.receive handler exploded",
     })
   })
 
