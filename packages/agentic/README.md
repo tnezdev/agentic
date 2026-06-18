@@ -67,6 +67,35 @@ agentic eval examples/case-review-bundle --json
 agentic run
 ```
 
+## Authored bundle path
+
+Use the bundle path when you want a portable agent workspace that can be
+validated, inspected, served locally, and evaluated without hand-wiring the
+runtime package yourself.
+
+```bash
+agentic init --example case-review-bundle
+agentic validate . --json
+agentic inspect . --json
+agentic serve . --clean --json
+agentic eval . --json
+```
+
+Treat the workspace as two zones:
+
+| You author and commit | The runtime generates |
+|---|---|
+| `.agentic/agentic.yaml` | `.agentic/.data/latest.json` |
+| `.agentic/prompts/` | `.agentic/.data/runs/<run-id>/` |
+| `.agentic/actions/` | `.agentic/.data/runs/<run-id>/actions.jsonl` |
+| `.agentic/capabilities/` | `.agentic/.data/runs/<run-id>/artifacts/` |
+| `.agentic/surfaces/`, `schedules/`, `policies/`, `evals/` | `.agentic/runtime/` |
+
+Authored declarations are portable source. Generated run records are local
+evidence and should stay ignored unless you are deliberately capturing a fixture.
+See [`docs/bundle-authoring-loop.md`](https://github.com/tnezdev/agentic/blob/main/docs/bundle-authoring-loop.md)
+for the full starter-to-serve loop.
+
 ## Primitives
 
 | Primitive | What it does |
