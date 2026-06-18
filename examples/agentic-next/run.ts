@@ -8,7 +8,6 @@ import type {
   ArtifactDeclaration,
   HookDeclaration,
   JsonObject,
-  JsonValue,
   LoadedAgenticBundle,
   LoadedAgenticBundleData,
   ReadArtifactResult,
@@ -19,19 +18,20 @@ import type {
 import {
   loadAgenticBundle,
   validateAgenticTriggerDeclarations,
-  validateArtifactData,
   validateArtifactDeclaration,
 } from "../../packages/agentic/src/index.ts"
 import {
   LocalBundleRunStore,
   createLocalBundlePorts,
   createLocalBundleRunId,
+  loadLocalBundleHandlers,
   requestLocalBundleHookAction,
   requestLocalBundleScheduleAction,
   requestLocalBundleSurfaceAction,
   type LocalBundleArtifactRecord,
   type LocalBundlePorts,
 } from "../../packages/agentic-runtime-local/src/index.ts"
+import { createCaseReviewHandoffPayload } from "./handlers.ts"
 
 type ArtifactRecord = LocalBundleArtifactRecord
 
@@ -94,67 +94,8 @@ function assertValidTriggerDeclarations(bundle: LoadedAgenticBundle): void {
   }
 }
 
-function assertValidArtifactData(value: JsonObject, label: string): void {
-  const result = validateArtifactData(value, label)
-  if (!result.valid) {
-    const details = result.errors.map((error) => `${error.field}: ${error.message}`).join("; ")
-    throw new Error(`Invalid artifact data ${label}: ${details}`)
-  }
-}
-
-function stringArray(value: JsonValue | undefined): string[] {
-  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : []
-}
-
-function objectValue(value: JsonValue | undefined): JsonObject {
-  if (value !== null && typeof value === "object" && !Array.isArray(value)) return value
-  return {}
-}
-
-function stringValue(value: JsonValue | undefined): string | undefined {
-  return typeof value === "string" ? value : undefined
-}
-
 function displayPath(path: string): string {
   return relative(process.cwd(), path) || "."
-}
-
-function validateCase(packet: JsonObject, guideline: JsonObject): JsonObject {
-  const laterality = stringValue(packet.laterality)
-  const reportText = stringValue(packet.report_text)?.toLowerCase() ?? ""
-  const attachments = Array.isArray(packet.attachments) ? packet.attachments : []
-  const expectedViews = typeof guideline.expected_minimum_views === "number"
-    ? guideline.expected_minimum_views
-    : 2
-  const findings: JsonObject[] = []
-
-  if (reportText.includes("right") && laterality !== "right") {
-    findings.push({
-      id: "finding-laterality-mismatch",
-      severity: "high",
-      message: "Report text describes the right knee, but packet metadata says left knee.",
-      evidence: ["case_packet.report_text", "case_packet.laterality"],
-    })
-  }
-
-  if (attachments.length < expectedViews) {
-    findings.push({
-      id: "finding-insufficient-views",
-      severity: "medium",
-      message: `Knee radiograph QC expects at least ${expectedViews} views; packet includes ${attachments.length}.`,
-      evidence: ["case_packet.attachments"],
-    })
-  }
-
-  return {
-    status: findings.length > 0 ? "needs_reviewer" : "passed",
-    finding_count: findings.length,
-    findings,
-    checked_rules: stringArray(guideline.rules),
-    summary: findings.length > 0
-      ? "Synthetic QC found issues that require reviewer handoff."
-      : "Synthetic QC did not find blocking issues.",
-  }
 }
 
 function renderSummary(bundle: LoadedAgenticBundle, runtime: LocalBundleRunStore, latest: DemoResult): string {
@@ -271,64 +212,19 @@ async function runCaseReviewDemo(options: { clean: boolean }): Promise<DemoResul
   const schedule = findDeclaration<ScheduleDeclaration>(bundle.schedules, "nightly-qc-sweep", "schedule")
   const hook = findDeclaration<HookDeclaration>(bundle.hooks, "validation-result.propose-handoff", "hook")
   const requestFixtureId = surface.fixture ?? "case-request-001"
-  const requestFixture = findDeclaration<JsonObject>(bundle.fixtures, requestFixtureId, "fixture")
-  const guidelineFixture = findDeclaration<JsonObject>(bundle.fixtures, "guideline-excerpt", "fixture")
-  const casePacket = objectValue(requestFixture.case_packet)
-  assertValidArtifactData(casePacket, `fixtures.${requestFixtureId}.case_packet`)
-  const dataClass = stringValue(casePacket.data_class) ?? "unknown"
+  const handlers = await loadLocalBundleHandlers(bundle, runtime, {
+    deployId: "local-demo",
+    workspaceRoot: EXAMPLE_ROOT,
+  })
 
   let packetArtifact: ArtifactRecord | undefined
   let validationArtifact: ArtifactRecord | undefined
   const ports = createLocalBundlePorts(bundle, runtime, {
     approvalRequestTags: ["case-review"],
-    handlers: {
-      "surface.receive": async ({ action_id }) => {
-        const requestArtifact = await runtime.writeArtifact({
-          id: runtime.nextId("art_case_review_request"),
-          type: "case-review-request",
-          title: `Case review request ${stringValue(requestFixture.request_id) ?? "unknown"}`,
-          status: "received",
-          data_class: dataClass,
-          tags: ["case-review", `surface:${surface.id}`],
-          body: requestFixture,
-          source: { surface: surface.id, fixture: requestFixtureId },
-          created_by_action_id: action_id,
-        })
-        const packet = await runtime.writeArtifact({
-          id: runtime.nextId("art_case_packet"),
-          type: "case-packet",
-          title: `Case packet ${stringValue(casePacket.case_id) ?? "unknown"}`,
-          status: "intake_ready",
-          data_class: dataClass,
-          tags: ["case-review", "queued-for-validation"],
-          body: casePacket,
-          source: { surface: surface.id, fixture: requestFixtureId },
-          derived_from: [requestArtifact.id],
-          created_by_action_id: action_id,
-        })
-        return { artifacts: [requestArtifact, packet] }
-      },
-      "case.validate": async ({ action_id }) => {
-        if (packetArtifact === undefined) throw new Error("case.validate ran before case-packet was available.")
-        const validationResult = validateCase(packetArtifact.body, guidelineFixture)
-        const validation = await runtime.writeArtifact({
-          id: runtime.nextId("art_validation_result"),
-          type: "validation-result",
-          title: `Validation result for ${stringValue(casePacket.case_id) ?? packetArtifact.id}`,
-          status: stringValue(validationResult.status) ?? "unknown",
-          data_class: dataClass,
-          tags: ["case-review", "validation", `status:${stringValue(validationResult.status) ?? "unknown"}`],
-          body: validationResult,
-          derived_from: [packetArtifact.id],
-          created_by_action_id: action_id,
-        })
-        return { artifacts: [validation] }
-      },
-    },
+    handlers,
   })
 
   const receiveResult = await requestLocalBundleSurfaceAction(ports, surface, {
-    data_class: surface.proposes.data_class ?? dataClass,
     payload: {
       route: surface.route ?? "unknown",
       fixture: requestFixtureId,
@@ -337,6 +233,7 @@ async function runCaseReviewDemo(options: { clean: boolean }): Promise<DemoResul
   const receivedArtifacts = await readOutputArtifacts(ports, receiveResult)
   requireReadArtifact(receivedArtifacts, "case-review-request")
   packetArtifact = requireReadArtifact(receivedArtifacts, "case-packet")
+  const dataClass = packetArtifact.data_class
 
   await ports.requestAction({
     type: "schedule.tick",
@@ -351,12 +248,7 @@ async function runCaseReviewDemo(options: { clean: boolean }): Promise<DemoResul
   })
 
   const validateResult = await requestLocalBundleScheduleAction(ports, schedule, {
-    principal: schedule.proposes.principal ?? "agent:case-reviewer",
-    data_class: schedule.proposes.data_class ?? dataClass,
     input_artifact_ids: [packetArtifact.id],
-    payload: {
-      guideline_fixture: "guideline-excerpt",
-    },
   })
   if (validateResult.status !== "completed") {
     throw new Error(validateResult.action.policy?.reason ?? "Case validation was not allowed.")
@@ -375,16 +267,11 @@ async function runCaseReviewDemo(options: { clean: boolean }): Promise<DemoResul
     },
   })
 
-  const handoffPayload: JsonObject = {
-    integration: "review-queue",
-    queue: "orthopedic-qc",
-    case_id: stringValue(casePacket.case_id) ?? "unknown",
-    artifact_ids: [packetArtifact.id, validationArtifact.id],
-    message: "Synthetic validation findings are ready for reviewer handoff.",
-  }
+  const handoffPayload: JsonObject = createCaseReviewHandoffPayload({
+    packet: packetArtifact,
+    validation: validationArtifact,
+  })
   const handoffResult = await requestLocalBundleHookAction(ports, hook, {
-    principal: hook.proposes.principal ?? "agent:case-reviewer",
-    data_class: hook.proposes.data_class ?? dataClass,
     input_artifact_ids: [packetArtifact.id, validationArtifact.id],
     payload: handoffPayload,
   })

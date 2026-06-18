@@ -1,7 +1,8 @@
 import { spawn } from "node:child_process"
 import { access, appendFile, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises"
 import { hostname } from "node:os"
-import { join, relative, resolve } from "node:path"
+import { isAbsolute, join, relative, resolve } from "node:path"
+import { pathToFileURL } from "node:url"
 import {
   AGENTIC_BUNDLE_MANIFEST_FILENAMES,
   activatePersona,
@@ -42,6 +43,7 @@ import type {
   JsonObject,
   JsonValue,
   LoadedAgenticBundle,
+  LoadedAgenticBundleData,
   Persona,
   PersonaFile,
   PersonaRef,
@@ -462,6 +464,27 @@ export type LocalBundlePortsOptions = LocalAgenticPortsOptions<LocalBundleArtifa
   approvalRequestTags?: string[] | undefined
 }
 
+export type LocalBundleHandlerFactoryContext = {
+  bundle: LoadedAgenticBundle
+  store: LocalBundleRunStore
+  deploy: LoadedAgenticBundleData
+  handler_module_path: string
+}
+
+export type LocalBundleActionHandlerFactory = (
+  context: LocalBundleHandlerFactoryContext,
+) => LocalActionHandler<LocalBundleArtifactRecord> | Promise<LocalActionHandler<LocalBundleArtifactRecord>>
+
+export type LoadLocalBundleHandlersOptions = {
+  deployId?: string | undefined
+  workspaceRoot?: string | undefined
+}
+
+type LocalBundleHandlerSpec = {
+  module: string
+  actions: Record<string, string>
+}
+
 export function createLocalBundlePorts(
   bundle: LoadedAgenticBundle,
   store: LocalBundleRunStore,
@@ -495,6 +518,127 @@ export function createLocalBundlePorts(
     },
     portsOptions,
   )
+}
+
+export async function loadLocalBundleHandlers(
+  bundle: LoadedAgenticBundle,
+  store: LocalBundleRunStore,
+  options: LoadLocalBundleHandlersOptions = {},
+): Promise<Partial<Record<string, LocalActionHandler<LocalBundleArtifactRecord>>>> {
+  const deploy = selectLocalBundleHandlerDeploy(bundle, options.deployId)
+  if (deploy === undefined) return {}
+
+  const spec = localBundleHandlerSpec(deploy)
+  if (spec === undefined) return {}
+
+  const modulePath = resolveLocalBundleHandlerModulePath(bundle, spec.module, options.workspaceRoot)
+  let moduleExports: Record<string, unknown>
+  try {
+    moduleExports = await import(pathToFileURL(modulePath).href) as Record<string, unknown>
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    throw new Error(`Failed to load local bundle handler module ${modulePath}: ${message}`)
+  }
+
+  const context: LocalBundleHandlerFactoryContext = {
+    bundle,
+    store,
+    deploy,
+    handler_module_path: modulePath,
+  }
+  const handlers: Partial<Record<string, LocalActionHandler<LocalBundleArtifactRecord>>> = {}
+  for (const [actionType, exportName] of Object.entries(spec.actions)) {
+    const factory = moduleExports[exportName]
+    if (typeof factory !== "function") {
+      throw new Error(`Local bundle handler ${actionType} references missing export ${exportName}.`)
+    }
+    const handler = await (factory as LocalBundleActionHandlerFactory)(context)
+    if (typeof handler !== "function") {
+      throw new Error(`Local bundle handler export ${exportName} did not return a handler function.`)
+    }
+    handlers[actionType] = handler
+  }
+
+  return handlers
+}
+
+function selectLocalBundleHandlerDeploy(
+  bundle: LoadedAgenticBundle,
+  deployId: string | undefined,
+): LoadedAgenticBundleData | undefined {
+  if (deployId !== undefined) {
+    const deploy = bundle.deploy.find((entry) => entry.id === deployId)
+    if (deploy === undefined) throw new Error(`Missing local bundle deploy target: ${deployId}`)
+    return deploy
+  }
+  return bundle.deploy.find((entry) => localBundleHandlersConfig(entry.data) !== undefined)
+}
+
+function localBundleHandlerSpec(deploy: LoadedAgenticBundleData): LocalBundleHandlerSpec | undefined {
+  const handlers = localBundleHandlersConfig(deploy.data)
+  if (handlers === undefined) return undefined
+
+  const moduleRef = nonEmptyConfigString(handlers.module)
+  if (moduleRef === undefined) {
+    throw new Error(`deploy ${deploy.id} runtime.local.handlers.module must be a non-empty string.`)
+  }
+  const actions = stringRecordConfig(handlers.actions, `deploy ${deploy.id} runtime.local.handlers.actions`)
+  if (Object.keys(actions).length === 0) {
+    throw new Error(`deploy ${deploy.id} runtime.local.handlers.actions must declare at least one action handler.`)
+  }
+  return { module: moduleRef, actions }
+}
+
+function localBundleHandlersConfig(deploy: JsonObject): JsonObject | undefined {
+  const runtime = jsonObjectConfig(deploy.runtime)
+  const local = jsonObjectConfig(runtime?.local)
+  return jsonObjectConfig(local?.handlers)
+}
+
+function resolveLocalBundleHandlerModulePath(
+  bundle: LoadedAgenticBundle,
+  moduleRef: string,
+  workspaceRoot: string | undefined,
+): string {
+  if (isAbsolute(moduleRef) || moduleRef.startsWith("\\") || /^[A-Za-z]:[\\/]/.test(moduleRef)) {
+    throw new Error(`Local bundle handler module ${moduleRef} must be a relative path.`)
+  }
+  const modulePath = resolve(bundle.root, moduleRef)
+  const boundaryRoot = resolve(workspaceRoot ?? bundle.root)
+  if (!pathIsInside(boundaryRoot, modulePath)) {
+    throw new Error(`Local bundle handler module ${moduleRef} must stay inside workspace root ${boundaryRoot}.`)
+  }
+  return modulePath
+}
+
+function pathIsInside(root: string, candidate: string): boolean {
+  const relativePath = relative(root, candidate)
+  return relativePath === "" || (!relativePath.startsWith("..") && !isAbsolute(relativePath))
+}
+
+function jsonObjectConfig(value: JsonValue | undefined): JsonObject | undefined {
+  if (value !== null && typeof value === "object" && !Array.isArray(value)) return value
+  return undefined
+}
+
+function nonEmptyConfigString(value: JsonValue | undefined): string | undefined {
+  return typeof value === "string" && value.trim() !== "" ? value : undefined
+}
+
+function stringRecordConfig(value: JsonValue | undefined, field: string): Record<string, string> {
+  if (value === undefined) return {}
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${field} must be an object mapping action types to handler exports.`)
+  }
+
+  const record: Record<string, string> = {}
+  for (const [key, entry] of Object.entries(value)) {
+    if (typeof entry !== "string" || entry.trim() === "") {
+      throw new Error(`${field}.${key} must be a non-empty string.`)
+    }
+    record[key] = entry
+  }
+  return record
 }
 
 export type LocalBundleActionRequestOptions = {
@@ -665,6 +809,7 @@ export class LocalActionGateway<TArtifact extends LocalActionGatewayArtifact> im
     const context: ActionExecutionContext = {
       action_id: resolved.id,
       digest,
+      proposal: resolved,
       action: actionDeclaration as unknown as JsonObject,
     }
     const capability = resolved.capability === undefined

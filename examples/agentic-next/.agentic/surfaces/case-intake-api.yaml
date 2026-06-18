@@ -6,6 +6,7 @@ principal: service:demo-api
 fixture: case-request-001
 proposes:
   action: surface.receive
+  data_class: synthetic_regulated_demo
 emits:
   - artifact: case-review-request
     status: received

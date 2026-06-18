@@ -33,6 +33,8 @@ The bundle models a synthetic regulated case-review flow:
 
 `run.ts` routes each proposed action through the runtime-local action gateway and narrow Agentic ports for artifact reads/draft writes plus action request/status. A harness adapter could expose those ports as model-facing tools, but the example keeps the boundary high-level: runtime-bound handlers still own demo artifact writes and effects. The gateway resolves the action declaration, checks principal/data-class/effect/capability/integration policy, computes a stable action digest, executes only allowed runtime-bound callbacks, and creates an `approval-request` artifact for approval-gated actions.
 
+The local demo deploy target explicitly opts into local handler code with `runtime.local.handlers` in `.agentic/deploy/local-demo.yaml`. Those handlers live in `handlers.ts`, outside core Agentic, and are loaded only by the local runtime from inside the workspace. This is the security boundary: authored bundle declarations are portable data; local handler modules are executable local-runtime code.
+
 No model is called. No external system is contacted. The point is to inspect whether the bundle/runtime boundary feels right.
 
 ## Inspect The Output

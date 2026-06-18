@@ -626,6 +626,7 @@ export type ActionRecord = {
 export type ActionExecutionContext = {
   action_id: string
   digest: ActionDigest
+  proposal: ResolvedActionProposal
   action: JsonObject
   capability?: JsonObject | undefined
 }

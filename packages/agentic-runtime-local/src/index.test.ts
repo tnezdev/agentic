@@ -18,6 +18,7 @@ import {
   createLocalActionGatewayDeclarations,
   createLocalBundlePorts,
   createFilesystemArtifactPort,
+  loadLocalBundleHandlers,
   LocalActionGateway,
   LocalAgenticPorts,
   LocalBundleRunStore,
@@ -446,6 +447,53 @@ describe("local bundle trigger helpers", () => {
       status: "pending",
       created_by_action_id: store.actions[2]?.id,
     })
+  })
+
+  it("loads explicit local bundle handlers from deploy config", async () => {
+    const bundle = await loadAgenticBundle(AGENTIC_NEXT_BUNDLE_ROOT)
+    const store = new LocalBundleRunStore(join(tmpDir, ".agentic", ".data"), "run-test")
+    await store.init()
+    const handlers = await loadLocalBundleHandlers(bundle, store, {
+      deployId: "local-demo",
+      workspaceRoot: resolve(AGENTIC_NEXT_BUNDLE_ROOT, ".."),
+    })
+    const ports = createLocalBundlePorts(bundle, store, { handlers })
+    const surface = loadedDeclaration<SurfaceDeclaration>(bundle.surfaces, "case-intake-api")
+    const schedule = loadedDeclaration<ScheduleDeclaration>(bundle.schedules, "nightly-qc-sweep")
+
+    expect(Object.keys(handlers).sort()).toEqual(["case.validate", "surface.receive"])
+    const receive = await requestLocalBundleSurfaceAction(ports, surface, {
+      payload: { fixture: "case-request-001" },
+    })
+    expect(receive.output_artifact_ids).toHaveLength(2)
+    const packet = store.artifacts.find((artifact) => artifact.type === "case-packet")
+    expect(packet).toMatchObject({
+      status: "intake_ready",
+      data_class: "synthetic_regulated_demo",
+    })
+
+    const validate = await requestLocalBundleScheduleAction(ports, schedule, {
+      input_artifact_ids: [packet!.id],
+    })
+
+    expect(validate.status).toBe("completed")
+    const validation = store.artifacts.find((artifact) => artifact.type === "validation-result")
+    expect(validation).toMatchObject({
+      status: "needs_reviewer",
+      derived_from: [packet!.id],
+    })
+    expect(validate.output_artifact_ids).toEqual([validation!.id])
+  })
+
+  it("keeps local handler modules inside the workspace root", async () => {
+    const bundle = await loadAgenticBundle(AGENTIC_NEXT_BUNDLE_ROOT)
+    const store = new LocalBundleRunStore(join(tmpDir, ".agentic", ".data"), "run-test")
+    await store.init()
+
+    await expect(loadLocalBundleHandlers(bundle, store, {
+      deployId: "local-demo",
+      workspaceRoot: bundle.root,
+    })).rejects.toThrow("must stay inside workspace root")
   })
 })
 

@@ -7,5 +7,7 @@ on:
 proposes:
   action: external.handoff
   capability: handoff.release
+  principal: agent:case-reviewer
+  data_class: synthetic_regulated_demo
   reason: Validation produced findings that need human review.
 policy_note: This hook proposes the action only. The action still passes capability and approval gates.
