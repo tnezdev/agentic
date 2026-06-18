@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test"
-import { chmod, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises"
+import { chmod, cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises"
 import { dirname, join, resolve } from "node:path"
 import { tmpdir } from "node:os"
 import { fileURLToPath } from "node:url"
@@ -36,6 +36,10 @@ const CONTINUITY_ARTIFACT_ID = "01KAC500000000000000000002"
 const CASE_REVIEW_BUNDLE_ROOT = resolve(
   dirname(fileURLToPath(import.meta.url)),
   "../../../examples/case-review-bundle/.agentic",
+)
+const CASE_REVIEW_BUNDLE_TEMPLATE = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  "../../agentic/templates/case-review-bundle",
 )
 
 async function writeText(path: string, text: string): Promise<void> {
@@ -925,6 +929,74 @@ describe("local runtime package", () => {
       workspace_root: tmpDir,
       status: "completed",
       artifact_ids: [],
+    })
+  })
+
+  it("writes inspectable bundle failure state for missing local handler exports", async () => {
+    const workspace = join(tmpDir, "case-review-bundle")
+    await cp(CASE_REVIEW_BUNDLE_TEMPLATE, workspace, { recursive: true })
+    await writeText(
+      join(workspace, ".agentic", "deploy", "local-demo.yaml"),
+      `id: local-demo
+kind: deploy_target
+description: Local filesystem deployment for inspecting the bundle/runtime boundary.
+state:
+  adapter: filesystem
+  dir: .agentic/.data
+runtime:
+  local:
+    handlers:
+      module: ../handlers.ts
+      actions:
+        surface.receive: missingReceiveSurface
+        case.validate: validateCase
+      proposal_payloads:
+        validation-result.propose-handoff: createHandoffPayload
+materializes:
+  - surfaces
+  - schedules
+  - hooks
+  - capabilities
+`,
+    )
+
+    await expect(runtime.commands.run!(ctx, {
+      target: "case-review-bundle",
+      args: [],
+      flags: { clean: true },
+    })).rejects.toThrow("Local bundle handler surface.receive references missing export missingReceiveSurface")
+
+    const latest = JSON.parse(await readFile(join(workspace, ".agentic", ".data", "latest.json"), "utf-8"))
+    expect(latest).toMatchObject({
+      context_mode: "bundle",
+      status: "failed",
+      message: "Bundle execution failed before completion.",
+      error: "Local bundle handler surface.receive references missing export missingReceiveSurface.",
+      actions: [],
+      artifacts: [],
+    })
+    expect(latest.runtime_invocation_id).toBeString()
+
+    const summary = await readFile(
+      join(workspace, ".agentic", ".data", "runs", latest.run_id, "summary.md"),
+      "utf-8",
+    )
+    expect(summary).toContain("failed before completing the local trigger sequence")
+    expect(summary).toContain("missingReceiveSurface")
+
+    const invocation = JSON.parse(
+      await readFile(
+        join(workspace, ".agentic", "runtime", "local", "invocations", `${latest.runtime_invocation_id}.json`),
+        "utf-8",
+      ),
+    )
+    expect(invocation).toMatchObject({
+      id: latest.runtime_invocation_id,
+      target: "case-review-bundle",
+      workspace_root: workspace,
+      status: "failed",
+      artifact_ids: [],
+      error: "Local bundle handler surface.receive references missing export missingReceiveSurface.",
     })
   })
 

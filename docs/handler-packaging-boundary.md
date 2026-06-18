@@ -42,6 +42,12 @@ runtime-owned module, package, container, worker, or host service. The runtime m
 reference that code from a deploy target, but core Agentic should only validate
 portable declarations and policy vocabulary.
 
+The local runtime validates explicit `runtime.local.handlers` references when it
+serves a bundle. A missing handler module, action export, or proposal payload
+export fails the local run and writes inspectable failure state to the bundle run's
+`latest.json` and `summary.md`. That is local-runtime guidance, not core handler
+packaging or arbitrary-code execution.
+
 Effect-producing handlers must still enter through the action gateway. A handler
 module is not permission by itself; the runtime must resolve the action,
 capability, principal, data boundary, and approval state before executing it.

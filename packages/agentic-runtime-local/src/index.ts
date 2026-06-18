@@ -912,6 +912,23 @@ function preparedBundleLatest(
   }
 }
 
+function failedBundleLatest(
+  target: LocalRunTarget,
+  bundle: LoadedAgenticBundle,
+  store: LocalBundleRunStore,
+  invocation: RuntimeInvocation,
+  err: unknown,
+): LocalBundleRunLatest {
+  return {
+    ...bundleLatestBase(target, bundle, store, invocation),
+    status: "failed",
+    message: "Bundle execution failed before completion.",
+    error: errorMessage(err),
+    actions: store.actions.map(summarizeBundleAction),
+    artifacts: store.artifacts.map(summarizeBundleArtifact),
+  }
+}
+
 function completedBundleLatest(
   target: LocalRunTarget,
   bundle: LoadedAgenticBundle,
@@ -1814,6 +1831,10 @@ function shellQuote(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`
 }
 
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err)
+}
+
 function invocationTarget(args: RuntimeRunArgs, target: LocalRunTarget): string | undefined {
   return args.target ?? target.workflow_id ?? target.workspace_label
 }
@@ -1880,7 +1901,7 @@ async function failInvocation(
   err: unknown,
   run?: LocalRunContext | undefined,
 ): Promise<RuntimeInvocation> {
-  const message = err instanceof Error ? err.message : String(err)
+  const message = errorMessage(err)
   return writeInvocation(invocation.workspace_root, {
     ...invocation,
     status: "failed",
@@ -2281,10 +2302,17 @@ async function prepareBundleLocalRun(
   const store = new LocalBundleRunStore(stateDir, createLocalBundleRunId())
   await store.init()
 
-  const execution = await executeLocalBundleTriggers(target, bundle, store, invocation, {
-    deployId: stringFlag(args.flags, "deploy"),
-    workspaceRoot: target.workspace_root,
-  })
+  let execution: LocalBundleTriggerExecutionResult
+  try {
+    execution = await executeLocalBundleTriggers(target, bundle, store, invocation, {
+      deployId: stringFlag(args.flags, "deploy"),
+      workspaceRoot: target.workspace_root,
+    })
+  } catch (err) {
+    const latest = failedBundleLatest(target, bundle, store, invocation, err)
+    await store.writeSummary(renderBundleFailedSummary(target, bundle, store, latest), latest)
+    throw err
+  }
   await store.writeSummary(execution.summary, execution.latest)
 
   return {
@@ -2329,6 +2357,42 @@ No local trigger sequence was executed for this bundle. Bundles with explicit lo
 
 - Context mode: bundle
 - Runtime invocation id: ${invocation.id}
+- Bundle run id: ${store.runId}
+- Run directory: ${pathRelative(target.workspace_root, store.runDir)}
+- Actions log: ${pathRelative(target.workspace_root, store.actionLogPath)}
+- Summary path: ${pathRelative(target.workspace_root, store.summaryPath)}
+- Latest pointer: ${pathRelative(target.workspace_root, store.latestPath)}
+`
+}
+
+function renderBundleFailedSummary(
+  target: LocalRunTarget,
+  bundle: LoadedAgenticBundle,
+  store: LocalBundleRunStore,
+  latest: LocalBundleRunLatest,
+): string {
+  const error = typeof latest.error === "string" ? latest.error : "Unknown error"
+  return `# Local Bundle Run: ${bundle.manifest.name}
+
+## Summary
+
+The local runtime loaded this authored Agentic bundle, initialized filesystem runtime state, and failed before completing the local trigger sequence.
+
+## Failure
+
+${error}
+
+## Bundle
+
+- Name: ${bundle.manifest.name}
+- Version: ${bundle.manifest.version}
+- Schema version: ${bundle.manifest.schema_version}
+- Root: ${pathRelative(target.workspace_root, bundle.root)}
+
+## Runtime State
+
+- Context mode: bundle
+- Runtime invocation id: ${latest.runtime_invocation_id}
 - Bundle run id: ${store.runId}
 - Run directory: ${pathRelative(target.workspace_root, store.runDir)}
 - Actions log: ${pathRelative(target.workspace_root, store.actionLogPath)}
