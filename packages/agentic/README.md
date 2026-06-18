@@ -52,7 +52,7 @@ Use a blank authored bundle when you want to start from portable declarations
 without demo fixtures or handlers:
 
 ```bash
-agentic init --bundle
+agentic init
 agentic validate . --json
 agentic inspect . --json
 ```
@@ -61,6 +61,9 @@ The direct primitive noun commands are legacy as of `0.6.0`. They remain
 available for dogfood and harness internals, but authored bundles are the
 supported product path and the pre-`1.0` primitive command shapes may change
 quickly:
+
+Use `agentic init --legacy` only when you specifically need the old primitive
+workspace scaffold instead of an authored bundle.
 
 ```bash
 # Store and recall memory
@@ -87,7 +90,7 @@ validated and inspected as source, then served locally and evaluated once it has
 runtime-ready declarations.
 
 ```bash
-agentic init --bundle
+agentic init
 agentic validate . --json
 agentic inspect . --json
 ```

@@ -41,7 +41,7 @@ agentic eval examples/case-review-bundle --json
 To scaffold a blank authored bundle in a new workspace:
 
 ```bash
-agentic init --bundle
+agentic init
 agentic validate . --json
 agentic inspect . --json
 ```

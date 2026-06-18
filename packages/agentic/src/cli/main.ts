@@ -78,7 +78,7 @@ type Parsed = {
   flags: Record<string, string | true>
 }
 
-const BOOLEAN_FLAGS = new Set(["json", "dry-run", "help", "wide", "interactive", "bundle"])
+const BOOLEAN_FLAGS = new Set(["json", "dry-run", "help", "wide", "interactive", "bundle", "legacy"])
 
 function parseArgs(argv: string[]): Parsed {
   const positional: string[] = []
@@ -169,7 +169,7 @@ const USAGE = `Usage: agentic <command> [args] [flags]
        spores  <command> [args] [flags]    (compatibility alias)
 
 Commands:
-  init [--bundle|--example <name>]    Scaffold .agentic/ directory
+  init [--legacy|--example <name>]    Scaffold an Agentic bundle
   dev [target]                        Run validate, inspect, serve --clean, eval once
   run [target]                        Run current workspace with default runtime
   serve [target]                      Serve a target with the default runtime

@@ -87,7 +87,7 @@ spores  <noun> <verb> [args]    # compatibility alias
 Commands in `src/cli/commands/<noun>.ts`. Each command is a `Command` function exported as `<noun><Verb>Command`. The dispatch table is in `src/cli/main.ts`.
 
 Current command surface:
-- `agentic init` — scaffold `.agentic/` config
+- `agentic init` — scaffold an authored bundle; use `--legacy` only for the old primitive workspace config
 - `agentic memory remember/recall/forget/dream/reinforce`
 - `agentic skill list/show/run`
 - `agentic workflow list/show/run/status`

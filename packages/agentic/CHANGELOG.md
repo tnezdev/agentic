@@ -2,6 +2,12 @@
 
 All notable changes to `@tnezdev/agentic` (formerly `@tnezdev/spores`). Format follows [Keep a Changelog](https://keepachangelog.com/). Versioning follows [semver](https://semver.org/).
 
+## 0.6.1 — 2026-06-18
+
+### Changed
+
+- **Bundle init is now the default.** `agentic init` scaffolds a blank authored bundle that passes `agentic validate`; the legacy primitive workspace scaffold moved to `agentic init --legacy`. `agentic init --bundle` remains accepted as a compatibility alias.
+
 ## 0.6.0 — 2026-06-18
 
 The authored-bundle release. Agentic now has a portable bundle contract, local lifecycle commands, and a canonical case-review starter that can validate, inspect, run, and eval a bundle with inspectable runtime state.

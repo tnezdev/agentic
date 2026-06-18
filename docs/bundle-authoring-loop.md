@@ -8,7 +8,7 @@ Create a blank bundle workspace when you want to author declarations from
 scratch:
 
 ```bash
-agentic init --bundle
+agentic init
 ```
 
 Create the runnable case-review starter when you want concrete declarations,

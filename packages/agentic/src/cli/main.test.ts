@@ -305,6 +305,7 @@ describe("CLI", () => {
     expect(stdout).toContain("Usage: agentic")
     expect(stdout).toContain("eval [path]")
     expect(stdout).toContain("dev [target]")
+    expect(stdout).toContain("init [--legacy|--example <name>]")
     expect(stdout).toContain("inspect [path]")
     expect(stdout).toContain("validate [path]")
     expect(stdout).toContain("runtime list")
@@ -1090,13 +1091,23 @@ describe("CLI", () => {
   })
 
   describe("init", () => {
-    it("scaffolds .agentic/ directory", async () => {
+    it("scaffolds a valid blank authored bundle by default", async () => {
       const result = (await runJson(...base, "init")) as {
         initialized: boolean
         path: string
+        bundle: boolean
+        next_steps: string[]
       }
       expect(result.initialized).toBe(true)
+      expect(result.bundle).toBe(true)
       expect(result.path).toContain(".agentic")
+      expect(result.next_steps).toEqual(["agentic validate .", "agentic inspect ."])
+
+      const manifest = await readFile(join(tmpDir, ".agentic", "agentic.yaml"), "utf-8")
+      expect(manifest).toContain("schema_version: agentic.bundle.v0")
+
+      const validate = (await runJson(...base, "validate")) as { valid: boolean }
+      expect(validate.valid).toBe(true)
     })
 
     it("is idempotent", async () => {
@@ -1105,7 +1116,7 @@ describe("CLI", () => {
       expect(exitCode).toBe(0)
     })
 
-    it("scaffolds a blank authored bundle", async () => {
+    it("keeps --bundle as a blank authored bundle alias", async () => {
       const result = (await runJson(...base, "init", "--bundle")) as {
         initialized: boolean
         bundle: boolean
@@ -1132,6 +1143,23 @@ describe("CLI", () => {
       const gitignore = await readFile(join(tmpDir, ".gitignore"), "utf-8")
       expect(gitignore.match(/\.agentic\/\.data\//g)).toHaveLength(1)
       expect(gitignore.match(/\.agentic\/runtime\//g)).toHaveLength(1)
+    })
+
+    it("scaffolds the legacy primitive workspace with --legacy", async () => {
+      const result = (await runJson(...base, "init", "--legacy")) as {
+        initialized: boolean
+        path: string
+      }
+
+      expect(result.initialized).toBe(true)
+      expect(result.path).toContain(".agentic")
+
+      const config = await readFile(join(tmpDir, ".agentic", "config.toml"), "utf-8")
+      expect(config).toContain("adapter = \"filesystem\"")
+
+      const validate = await run(...base, "validate")
+      expect(validate.exitCode).toBe(1)
+      expect(validate.stdout).toContain("Missing bundle manifest")
     })
 
     it("scaffolds the second-brain example", async () => {

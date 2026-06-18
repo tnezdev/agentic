@@ -195,12 +195,20 @@ async function initBundle(ctx: Parameters<Command>[0]): Promise<void> {
 }
 
 export const initCommand: Command = async (ctx, _args, flags) => {
-  if (flags["bundle"] === true) {
-    await initBundle(ctx)
+  const wantsBundle = flags["bundle"] === true
+  const wantsLegacy = flags["legacy"] === true
+  const wantsExample = flags["example"] !== undefined
+
+  if ([wantsBundle, wantsLegacy, wantsExample].filter(Boolean).length > 1) {
+    throw new Error("Usage: agentic init [--legacy|--bundle|--example <name>]")
+  }
+
+  if (wantsLegacy) {
+    await initLegacy(ctx)
     return
   }
 
-  if (flags["example"] !== undefined) {
+  if (wantsExample) {
     if (typeof flags["example"] !== "string") {
       throw new Error("Usage: agentic init --example <name>")
     }
@@ -208,6 +216,10 @@ export const initCommand: Command = async (ctx, _args, flags) => {
     return
   }
 
+  await initBundle(ctx)
+}
+
+async function initLegacy(ctx: Parameters<Command>[0]): Promise<void> {
   const agenticDir = join(ctx.baseDir, ".agentic")
   const memoryDir = join(agenticDir, "memory")
   const configPath = join(agenticDir, "config.toml")
@@ -227,7 +239,7 @@ export const initCommand: Command = async (ctx, _args, flags) => {
     { initialized: true, path: agenticDir, alreadyExists },
     (d) =>
       d.alreadyExists
-        ? `Already initialized at ${d.path}`
-        : `Initialized at ${d.path}`,
+        ? `Already initialized legacy workspace at ${d.path}`
+        : `Initialized legacy workspace at ${d.path}`,
   )
 }

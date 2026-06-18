@@ -1,6 +1,6 @@
 {
   "name": "@tnezdev/agentic-runtime-local",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Local runtime package for Agentic workspaces",
   "license": "MIT",
   "type": "module",
@@ -34,10 +34,10 @@
   },
   "dependencies": {},
   "peerDependencies": {
-    "@tnezdev/agentic": "^0.6.0"
+    "@tnezdev/agentic": "^0.6.1"
   },
   "devDependencies": {
-    "@tnezdev/agentic": "^0.6.0",
+    "@tnezdev/agentic": "^0.6.1",
     "@types/bun": "^1.3.11",
     "typescript": "^5.7.0"
   }
