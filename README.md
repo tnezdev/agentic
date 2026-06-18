@@ -50,7 +50,7 @@ To scaffold the runnable case-review starter:
 
 ```bash
 agentic init --example case-review-bundle
-agentic serve . --clean --json
+agentic dev . --json
 ```
 
 `agentic serve` remains the stable local run path inside that loop. `agentic run` remains the lower-level runtime entrypoint for workflow, artifact, and harness-oriented contexts.

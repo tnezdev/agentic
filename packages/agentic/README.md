@@ -31,43 +31,50 @@ npm install @tnezdev/agentic
 
 ## Quick start
 
+Start with an authored bundle when you want the product path: source declarations,
+local runtime state, action gateway decisions, artifacts, and evals in one loop.
+
 ```bash
-# Scaffold .agentic/ directory in your project
-agentic init
-
-# Or scaffold a blank authored bundle
-agentic init --bundle
-
-# Or scaffold the canonical authored bundle starter
+# Scaffold the canonical authored bundle starter
 agentic init --example case-review-bundle
 
-# Store a memory
+# Run the full local feedback loop: validate, inspect, serve --clean, eval
+agentic dev . --json
+
+# Or inspect each phase explicitly
+agentic validate . --json
+agentic inspect . --json
+agentic serve . --clean --json
+agentic eval . --json
+```
+
+Use a blank authored bundle when you want to start from portable declarations
+without demo fixtures or handlers:
+
+```bash
+agentic init --bundle
+agentic validate . --json
+agentic inspect . --json
+```
+
+The primitive commands remain available as lower-level building blocks for agents
+and harnesses:
+
+```bash
+# Store and recall memory
 agentic memory remember "always emit types from the public API" --tags style,api
-
-# Load a skill
-agentic skill list
-agentic skill run release-check | llm
-
-# Track a task
-agentic task add "update CHANGELOG before tagging"
-agentic task next
+agentic memory recall "public API"
 
 # Activate a persona (pipe into your LLM as system prompt)
 agentic persona list
 agentic persona activate spores-maintainer | llm --system -
 
-# Preview the runtime package front door
+# Load a skill or track a task
+agentic skill run release-check | llm
+agentic task next
+
+# Use the lower-level runtime entrypoint for workflow/artifact/harness contexts
 agentic runtime list
-
-# Run an authored bundle through the local runtime
-agentic dev examples/case-review-bundle --json
-agentic serve examples/case-review-bundle --clean --json
-
-# Inspect and evaluate the latest bundle run
-agentic inspect examples/case-review-bundle --json
-agentic eval examples/case-review-bundle --json
-
-# Use the lower-level runtime entrypoint when you need workflow/artifact/harness contexts
 agentic run
 ```
 
