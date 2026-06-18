@@ -1,6 +1,6 @@
 # Runtime State Layout
 
-Agentic separates authored bundle configuration from runtime-generated state. Core defines portable record shapes and port contracts; each runtime decides where those records live.
+Agentic separates authored bundle configuration from runtime-generated state. Core defines portable record shapes and port contracts; each runtime decides where those records live. The canonical local example is `examples/case-review-bundle`, run with `agentic serve examples/case-review-bundle --clean --json`.
 
 ## Authored Versus Runtime
 
@@ -21,10 +21,10 @@ Authored workspace content lives in `.agentic/` and is meant to be reviewed, ver
   fixtures/
 ```
 
-Runtime-generated state lives outside that authored declaration set. The current examples use two local filesystem areas:
+Runtime-generated state lives outside that authored declaration set. The case-review bundle uses two local filesystem areas:
 
 ```text
-.agentic/.data/                         # bundle-specific demo runtime state
+.agentic/.data/                         # bundle run state written by agentic serve
   latest.json                           # convenience pointer, not canonical history
   runs/<run-id>/
     actions.jsonl

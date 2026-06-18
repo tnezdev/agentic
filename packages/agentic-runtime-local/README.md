@@ -5,6 +5,7 @@ Local runtime package for Agentic workspaces.
 The public runtime target is `local`:
 
 ```bash
+agentic serve examples/case-review-bundle --clean --json
 agentic run
 agentic runtime status local
 ```
@@ -20,10 +21,14 @@ https://pi.dev/, not Raspberry Pi. `pi` is not a public runtime target.
 
 - `init` creates `.agentic/runtime/local/runtime.json`, `targets/`, and
   `invocations/`.
+- `serve` is the preferred local lifecycle command for authored bundles. It
+  delegates to this package, processes declared surfaces, schedules, hooks,
+  actions, capabilities, handlers, approvals, and writes inspectable local state.
 - `run` resolves a workspace/workflow target, loads the matching persona, skills,
   ready task, and workflow, records a runtime invocation, creates a workflow run,
   and writes a finalized `local-runtime-run` artifact as the durable run packet.
-  It initializes local runtime glue on first run. By default this is prepare-only.
+  It initializes local runtime glue on first run. For non-bundle contexts this is
+  prepare-only by default.
   If no target is provided, ready task metadata (`persona` and `workflow`) is used
   before falling back to an unambiguous workspace default.
 - `run --harness pi` also invokes the Pi CLI as the local harness driver after
@@ -33,7 +38,8 @@ https://pi.dev/, not Raspberry Pi. `pi` is not a public runtime target.
   summarizes the latest invocation.
 
 Invocation records live under `.agentic/runtime/local/invocations/<id>.json`.
-They are runtime-owned execution facts, not transcripts or sessions. Harness
+Bundle run records live under the bundle state dir, usually `.agentic/.data/`.
+Both are runtime-owned execution facts, not transcripts or sessions. Harness
 integrations attach an optional `harness_ref` without importing that harness's
 session model into Agentic core.
 

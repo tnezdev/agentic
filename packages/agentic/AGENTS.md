@@ -93,7 +93,9 @@ Current command surface:
 - `agentic workflow list/show/run/status`
 - `agentic persona list/view/activate`
 - `agentic artifact create/read/write/edit/inspect/list/finalize`
-- `agentic run` — simple runtime entrypoint for the current workspace
+- `agentic validate [path]` / `agentic inspect [path]` / `agentic eval [path]` — bundle lifecycle checks
+- `agentic serve [target]` — preferred local lifecycle entrypoint for authored bundles
+- `agentic run` — lower-level runtime entrypoint for workflow, artifact, and harness contexts
 - `agentic runtime list/add/init/run/status` — runtime package discovery and delegation in core; runtime behavior belongs to runtime packages
 
 ### Skills on disk

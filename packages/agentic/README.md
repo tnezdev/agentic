@@ -53,7 +53,14 @@ agentic persona activate spores-maintainer | llm --system -
 # Preview the runtime package front door
 agentic runtime list
 
-# Run a workspace with the default runtime package
+# In this repo, run an authored bundle through the local runtime
+agentic serve examples/case-review-bundle --clean --json
+
+# Inspect and evaluate the latest bundle run
+agentic inspect examples/case-review-bundle --json
+agentic eval examples/case-review-bundle --json
+
+# Use the lower-level runtime entrypoint when you need workflow/artifact/harness contexts
 agentic run
 ```
 
@@ -67,11 +74,12 @@ agentic run
 | **Tasks** | ULID-keyed task queue with status transitions and annotations |
 | **Persona** | Activate a "hat" at the start of a turn: memory tags, skills, task filter, workflow, and a rendered body with live situational facts |
 
-`agentic run` delegates the current workspace to the default runtime package. The
-`agentic runtime ...` namespace exposes lower-level runtime package management.
-Core Agentic recognizes official targets such as `local`, but package install,
-discovery, and command delegation live outside core and are being backfilled
-through runtime packages.
+`agentic serve` is the preferred local lifecycle command for authored bundles.
+`agentic run` delegates lower-level workflow, artifact, and harness-oriented
+contexts to the default runtime package. The `agentic runtime ...` namespace
+exposes runtime package management. Core Agentic recognizes official targets
+such as `local`, but package install, discovery, and command delegation live
+outside core and are being backfilled through runtime packages.
 
 All five primitives read from `.agentic/` in your project root, with optional global overrides from `~/.agentic/`. Legacy `.spores/` and `~/.spores/` paths are honoured during the compatibility window when `.agentic/` is absent.
 
@@ -97,7 +105,7 @@ Those are host-runtime responsibilities. Agentic provides the vocabulary and pri
 
 ## Working example
 
-The `.agentic/` directory in this repo is the dogfood — a persona, a skill, a workflow, tasks, and memories that are used to build this package itself. Read [`.agentic/ONRAMP.md`](https://github.com/tnezdev/agentic/blob/main/.agentic/ONRAMP.md) for a tour.
+The `.agentic/` directory in this repo is the dogfood — a persona, a skill, a workflow, tasks, and memories that are used to build this package itself. The canonical bundle example lives at [`examples/case-review-bundle/`](https://github.com/tnezdev/agentic/tree/main/examples/case-review-bundle). Read [`.agentic/ONRAMP.md`](https://github.com/tnezdev/agentic/blob/main/.agentic/ONRAMP.md) for the maintainer flow.
 
 ## Architecture
 
