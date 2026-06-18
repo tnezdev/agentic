@@ -5,7 +5,7 @@ import type { AgenticBundleManifest } from "../types.js"
 import { parseYaml } from "../workflow/yaml.js"
 import { validateAgenticBundleManifest } from "./manifest.js"
 
-const exampleManifestPath = join(import.meta.dir, "../../../../examples/agentic-next/.agentic/agentic.yaml")
+const exampleManifestPath = join(import.meta.dir, "../../../../examples/case-review-bundle/.agentic/agentic.yaml")
 
 async function loadExampleManifest(): Promise<AgenticBundleManifest> {
   const text = await readFile(exampleManifestPath, "utf-8")
@@ -14,7 +14,7 @@ async function loadExampleManifest(): Promise<AgenticBundleManifest> {
 
 function minimalManifest(overrides: Partial<AgenticBundleManifest> = {}): AgenticBundleManifest {
   return {
-    schema_version: "agentic-next.example.v0",
+    schema_version: "agentic-bundle.example.v0",
     name: "demo",
     version: "0.1.0",
     description: "Demo bundle.",
@@ -38,7 +38,7 @@ function minimalManifest(overrides: Partial<AgenticBundleManifest> = {}): Agenti
 }
 
 describe("validateAgenticBundleManifest", () => {
-  test("accepts the agentic-next example manifest", async () => {
+  test("accepts the case-review bundle example manifest", async () => {
     expect(validateAgenticBundleManifest(await loadExampleManifest())).toEqual({ valid: true })
   })
 

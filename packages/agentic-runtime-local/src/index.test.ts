@@ -33,9 +33,9 @@ import {
 const TASK_ID = "01KTC500000000000000000001"
 const PROFILE_ARTIFACT_ID = "01KAC500000000000000000001"
 const CONTINUITY_ARTIFACT_ID = "01KAC500000000000000000002"
-const AGENTIC_NEXT_BUNDLE_ROOT = resolve(
+const CASE_REVIEW_BUNDLE_ROOT = resolve(
   dirname(fileURLToPath(import.meta.url)),
-  "../../../examples/agentic-next/.agentic",
+  "../../../examples/case-review-bundle/.agentic",
 )
 
 async function writeText(path: string, text: string): Promise<void> {
@@ -191,7 +191,7 @@ async function writeMinimalBundleWorkspace(baseDir: string): Promise<void> {
     join(baseDir, ".agentic", "agentic.json"),
     JSON.stringify(
       {
-        schema_version: "agentic-next.example.v0",
+        schema_version: "agentic-bundle.example.v0",
         name: "minimal-bundle",
         version: "0.1.0",
         description: "Minimal authored bundle for local runtime tests.",
@@ -333,8 +333,8 @@ function loadedDeclaration<T>(entries: LoadedAgenticBundleData[], id: string): T
 }
 
 describe("local action gateway declarations", () => {
-  it("derives action gateway declarations from the agentic-next bundle", async () => {
-    const bundle = await loadAgenticBundle(AGENTIC_NEXT_BUNDLE_ROOT)
+  it("derives action gateway declarations from the case-review bundle", async () => {
+    const bundle = await loadAgenticBundle(CASE_REVIEW_BUNDLE_ROOT)
     const declarations = createLocalActionGatewayDeclarations(bundle)
 
     expect(declarations.principals).toEqual([
@@ -384,7 +384,7 @@ describe("local bundle trigger helpers", () => {
   })
 
   it("routes declared surface, schedule, and hook proposals through bundle ports", async () => {
-    const bundle = await loadAgenticBundle(AGENTIC_NEXT_BUNDLE_ROOT)
+    const bundle = await loadAgenticBundle(CASE_REVIEW_BUNDLE_ROOT)
     const store = new LocalBundleRunStore(join(tmpDir, ".agentic", ".data"), "run-test")
     await store.init()
     const ports = createLocalBundlePorts(bundle, store)
@@ -451,12 +451,12 @@ describe("local bundle trigger helpers", () => {
   })
 
   it("loads explicit local bundle handlers from deploy config", async () => {
-    const bundle = await loadAgenticBundle(AGENTIC_NEXT_BUNDLE_ROOT)
+    const bundle = await loadAgenticBundle(CASE_REVIEW_BUNDLE_ROOT)
     const store = new LocalBundleRunStore(join(tmpDir, ".agentic", ".data"), "run-test")
     await store.init()
     const bindings = await loadLocalBundleRuntimeBindings(bundle, store, {
       deployId: "local-demo",
-      workspaceRoot: resolve(AGENTIC_NEXT_BUNDLE_ROOT, ".."),
+      workspaceRoot: resolve(CASE_REVIEW_BUNDLE_ROOT, ".."),
     })
     const handlers = bindings.handlers
     const ports = createLocalBundlePorts(bundle, store, { handlers })
@@ -489,7 +489,7 @@ describe("local bundle trigger helpers", () => {
   })
 
   it("keeps local handler modules inside the workspace root", async () => {
-    const bundle = await loadAgenticBundle(AGENTIC_NEXT_BUNDLE_ROOT)
+    const bundle = await loadAgenticBundle(CASE_REVIEW_BUNDLE_ROOT)
     const store = new LocalBundleRunStore(join(tmpDir, ".agentic", ".data"), "run-test")
     await store.init()
 

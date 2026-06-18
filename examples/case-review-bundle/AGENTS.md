@@ -1,26 +1,26 @@
-# AGENTS.md - Agentic Next Example
+# AGENTS.md - Case Review Bundle Example
 
 Use this file as the harness bootstrap for agents working in this example workspace.
 
 ## What This Is
 
-This directory is a forward-looking Agentic bundle spike. It intentionally uses the proposed next layout rather than the current published CLI primitive layout.
+This directory is Agentic's canonical authored bundle example for local runtime work.
 
 Workspace base dir:
 
 ```bash
-examples/agentic-next
+examples/case-review-bundle
 ```
 
 ## Start Here
 
-Run the local demo runner:
+Run the local bundle through the runtime:
 
 ```bash
-bun run examples/agentic-next/run.ts --clean
+agentic serve examples/case-review-bundle --clean --json
 ```
 
-The runner loads `.agentic/agentic.yaml`, reads the authored bundle declarations, processes the synthetic case-review fixture, and writes runtime state under `.agentic/.data`.
+The local runtime loads `.agentic/agentic.yaml`, reads the authored bundle declarations, processes the synthetic case-review fixture, and writes runtime state under `.agentic/.data`. `run.ts` remains as a compatibility wrapper, but new work should use `agentic serve`.
 
 ## Boundary
 

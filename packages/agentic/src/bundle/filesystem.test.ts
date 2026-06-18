@@ -6,7 +6,7 @@ import type { AgenticBundleManifest } from "../types.js"
 import { loadAgenticBundle } from "./filesystem.js"
 
 const tempRoots: string[] = []
-const exampleRoot = join(import.meta.dir, "../../../../examples/agentic-next/.agentic")
+const exampleRoot = join(import.meta.dir, "../../../../examples/case-review-bundle/.agentic")
 
 afterEach(async () => {
   for (const root of tempRoots.splice(0)) {
@@ -16,7 +16,7 @@ afterEach(async () => {
 
 function minimalManifest(overrides: Partial<AgenticBundleManifest> = {}): AgenticBundleManifest {
   return {
-    schema_version: "agentic-next.example.v0",
+    schema_version: "agentic-bundle.example.v0",
     name: "demo",
     version: "0.1.0",
     description: "Demo bundle.",
@@ -55,7 +55,7 @@ async function writeBundle(
 }
 
 describe("loadAgenticBundle", () => {
-  test("loads the current agentic-next declaration inventory", async () => {
+  test("loads the current case-review bundle declaration inventory", async () => {
     const bundle = await loadAgenticBundle(exampleRoot)
     expect(bundle.manifest.name).toBe("regulated-case-review")
     expect(bundle.prompts).toHaveLength(2)

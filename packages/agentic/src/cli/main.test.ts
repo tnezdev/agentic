@@ -5,7 +5,7 @@ import { tmpdir } from "node:os"
 
 const CLI = join(import.meta.dir, "main.ts")
 const REPO_ROOT = join(import.meta.dir, "../../../..")
-const AGENTIC_NEXT = join(REPO_ROOT, "examples", "agentic-next")
+const CASE_REVIEW_BUNDLE = join(REPO_ROOT, "examples", "case-review-bundle")
 
 async function run(
   ...args: string[]
@@ -132,7 +132,7 @@ async function writeMinimalInspectBundle(workspace: string): Promise<string> {
   const bundleRoot = join(workspace, ".agentic")
   await mkdir(bundleRoot, { recursive: true })
   await writeJson(join(bundleRoot, "agentic.json"), {
-    schema_version: "agentic-next.example.v0",
+    schema_version: "agentic-bundle.example.v0",
     name: "inspect-demo",
     version: "0.1.0",
     description: "Inspect demo bundle.",
@@ -163,7 +163,7 @@ async function writeMinimalEvalBundle(
   await mkdir(join(bundleRoot, "evals"), { recursive: true })
   await mkdir(join(bundleRoot, "fixtures"), { recursive: true })
   await writeJson(join(bundleRoot, "agentic.json"), {
-    schema_version: "agentic-next.example.v0",
+    schema_version: "agentic-bundle.example.v0",
     name: "eval-demo",
     version: "0.1.0",
     description: "Eval demo bundle.",
@@ -250,7 +250,7 @@ async function writeUnknownTriggerBundle(workspace: string): Promise<void> {
   const bundleRoot = join(workspace, ".agentic")
   await mkdir(join(bundleRoot, "schedules"), { recursive: true })
   await writeJson(join(bundleRoot, "agentic.json"), {
-    schema_version: "agentic-next.example.v0",
+    schema_version: "agentic-bundle.example.v0",
     name: "bad-demo",
     version: "0.1.0",
     description: "Bad demo bundle.",
@@ -310,8 +310,8 @@ describe("CLI", () => {
   })
 
   describe("validate", () => {
-    it("validates the agentic-next workspace path", async () => {
-      const result = (await runJson("validate", AGENTIC_NEXT)) as {
+    it("validates the case-review bundle workspace path", async () => {
+      const result = (await runJson("validate", CASE_REVIEW_BUNDLE)) as {
         valid: boolean
         root: string
         bundle: { name: string; version: string; schema_version: string } | null
@@ -320,10 +320,10 @@ describe("CLI", () => {
       }
 
       expect(result.valid).toBe(true)
-      expect(result.root).toBe(join(AGENTIC_NEXT, ".agentic"))
+      expect(result.root).toBe(join(CASE_REVIEW_BUNDLE, ".agentic"))
       expect(result.bundle?.name).toBe("regulated-case-review")
-      expect(result.bundle?.version).toBe("0.1.0-experimental")
-      expect(result.bundle?.schema_version).toBe("agentic-next.example.v0")
+      expect(result.bundle?.version).toBe("0.1.0")
+      expect(result.bundle?.schema_version).toBe("case-review-bundle.example.v0")
       expect(result.errors).toEqual([])
       expect(result.checks.map((check) => check.name)).toEqual([
         "manifest",
@@ -336,7 +336,7 @@ describe("CLI", () => {
     })
 
     it("validates a direct bundle root", async () => {
-      const bundleRoot = join(AGENTIC_NEXT, ".agentic")
+      const bundleRoot = join(CASE_REVIEW_BUNDLE, ".agentic")
       const result = (await runJson("validate", bundleRoot)) as {
         valid: boolean
         root: string
@@ -351,12 +351,12 @@ describe("CLI", () => {
     it("validates the base-dir workspace with no positional path", async () => {
       const result = (await runJson(
         "--base-dir",
-        AGENTIC_NEXT,
+        CASE_REVIEW_BUNDLE,
         "validate",
       )) as { valid: boolean; root: string }
 
       expect(result.valid).toBe(true)
-      expect(result.root).toBe(join(AGENTIC_NEXT, ".agentic"))
+      expect(result.root).toBe(join(CASE_REVIEW_BUNDLE, ".agentic"))
     })
 
     it("exits 1 with a JSON envelope when the manifest is missing", async () => {
@@ -445,8 +445,8 @@ describe("CLI", () => {
   })
 
   describe("inspect", () => {
-    it("inspects the agentic-next workspace path", async () => {
-      const result = (await runJson("inspect", AGENTIC_NEXT)) as {
+    it("inspects the case-review bundle workspace path", async () => {
+      const result = (await runJson("inspect", CASE_REVIEW_BUNDLE)) as {
         ok: boolean
         command: string
         root: string
@@ -471,21 +471,21 @@ describe("CLI", () => {
 
       expect(result.ok).toBe(true)
       expect(result.command).toBe("inspect")
-      expect(result.root).toBe(join(AGENTIC_NEXT, ".agentic"))
+      expect(result.root).toBe(join(CASE_REVIEW_BUNDLE, ".agentic"))
       expect(result.bundle.name).toBe("regulated-case-review")
-      expect(result.bundle.version).toBe("0.1.0-experimental")
+      expect(result.bundle.version).toBe("0.1.0")
       expect(result.inventory.totals.sections).toBe(13)
       expect(result.inventory.totals.markdown_entries).toBe(5)
       expect(sections.get("prompts")?.count).toBe(2)
       expect(sections.get("prompts")?.entries[0]?.bytes).toBeGreaterThan(0)
       expect(sections.get("actions")?.entries.map((entry) => entry.id)).toContain("surface.receive")
       expect(result.state.adapter).toBe("filesystem")
-      expect(result.state.dir).toBe(join(AGENTIC_NEXT, ".agentic", ".data"))
+      expect(result.state.dir).toBe(join(CASE_REVIEW_BUNDLE, ".agentic", ".data"))
       expect(result.errors).toEqual([])
     })
 
     it("inspects a direct bundle root", async () => {
-      const bundleRoot = join(AGENTIC_NEXT, ".agentic")
+      const bundleRoot = join(CASE_REVIEW_BUNDLE, ".agentic")
       const result = (await runJson("inspect", bundleRoot)) as {
         ok: boolean
         root: string
@@ -500,12 +500,12 @@ describe("CLI", () => {
     it("inspects the base-dir workspace with no positional path", async () => {
       const result = (await runJson(
         "--base-dir",
-        AGENTIC_NEXT,
+        CASE_REVIEW_BUNDLE,
         "inspect",
       )) as { ok: boolean; root: string }
 
       expect(result.ok).toBe(true)
-      expect(result.root).toBe(join(AGENTIC_NEXT, ".agentic"))
+      expect(result.root).toBe(join(CASE_REVIEW_BUNDLE, ".agentic"))
     })
 
     it("treats missing local runtime state as inspectable", async () => {

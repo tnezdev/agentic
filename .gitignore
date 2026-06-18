@@ -19,5 +19,6 @@ examples/second-brain/.agentic/artifacts/*/
 !examples/second-brain/.agentic/artifacts/01KTC500000000000000000030/
 !examples/second-brain/.agentic/artifacts/01KTC500000000000000000030/**
 
-# The next-layout spike writes runtime state into the proposed default state dir.
-examples/agentic-next/.agentic/.data/
+# The case-review bundle writes local runtime state into the default state dir.
+examples/case-review-bundle/.agentic/.data/
+examples/case-review-bundle/.agentic/runtime/

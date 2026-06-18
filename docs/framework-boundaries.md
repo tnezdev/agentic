@@ -47,7 +47,7 @@ Recent production-host usage has validated several reusable concepts without mak
 | Capabilities | Portable declarations and pure policy helpers | Provider clients, credentials, approval UI, enforcement, audit logs |
 | Dispatch | Message shape, filters, and pure match logic | Webhooks, queues, recurrence, transport, handler execution |
 
-See [`runtime-adapter-boundary.md`](runtime-adapter-boundary.md) for the current ports/runtime/harness split used by the `agentic-next` product-path spike.
+See [`runtime-adapter-boundary.md`](runtime-adapter-boundary.md) for the current ports/runtime/harness split used by the case-review bundle example.
 
 ## Capability Availability And Discovery
 

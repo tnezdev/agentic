@@ -22,7 +22,7 @@ type DemoResult = {
 const EXAMPLE_ROOT = dirname(fileURLToPath(import.meta.url))
 const REPO_ROOT = resolve(EXAMPLE_ROOT, "../..")
 const BUNDLE_ROOT = join(EXAMPLE_ROOT, ".agentic")
-const EXAMPLE_TARGET = "examples/agentic-next"
+const EXAMPLE_TARGET = "examples/case-review-bundle"
 
 async function loadBundle(): Promise<LoadedAgenticBundle> {
   return loadAgenticBundle(BUNDLE_ROOT)
@@ -78,7 +78,7 @@ async function main(): Promise<void> {
     return
   }
 
-  console.log(`Agentic Next demo run: ${latest.run_id}`)
+  console.log(`Case review bundle demo run: ${latest.run_id}`)
   console.log(`Summary: ${latest.summary_path}`)
   console.log(`Latest pointer: ${latest.latest_path}`)
   console.log(`Approval required: ${latest.approval_required_action_id}`)

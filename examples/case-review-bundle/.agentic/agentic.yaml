@@ -1,6 +1,6 @@
-schema_version: agentic-next.example.v0
+schema_version: case-review-bundle.example.v0
 name: regulated-case-review
-version: 0.1.0-experimental
+version: 0.1.0
 description: Synthetic regulated case-review bundle proving artifacts, actions, capabilities, hooks, surfaces, schedules, approvals, and local runtime state.
 state:
   adapter: filesystem

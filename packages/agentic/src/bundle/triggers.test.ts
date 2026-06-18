@@ -15,7 +15,7 @@ import {
   validateScheduleDeclaration,
 } from "./triggers.js"
 
-const exampleRoot = join(import.meta.dir, "../../../../examples/agentic-next/.agentic")
+const exampleRoot = join(import.meta.dir, "../../../../examples/case-review-bundle/.agentic")
 
 const actions: ActionDeclaration[] = [
   { id: "surface.receive", effects: ["artifact.write:case-review-request", "artifact.write:case-packet"] },
@@ -44,7 +44,7 @@ const artifacts: ArtifactDeclaration[] = [
 ]
 
 describe("validateAgenticTriggerDeclarations", () => {
-  test("accepts the current agentic-next surface, schedule, and hook declarations", async () => {
+  test("accepts the current case-review bundle surface, schedule, and hook declarations", async () => {
     const bundle = await loadAgenticBundle(exampleRoot)
     const result = validateAgenticTriggerDeclarations({
       surfaces: bundle.surfaces.map((entry) => entry.data as unknown as SurfaceDeclaration),
