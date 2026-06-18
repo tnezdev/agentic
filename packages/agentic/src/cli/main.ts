@@ -176,7 +176,7 @@ Commands:
   init [--legacy|--example <name>]    Scaffold an Agentic bundle
   dev [target]                        Run validate, inspect, serve --clean, eval once
   run [target]                        Run current workspace with default runtime
-  serve [target]                      Serve a target with the default runtime
+  serve [target] [--ui]               Serve a target with the default runtime
   approve [target]                    Grant approval for a pending runtime action
   reject [target]                     Reject approval for a pending runtime action
   eval [path]                         Evaluate local run state against bundle evals
@@ -244,6 +244,8 @@ Flags:
   --action <id>                       Runtime action id for approve/reject
   --principal <principal>             Approving or rejecting principal
   --comment <text>                    Optional approval decision comment
+  --ui                                Start the local runtime admin console
+  --ui-port <port>                    Local admin console port (default 8787)
   --reason <text>                     Reason for done/fail transitions
   --name <text>                       Name for a new run`
 

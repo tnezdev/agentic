@@ -23,6 +23,7 @@ import {
   LocalActionGateway,
   LocalAgenticPorts,
   LocalBundleRunStore,
+  createLocalAdminConsoleHandler,
   requestLocalBundleHookAction,
   requestLocalBundleScheduleAction,
   requestLocalBundleSurfaceAction,
@@ -1298,6 +1299,88 @@ export async function releaseHandoff() {
     expect(secondApprove?.summary).toContain("already granted")
     const handoffFiles = (await readdir(join(runDir, "artifacts"))).filter((entry) => entry.includes("handoff_note"))
     expect(handoffFiles).toEqual(["art_handoff_note_0001.json"])
+  })
+
+  it("renders a minimal approval inbox for local admin review", async () => {
+    const workspace = join(tmpDir, "case-review-bundle")
+    await cp(CASE_REVIEW_BUNDLE_TEMPLATE, workspace, { recursive: true })
+
+    const runResult = await runtime.commands.run!(ctx, {
+      target: "case-review-bundle",
+      args: [],
+      flags: { clean: true },
+    })
+    const runData = dataOf(runResult)
+    const actionId = runData["approval_required_action_id"] as string
+    const handler = createLocalAdminConsoleHandler(ctx, {
+      target: "case-review-bundle",
+      csrfToken: "test-token",
+    })
+
+    const response = await handler(new Request("http://127.0.0.1/approvals"))
+    const html = await response.text()
+
+    expect(response.status).toBe(200)
+    expect(html).toContain("Agentic Local Admin")
+    expect(html).toContain("Approval Inbox")
+    expect(html).toContain(actionId)
+    expect(html).toContain("handoff.release")
+
+    const detailResponse = await handler(new Request(`http://127.0.0.1/approvals/${actionId}`))
+    const detailHtml = await detailResponse.text()
+    expect(detailResponse.status).toBe(200)
+    expect(detailHtml).toContain("Approve And Resume")
+    expect(detailHtml).toContain("user:reviewer.alba")
+    expect(detailHtml).toContain("test-token")
+  })
+
+  it("protects local admin approval POSTs with a CSRF token", async () => {
+    const workspace = join(tmpDir, "case-review-bundle")
+    await cp(CASE_REVIEW_BUNDLE_TEMPLATE, workspace, { recursive: true })
+
+    const runResult = await runtime.commands.run!(ctx, {
+      target: "case-review-bundle",
+      args: [],
+      flags: { clean: true },
+    })
+    const runData = dataOf(runResult)
+    const runId = runData["run_id"] as string
+    const actionId = runData["approval_required_action_id"] as string
+    const handler = createLocalAdminConsoleHandler(ctx, {
+      target: "case-review-bundle",
+      csrfToken: "test-token",
+    })
+
+    const forbidden = await handler(new Request(`http://127.0.0.1/approvals/${actionId}/approve`, {
+      method: "POST",
+      body: new URLSearchParams({ principal: "user:reviewer.alba" }),
+    }))
+    expect(forbidden.status).toBe(403)
+    expect((await readdir(join(workspace, ".agentic", ".data", "runs", runId, "approval-decisions")))
+      .filter((entry) => entry.endsWith(".json"))).toEqual([])
+
+    const approved = await handler(new Request(`http://127.0.0.1/approvals/${actionId}/approve`, {
+      method: "POST",
+      body: new URLSearchParams({
+        _csrf: "test-token",
+        principal: "user:reviewer.alba",
+        comment: "Approved in local admin.",
+      }),
+    }))
+
+    expect(approved.status).toBe(303)
+    expect(approved.headers.get("location")).toBe(`/approvals/${actionId}`)
+
+    const latest = JSON.parse(await readFile(join(workspace, ".agentic", ".data", "latest.json"), "utf-8"))
+    expect(latest).toMatchObject({
+      run_id: runId,
+      approval_status: "granted",
+      external_write_executed: true,
+    })
+    expect(latest.actions.find((action: { id: string }) => action.id === actionId)).toMatchObject({
+      status: "completed",
+    })
+    expect(latest.artifacts.map((artifact: { type: string }) => artifact.type)).toContain("handoff-note")
   })
 
   it("rejects approval grants from non-human principals", async () => {

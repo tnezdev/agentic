@@ -87,6 +87,9 @@ const ULID_ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
 const TIME_LEN = 10
 const RANDOM_LEN = 16
 const OUTPUT_CAPTURE_LIMIT = 20_000
+const DEFAULT_UI_HOST = "127.0.0.1"
+const DEFAULT_UI_PORT = 8787
+const SECRET_KEY_PATTERN = /(api[_-]?key|authorization|credential|password|secret|token)/i
 
 type LocalHarness = "none" | "pi"
 type LocalContextMode = "workflow" | "artifacts" | "bundle"
@@ -95,6 +98,13 @@ type LocalRuntimeTargetArgs = {
   target?: string | undefined
   args: string[]
   flags: RuntimeRunArgs["flags"]
+}
+
+export type LocalAdminConsoleOptions = {
+  target?: string | undefined
+  args?: string[] | undefined
+  flags?: RuntimeRunArgs["flags"] | undefined
+  csrfToken?: string | undefined
 }
 
 type LocalRuntimeState = {
@@ -109,6 +119,47 @@ type LocalRunTarget = {
   workspace_root: string
   workspace_label: string
   workflow_id?: string | undefined
+}
+
+export type LocalAdminPrincipal = {
+  id: string
+  kind: string
+  roles: string[]
+  description?: string | undefined
+}
+
+export type LocalAdminApproval = {
+  action: ActionRecord
+  approval_request_artifact: LocalBundleArtifactRecord
+  approval_request: ApprovalRequest
+  input_artifacts: LocalBundleArtifactRecord[]
+  decision?: ApprovalDecisionRecord | undefined
+}
+
+export type LocalAdminConsoleState = {
+  workspace: {
+    root: string
+    label: string
+  }
+  bundle: {
+    name: string
+    version: string
+    schema_version: string
+    manifest_path: string
+  }
+  run: {
+    id: string
+    dir: string
+    summary_path: string
+    latest_path: string
+    status: string
+  }
+  latest: LocalBundleRunLatest
+  actions: ActionRecord[]
+  artifacts: LocalBundleArtifactRecord[]
+  approval_decisions: ApprovalDecisionRecord[]
+  approvals: LocalAdminApproval[]
+  human_principals: LocalAdminPrincipal[]
 }
 
 type LocalRunContext = {
@@ -3022,6 +3073,761 @@ function approvalDecisionResult(
   }
 }
 
+function localAdminConsoleTargetArgs(options: LocalAdminConsoleOptions): LocalRuntimeTargetArgs {
+  return {
+    target: options.target,
+    args: options.args ?? [],
+    flags: options.flags ?? {},
+  }
+}
+
+function approvalDisplayStatus(approval: LocalAdminApproval): string {
+  if (approval.decision !== undefined) return approval.decision.decision
+  if (approvalRequestExpired(approval.approval_request)) return "expired"
+  if (approval.action.status === "approval_required") return "pending"
+  return approval.action.status
+}
+
+function approvalRequestExpired(approvalRequest: ApprovalRequest): boolean {
+  const expiresAt = Date.parse(approvalRequest.expires_at)
+  return Number.isFinite(expiresAt) && expiresAt <= Date.now()
+}
+
+function approvalSortRank(approval: LocalAdminApproval): number {
+  const status = approvalDisplayStatus(approval)
+  if (status === "pending") return 0
+  if (status === "expired") return 1
+  return 2
+}
+
+export async function loadLocalAdminConsoleState(
+  ctx: RuntimeContext,
+  options: LocalAdminConsoleOptions = {},
+): Promise<LocalAdminConsoleState> {
+  const target = await resolveRunTarget(ctx, localAdminConsoleTargetArgs(options))
+  if (!(await hasAgenticWorkspace(target.workspace_root))) {
+    throw new Error(`No Agentic workspace found at ${target.workspace_root}.`)
+  }
+
+  const bundleRoot = await bundleRootForWorkspace(target.workspace_root)
+  if (bundleRoot === undefined) {
+    throw new Error(`No Agentic bundle manifest found in ${target.workspace_root}.`)
+  }
+
+  const bundle = await loadAgenticBundle(bundleRoot)
+  if (bundle.manifest.state.adapter !== "filesystem") {
+    throw new Error(`Local admin console only supports filesystem state, got ${bundle.manifest.state.adapter}.`)
+  }
+
+  const stateDir = resolve(target.workspace_root, bundle.manifest.state.dir)
+  const latestPath = join(stateDir, "latest.json")
+  let latest: LocalBundleRunLatest
+  try {
+    latest = JSON.parse(await readFile(latestPath, "utf-8")) as LocalBundleRunLatest
+  } catch {
+    throw new Error(`No local bundle run state found at ${latestPath}. Run \`agentic serve\` first.`)
+  }
+
+  const runId = typeof latest.run_id === "string" ? latest.run_id : undefined
+  if (runId === undefined) throw new Error(`Local bundle latest state at ${latestPath} has no run_id.`)
+
+  const store = new LocalBundleRunStore(stateDir, runId)
+  const actions = await store.loadActions()
+  const artifacts = await store.loadArtifacts()
+  const approvalDecisions = await store.loadApprovalDecisions()
+  const approvals: LocalAdminApproval[] = []
+
+  for (const artifact of artifacts.filter((entry) => entry.type === "approval-request")) {
+    const approvalRequest = approvalRequestFromArtifact(artifact)
+    const action = await store.readAction(approvalRequest.action_id)
+    if (action === undefined) continue
+    const decision = [...approvalDecisions].reverse().find((entry) => entry.action_id === action.id)
+    const inputArtifactIds = new Set<string>([
+      ...approvalRequest.input_artifact_ids,
+      ...(action.input_artifact_ids ?? []),
+      ...(artifact.derived_from ?? []),
+    ])
+    const approval: LocalAdminApproval = {
+      action,
+      approval_request_artifact: artifact,
+      approval_request: approvalRequest,
+      input_artifacts: artifacts.filter((entry) => inputArtifactIds.has(entry.id)),
+    }
+    if (decision !== undefined) approval.decision = decision
+    approvals.push(approval)
+  }
+
+  approvals.sort((a, b) => {
+    return approvalSortRank(a) - approvalSortRank(b) || a.action.created_at.localeCompare(b.action.created_at)
+  })
+
+  return {
+    workspace: {
+      root: target.workspace_root,
+      label: target.workspace_label,
+    },
+    bundle: {
+      name: bundle.manifest.name,
+      version: bundle.manifest.version,
+      schema_version: bundle.manifest.schema_version,
+      manifest_path: pathRelative(target.workspace_root, bundle.manifestPath),
+    },
+    run: {
+      id: runId,
+      dir: pathRelative(target.workspace_root, store.runDir),
+      summary_path: pathRelative(target.workspace_root, store.summaryPath),
+      latest_path: pathRelative(target.workspace_root, store.latestPath),
+      status: typeof latest.status === "string" ? latest.status : "unknown",
+    },
+    latest,
+    actions,
+    artifacts,
+    approval_decisions: approvalDecisions,
+    approvals,
+    human_principals: bundle.manifest.principals
+      .filter((principal) => principal.kind === "human")
+      .map((principal) => {
+        const info: LocalAdminPrincipal = {
+          id: principal.id,
+          kind: principal.kind ?? "human",
+          roles: principal.roles ?? [],
+        }
+        if (principal.description !== undefined) info.description = principal.description
+        return info
+      }),
+  }
+}
+
+function redactSensitiveJson(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map((entry) => redactSensitiveJson(entry))
+  if (value === null || typeof value !== "object") return value
+  const output: Record<string, unknown> = {}
+  for (const [key, entry] of Object.entries(value)) {
+    output[key] = SECRET_KEY_PATTERN.test(key) ? "[redacted]" : redactSensitiveJson(entry)
+  }
+  return output
+}
+
+function jsonPreview(value: unknown): string {
+  return JSON.stringify(redactSensitiveJson(value), null, 2) ?? "null"
+}
+
+function escapeHtml(value: unknown): string {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;")
+}
+
+function statusClass(status: string): string {
+  if (status === "pending" || status === "approval_required") return "status-pending"
+  if (status === "granted" || status === "completed") return "status-good"
+  if (status === "rejected" || status === "denied" || status === "failed") return "status-bad"
+  return "status-muted"
+}
+
+function renderStatusPill(status: string): string {
+  return `<span class="status ${statusClass(status)}">${escapeHtml(status)}</span>`
+}
+
+function renderJsonBlock(value: unknown): string {
+  return `<pre>${escapeHtml(jsonPreview(value))}</pre>`
+}
+
+function shortValue(value: string, head = 14, tail = 8): string {
+  if (value.length <= head + tail + 3) return value
+  return `${value.slice(0, head)}...${value.slice(-tail)}`
+}
+
+function compactId(value: string): string {
+  if (value.length <= 28) return value
+  return shortValue(value, 20, 6)
+}
+
+function formatAdminDateTime(value: string): string {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date)
+}
+
+function humanizeIdentifier(value: string): string {
+  return value.replace(/[._-]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase())
+}
+
+function humanizeEffect(effect: string): string {
+  const parts = effect.split(":", 2)
+  const kind = parts[0] ?? effect
+  const target = parts[1]
+  if (target === undefined || target === "") return humanizeIdentifier(effect)
+  return `${humanizeIdentifier(kind)}: ${target}`
+}
+
+function renderPills(values: readonly string[]): string {
+  if (values.length === 0) return `<span class="meta">none</span>`
+  return `<span class="pills">${values.map((value) => `<span class="pill mono">${escapeHtml(value)}</span>`).join("")}</span>`
+}
+
+function renderInlineJsonValue(value: unknown): string {
+  if (Array.isArray(value)) {
+    const strings = value.filter((entry): entry is string => typeof entry === "string")
+    if (strings.length === value.length) return renderPills(strings)
+    return `<span class="mono">${escapeHtml(JSON.stringify(redactSensitiveJson(value)))}</span>`
+  }
+  if (value === null) return `<span class="meta">null</span>`
+  if (typeof value === "object") return `<span class="mono">${escapeHtml(JSON.stringify(redactSensitiveJson(value)))}</span>`
+  return `<span>${escapeHtml(value)}</span>`
+}
+
+function renderObjectSummary(value: unknown): string {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return renderInlineJsonValue(value)
+  const entries = Object.entries(redactSensitiveJson(value) as Record<string, unknown>)
+  if (entries.length === 0) return `<p class="meta">No structured payload was recorded.</p>`
+  return `<dl class="kv">${entries.map(([key, entry]) => {
+    return `<dt>${escapeHtml(key)}</dt><dd>${renderInlineJsonValue(entry)}</dd>`
+  }).join("")}</dl>`
+}
+
+function rawJsonDetails(label: string, value: unknown): string {
+  return `<details class="raw-json"><summary>${escapeHtml(label)}</summary>${renderJsonBlock(value)}</details>`
+}
+
+function approvalRuleClauses(value: JsonObject | undefined): string[] {
+  const clauses = value?.all_of
+  return Array.isArray(clauses) ? clauses.filter((entry): entry is string => typeof entry === "string") : []
+}
+
+function humanizeApprovalClause(clause: string): string {
+  if (clause === "principal.kind == human") return "Human approver"
+  if (clause === "grant.action_digest == action.digest") return "Exact action match"
+  if (clause.startsWith("principal.roles includes ")) return `Role: ${clause.slice("principal.roles includes ".length)}`
+  if (clause.startsWith("grant.capability == ")) return `Capability: ${clause.slice("grant.capability == ".length)}`
+  return clause
+}
+
+function payloadFieldLabel(key: string): string {
+  return key.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase())
+}
+
+function payloadHighlightKeys(payload: JsonObject): string[] {
+  const preferred = ["case_id", "queue", "integration", "message", "recipient", "subject", "title", "status"]
+  const keys: string[] = []
+  for (const key of preferred) {
+    if (payload[key] !== undefined) keys.push(key)
+  }
+  for (const key of Object.keys(payload)) {
+    if (keys.includes(key) || key === "artifact_ids") continue
+    if (SECRET_KEY_PATTERN.test(key)) continue
+    const value = payload[key]
+    if (value === null || typeof value !== "object") keys.push(key)
+    if (keys.length >= 6) break
+  }
+  return keys.slice(0, 6)
+}
+
+function payloadHighlightValue(key: string, value: JsonValue | undefined): string {
+  if (value === undefined) return "not recorded"
+  if (Array.isArray(value)) return `${value.length} item${value.length === 1 ? "" : "s"}`
+  if (value === null) return "not recorded"
+  if (typeof value === "object") return "structured data"
+  if (typeof value === "string" && /(^id$|_id$|digest)/i.test(key)) return compactId(value)
+  return String(value)
+}
+
+function primaryExternalEffect(effects: readonly string[]): string | undefined {
+  return effects.find((effect) => effect.startsWith("external.")) ?? effects[0]
+}
+
+function artifactWriteEffects(effects: readonly string[]): string[] {
+  return effects.filter((effect) => effect.startsWith("artifact.write:"))
+}
+
+function renderReviewSummary(approval: LocalAdminApproval): string {
+  const payload = approval.action.payload ?? {}
+  const primaryEffect = primaryExternalEffect(approval.approval_request.effects)
+  const artifactWrites = artifactWriteEffects(approval.approval_request.effects)
+  const highlights = payloadHighlightKeys(payload)
+  return `<section class="card review-summary">
+    <h3>Review Summary</h3>
+    <div class="summary-grid">
+      <div class="summary-item"><div class="summary-label">Primary Effect</div><div class="summary-value">${escapeHtml(primaryEffect === undefined ? "No external effect" : humanizeEffect(primaryEffect))}</div></div>
+      <div class="summary-item"><div class="summary-label">Capability</div><div class="summary-value">${escapeHtml(approval.action.capability ?? "none")}</div></div>
+      <div class="summary-item"><div class="summary-label">Requester</div><div class="summary-value mono">${escapeHtml(approval.action.principal)}</div></div>
+      <div class="summary-item"><div class="summary-label">Expires</div><div class="summary-value">${escapeHtml(formatAdminDateTime(approval.approval_request.expires_at))}</div></div>
+    </div>
+    ${highlights.length === 0 ? "" : `<div class="summary-list">${highlights.map((key) => {
+      return `<div><span>${escapeHtml(payloadFieldLabel(key))}</span><strong>${escapeHtml(payloadHighlightValue(key, payload[key]))}</strong></div>`
+    }).join("")}</div>`}
+    ${artifactWrites.length === 0 ? "" : `<p class="meta">Also writes: ${artifactWrites.map((effect) => escapeHtml(humanizeEffect(effect))).join(", ")}</p>`}
+  </section>`
+}
+
+function renderApprovalReason(approval: LocalAdminApproval): string {
+  const policy = approval.action.policy
+  const clauses = approvalRuleClauses(policy?.required_approval).map(humanizeApprovalClause)
+  const reason = policy?.reason ?? "This action requires a runtime approval before it can continue."
+  return `<section class="card approval-reason">
+    <h3>Why Approval Is Required</h3>
+    <p>${escapeHtml(reason)}</p>
+    <div class="rule-row">${renderPills(clauses)}</div>
+  </section>`
+}
+
+function renderPolicySummary(approval: LocalAdminApproval): string {
+  const policy = approval.action.policy
+  if (policy === undefined) return `<p class="meta">No policy decision was recorded.</p>`
+  const clauses = approvalRuleClauses(policy.required_approval)
+  return `<dl class="kv">
+    <dt>Decision</dt><dd>${renderStatusPill(policy.decision)}</dd>
+    <dt>Code</dt><dd><span class="mono">${escapeHtml(policy.code ?? "none")}</span></dd>
+    <dt>Capability</dt><dd>${escapeHtml(policy.capability ?? approval.action.capability ?? "none")}</dd>
+    <dt>Reason</dt><dd>${escapeHtml(policy.reason)}</dd>
+    <dt>Approval Rule</dt><dd>${renderPills(clauses)}</dd>
+  </dl>`
+}
+
+function renderApprovalRequestSummary(approval: LocalAdminApproval): string {
+  const request = approval.approval_request
+  return `<dl class="kv">
+    <dt>Request Artifact</dt><dd><span class="mono" title="${escapeHtml(approval.approval_request_artifact.id)}">${escapeHtml(compactId(approval.approval_request_artifact.id))}</span></dd>
+    <dt>Action Type</dt><dd>${escapeHtml(request.action_type)}</dd>
+    <dt>Digest</dt><dd><span class="mono" title="${escapeHtml(request.action_digest)}">${escapeHtml(shortValue(request.action_digest, 18, 10))}</span></dd>
+    <dt>Effects</dt><dd>${renderPills(request.effects.map(humanizeEffect))}</dd>
+    <dt>Inputs</dt><dd>${renderPills(request.input_artifact_ids.map(compactId))}</dd>
+    <dt>Expires</dt><dd><span title="${escapeHtml(request.expires_at)}">${escapeHtml(formatAdminDateTime(request.expires_at))}</span></dd>
+  </dl>`
+}
+
+function renderArtifactSummary(artifact: LocalBundleArtifactRecord): string {
+  return `<div class="artifact card">
+    <div class="artifact-title"><strong>${escapeHtml(artifact.title)}</strong><span class="meta mono">${escapeHtml(artifact.id)}</span></div>
+    <div class="meta">${escapeHtml(artifact.type)} - ${escapeHtml(artifact.status)} - created by ${escapeHtml(artifact.created_by_action_id)}</div>
+    ${renderObjectSummary(artifact.body)}
+    ${rawJsonDetails("Raw artifact JSON", artifact.body)}
+  </div>`
+}
+
+function renderLayout(title: string, state: LocalAdminConsoleState, body: string): string {
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${escapeHtml(title)} - Agentic Local Admin</title>
+  <style>
+    :root { color-scheme: light; --bg: #f5f3ef; --panel: #fffdf8; --ink: #1f2933; --muted: #64748b; --line: #ded7cc; --accent: #3b5bdb; --accent-soft: #e7ecff; --good: #166534; --good-bg: #dcfce7; --bad: #991b1b; --bad-bg: #fee2e2; --pending: #92400e; --pending-bg: #fef3c7; --code-bg: #111827; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .shell { max-width: 1120px; margin: 0 auto; padding: 20px 18px 36px; }
+    header { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; margin-bottom: 16px; }
+    h1 { font-size: 22px; line-height: 1.15; margin: 0 0 4px; letter-spacing: -0.02em; }
+    h2 { font-size: 17px; margin: 0 0 10px; }
+    h3 { font-size: 14px; margin: 0 0 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+    .eyebrow { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.1em; }
+    .meta { color: var(--muted); }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
+    .nav { display: flex; gap: 10px; align-items: center; }
+    .nav a { border: 1px solid var(--line); background: var(--panel); border-radius: 8px; padding: 5px 10px; color: var(--ink); }
+    .grid { display: grid; gap: 10px; }
+    .stats { grid-template-columns: repeat(4, minmax(0, 1fr)); margin-bottom: 12px; }
+    .card { background: var(--panel); border: 1px solid var(--line); border-radius: 9px; padding: 12px; box-shadow: 0 4px 12px rgba(31, 41, 51, 0.04); }
+    .stat-value { font-size: 22px; font-weight: 700; letter-spacing: -0.03em; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 8px 8px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+    th { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; }
+    tr:last-child td { border-bottom: 0; }
+    .status { display: inline-flex; border-radius: 6px; padding: 2px 7px; font-size: 12px; font-weight: 650; }
+    .status-pending { background: var(--pending-bg); color: var(--pending); }
+    .status-good { background: var(--good-bg); color: var(--good); }
+    .status-bad { background: var(--bad-bg); color: var(--bad); }
+    .status-muted { background: #e5e7eb; color: #475569; }
+    .review-top { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 10px; align-items: start; margin-bottom: 10px; }
+    .review-sections { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.65fr); gap: 10px; align-items: start; margin-bottom: 14px; }
+    .summary-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 6px; }
+    .summary-item { border: 1px solid var(--line); background: #fbfaf7; border-radius: 7px; padding: 9px; min-width: 0; }
+    .summary-label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+    .summary-value { margin-top: 2px; font-weight: 700; overflow-wrap: anywhere; }
+    .summary-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px 14px; margin: 12px 0 8px; }
+    .summary-list div { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 10px; align-items: baseline; }
+    .summary-list span { color: var(--muted); }
+    .summary-list strong { font-weight: 650; overflow-wrap: anywhere; }
+    .approval-reason p { margin: 0 0 10px; }
+    .rule-row { margin-top: 8px; }
+    .technical-details { margin-bottom: 14px; }
+    .technical-details > summary { cursor: pointer; color: var(--accent); font-weight: 700; }
+    .technical-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
+    dl { display: grid; grid-template-columns: 140px minmax(0, 1fr); gap: 6px 12px; margin: 0; }
+    .kv { grid-template-columns: 118px minmax(0, 1fr); }
+    dt { color: var(--muted); }
+    dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+    pre { margin: 0; padding: 10px; overflow: auto; border-radius: 7px; background: var(--code-bg); color: #e5e7eb; font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    details.raw-json { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 8px; }
+    details.raw-json summary { cursor: pointer; color: var(--accent); font-weight: 650; }
+    details.raw-json pre { margin-top: 8px; max-height: 420px; }
+    form { display: grid; gap: 10px; }
+    label { display: grid; gap: 5px; color: var(--muted); font-size: 12px; font-weight: 650; text-transform: uppercase; letter-spacing: 0.08em; }
+    select, textarea { width: 100%; border: 1px solid var(--line); border-radius: 7px; padding: 7px 8px; font: inherit; background: white; color: var(--ink); }
+    textarea { min-height: 68px; resize: vertical; }
+    .button-row { display: flex; gap: 10px; flex-wrap: wrap; }
+    button { border: 0; border-radius: 7px; padding: 7px 11px; font: inherit; font-weight: 700; cursor: pointer; }
+    .primary { background: var(--accent); color: white; }
+    .danger { background: var(--bad-bg); color: var(--bad); }
+    .empty { padding: 24px; text-align: center; color: var(--muted); }
+    .artifact { display: grid; gap: 8px; margin-top: 10px; }
+    .artifact-title { display: flex; justify-content: space-between; gap: 10px; }
+    .pills { display: flex; gap: 5px; flex-wrap: wrap; }
+    .pill { display: inline-flex; align-items: center; border: 1px solid var(--line); background: #f8fafc; border-radius: 5px; padding: 1px 5px; color: #334155; }
+    @media (max-width: 980px) { .review-sections, .technical-grid, .summary-grid { grid-template-columns: 1fr; } .review-top { grid-template-columns: 1fr; } }
+    @media (max-width: 760px) { .stats { grid-template-columns: 1fr; } header { display: grid; } dl, .kv { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header>
+      <div>
+        <div class="eyebrow">Agentic Local Admin</div>
+        <h1>${escapeHtml(state.bundle.name)} <span class="meta">${escapeHtml(state.bundle.version)}</span></h1>
+        <div class="meta mono" title="${escapeHtml(state.run.id)}">run ${escapeHtml(compactId(state.run.id))} - ${escapeHtml(state.run.status)}</div>
+      </div>
+      <nav class="nav" aria-label="Admin navigation">
+        <a href="/approvals">Approvals</a>
+      </nav>
+    </header>
+    ${body}
+  </div>
+</body>
+</html>`
+}
+
+function renderApprovalsPage(state: LocalAdminConsoleState): string {
+  const pendingCount = state.approvals.filter((approval) => approvalDisplayStatus(approval) === "pending").length
+  const decidedCount = state.approvals.filter((approval) => approval.decision !== undefined).length
+  const rows = state.approvals.map((approval) => {
+    const status = approvalDisplayStatus(approval)
+    return `<tr>
+      <td>${renderStatusPill(status)}</td>
+      <td><a class="mono" href="/approvals/${encodeURIComponent(approval.action.id)}">${escapeHtml(approval.action.id)}</a><br><span class="meta">${escapeHtml(approval.action.type)}</span></td>
+      <td>${escapeHtml(approval.action.capability ?? "none")}</td>
+      <td class="mono">${escapeHtml(approval.action.principal)}</td>
+      <td class="mono">${escapeHtml(approval.approval_request.expires_at)}</td>
+    </tr>`
+  }).join("")
+  const body = `<section class="grid stats">
+    <div class="card"><div class="meta">Pending</div><div class="stat-value">${pendingCount}</div></div>
+    <div class="card"><div class="meta">Decided</div><div class="stat-value">${decidedCount}</div></div>
+    <div class="card"><div class="meta">Actions</div><div class="stat-value">${state.actions.length}</div></div>
+    <div class="card"><div class="meta">Artifacts</div><div class="stat-value">${state.artifacts.length}</div></div>
+  </section>
+  <section class="card">
+    <h2>Approval Inbox</h2>
+    ${state.approvals.length === 0 ? `<div class="empty">No approval requests in the latest run.</div>` : `<table>
+      <thead><tr><th>Status</th><th>Action</th><th>Capability</th><th>Requester</th><th>Expires</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`}
+  </section>`
+  return renderLayout("Approvals", state, body)
+}
+
+function principalOptions(state: LocalAdminConsoleState): string {
+  return state.human_principals.map((principal) => {
+    const roles = principal.roles.length === 0 ? "" : ` (${principal.roles.join(", ")})`
+    return `<option value="${escapeHtml(principal.id)}">${escapeHtml(principal.id + roles)}</option>`
+  }).join("")
+}
+
+function renderDecisionForm(
+  state: LocalAdminConsoleState,
+  approval: LocalAdminApproval,
+  csrfToken: string,
+): string {
+  const status = approvalDisplayStatus(approval)
+  if (status !== "pending") {
+    return `<div class="card"><h2>Decision</h2>${approval.decision === undefined ? `<p class="meta">No decision can be recorded because this approval is ${escapeHtml(status)}.</p>` : renderJsonBlock(approval.decision)}</div>`
+  }
+  if (state.human_principals.length === 0) {
+    return `<div class="card"><h2>Decision</h2><p class="meta">No human principals are declared in this bundle.</p></div>`
+  }
+  return `<div class="card">
+    <h2>Decision</h2>
+    <form method="post" action="/approvals/${encodeURIComponent(approval.action.id)}/approve">
+      <input type="hidden" name="_csrf" value="${escapeHtml(csrfToken)}">
+      <label>Principal<select name="principal" required>${principalOptions(state)}</select></label>
+      <label>Comment<textarea name="comment" placeholder="Optional approval note"></textarea></label>
+      <div class="button-row">
+        <button class="primary" type="submit">Approve And Resume</button>
+        <button class="danger" type="submit" formaction="/approvals/${encodeURIComponent(approval.action.id)}/reject">Reject</button>
+      </div>
+    </form>
+  </div>`
+}
+
+function renderApprovalDetailPage(
+  state: LocalAdminConsoleState,
+  approval: LocalAdminApproval,
+  csrfToken: string,
+): string {
+  const status = approvalDisplayStatus(approval)
+  const artifacts = approval.input_artifacts.map(renderArtifactSummary).join("")
+  const body = `<p class="meta"><a href="/approvals">Approvals</a> / <span class="mono">${escapeHtml(approval.action.id)}</span></p>
+  <section class="review-top">
+    <div class="card">
+      <h2>Approval Detail ${renderStatusPill(status)}</h2>
+      <dl>
+        <dt>Action</dt><dd class="mono">${escapeHtml(approval.action.id)}</dd>
+        <dt>Type</dt><dd>${escapeHtml(approval.action.type)}</dd>
+        <dt>Requester</dt><dd class="mono">${escapeHtml(approval.action.principal)}</dd>
+        <dt>Capability</dt><dd>${escapeHtml(approval.action.capability ?? "none")}</dd>
+        <dt>Effects</dt><dd>${renderPills(approval.approval_request.effects.map(humanizeEffect))}</dd>
+        <dt>Expires</dt><dd title="${escapeHtml(approval.approval_request.expires_at)}">${escapeHtml(formatAdminDateTime(approval.approval_request.expires_at))}</dd>
+      </dl>
+    </div>
+    ${renderDecisionForm(state, approval, csrfToken)}
+  </section>
+  <section class="review-sections">
+    ${renderReviewSummary(approval)}
+    ${renderApprovalReason(approval)}
+  </section>
+  <details class="card technical-details">
+    <summary>Technical details</summary>
+    <div class="technical-grid">
+    <div class="card">
+      <h3>Action Payload</h3>
+      ${renderObjectSummary(approval.action.payload ?? {})}
+      ${rawJsonDetails("Raw action JSON", approval.action.payload ?? {})}
+    </div>
+    <div class="card">
+      <h3>Approval Request</h3>
+      ${renderApprovalRequestSummary(approval)}
+      ${rawJsonDetails("Raw request JSON", approval.approval_request)}
+    </div>
+    <div class="card">
+      <h3>Policy Decision</h3>
+      ${renderPolicySummary(approval)}
+      ${rawJsonDetails("Raw policy JSON", approval.action.policy ?? {})}
+    </div>
+    </div>
+  </details>
+  <section>
+    <h2>Input Artifacts</h2>
+    ${artifacts.length === 0 ? `<div class="card empty">No input artifacts were recorded for this approval.</div>` : artifacts}
+  </section>`
+  return renderLayout(`Approval ${approval.action.id}`, state, body)
+}
+
+function htmlResponse(html: string, status = 200): Response {
+  return new Response(html, {
+    status,
+    headers: { "content-type": "text/html; charset=utf-8" },
+  })
+}
+
+function jsonResponse(value: unknown, status = 200): Response {
+  return new Response(`${JSON.stringify(value, null, 2)}\n`, {
+    status,
+    headers: { "content-type": "application/json; charset=utf-8" },
+  })
+}
+
+function redirectResponse(location: string): Response {
+  return new Response(null, { status: 303, headers: { location } })
+}
+
+function errorResponse(message: string, status = 500): Response {
+  return htmlResponse(`<!doctype html><title>Agentic Local Admin Error</title><pre>${escapeHtml(message)}</pre>`, status)
+}
+
+function apiApproval(approval: LocalAdminApproval): Record<string, unknown> {
+  return {
+    action_id: approval.action.id,
+    action_type: approval.action.type,
+    status: approvalDisplayStatus(approval),
+    action_status: approval.action.status,
+    capability: approval.action.capability ?? null,
+    principal: approval.action.principal,
+    action_digest: approval.action.digest ?? null,
+    expires_at: approval.approval_request.expires_at,
+    approval_request_id: approval.approval_request_artifact.id,
+    decision: approval.decision ?? null,
+    input_artifact_ids: approval.input_artifacts.map((artifact) => artifact.id),
+  }
+}
+
+function apiConsoleState(state: LocalAdminConsoleState): Record<string, unknown> {
+  return {
+    workspace: state.workspace,
+    bundle: state.bundle,
+    run: state.run,
+    counts: {
+      approvals: state.approvals.length,
+      pending_approvals: state.approvals.filter((approval) => approvalDisplayStatus(approval) === "pending").length,
+      actions: state.actions.length,
+      artifacts: state.artifacts.length,
+    },
+    approvals: state.approvals.map(apiApproval),
+  }
+}
+
+async function decisionFormValue(request: Request): Promise<Record<string, string>> {
+  const contentType = request.headers.get("content-type") ?? ""
+  if (contentType.includes("application/json")) {
+    const parsed = await request.json()
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return {}
+    const output: Record<string, string> = {}
+    for (const [key, value] of Object.entries(parsed)) {
+      if (typeof value === "string") output[key] = value
+    }
+    return output
+  }
+
+  const form = await request.formData()
+  const output: Record<string, string> = {}
+  for (const [key, value] of form.entries()) {
+    if (typeof value === "string") output[key] = value
+  }
+  return output
+}
+
+function requireCsrfToken(input: Record<string, string>, request: Request, expected: string): Response | undefined {
+  const token = input._csrf ?? request.headers.get("x-agentic-csrf") ?? ""
+  if (token === expected) return undefined
+  return errorResponse("Forbidden: missing or invalid local admin CSRF token.", 403)
+}
+
+async function handleApprovalDecisionRequest(
+  ctx: RuntimeContext,
+  options: LocalAdminConsoleOptions,
+  request: Request,
+  actionId: string,
+  decision: "approve" | "reject",
+  api: boolean,
+): Promise<Response> {
+  const input = await decisionFormValue(request)
+  const csrfError = requireCsrfToken(input, request, options.csrfToken ?? "")
+  if (csrfError !== undefined) return csrfError
+  const principal = input.principal
+  if (principal === undefined || principal.trim() === "") {
+    return errorResponse("A human approval principal is required.", 400)
+  }
+  const comment = input.comment?.trim() === "" ? undefined : input.comment
+  const targetArgs = localAdminConsoleTargetArgs(options)
+  const commandArgs: RuntimeApprovalDecisionArgs = {
+    target: targetArgs.target,
+    action_id: actionId,
+    principal,
+    args: [],
+    flags: targetArgs.flags,
+  }
+  if (comment !== undefined) commandArgs.comment = comment
+  const result = decision === "approve"
+    ? await approveLocalRuntime(ctx, commandArgs)
+    : await rejectLocalRuntime(ctx, commandArgs)
+  if (api) return jsonResponse(result.data ?? {})
+  return redirectResponse(`/approvals/${encodeURIComponent(actionId)}`)
+}
+
+export function createLocalAdminConsoleHandler(
+  ctx: RuntimeContext,
+  options: LocalAdminConsoleOptions = {},
+): (request: Request) => Promise<Response> {
+  const csrfToken = options.csrfToken ?? crypto.randomUUID()
+  const handlerOptions: LocalAdminConsoleOptions = { ...options, csrfToken }
+  return async function handleLocalAdminConsoleRequest(request: Request): Promise<Response> {
+    const url = new URL(request.url)
+    const segments = url.pathname.split("/").filter(Boolean).map((segment) => decodeURIComponent(segment))
+
+    try {
+      if (request.method === "GET" && segments.length === 0) return redirectResponse("/approvals")
+
+      if (request.method === "GET" && segments[0] === "api" && segments[1] === "approvals" && segments.length === 2) {
+        return jsonResponse(apiConsoleState(await loadLocalAdminConsoleState(ctx, handlerOptions)))
+      }
+
+      if (request.method === "GET" && segments[0] === "api" && segments[1] === "approvals" && segments.length === 3) {
+        const state = await loadLocalAdminConsoleState(ctx, handlerOptions)
+        const approval = state.approvals.find((entry) => entry.action.id === segments[2])
+        if (approval === undefined) return jsonResponse({ error: "approval not found" }, 404)
+        return jsonResponse(apiApproval(approval))
+      }
+
+      if (request.method === "GET" && segments[0] === "approvals" && segments.length === 1) {
+        return htmlResponse(renderApprovalsPage(await loadLocalAdminConsoleState(ctx, handlerOptions)))
+      }
+
+      if (request.method === "GET" && segments[0] === "approvals" && segments.length === 2) {
+        const state = await loadLocalAdminConsoleState(ctx, handlerOptions)
+        const approval = state.approvals.find((entry) => entry.action.id === segments[1])
+        if (approval === undefined) return errorResponse("Approval not found.", 404)
+        return htmlResponse(renderApprovalDetailPage(state, approval, csrfToken))
+      }
+
+      if (
+        request.method === "POST" && segments[0] === "approvals" && segments.length === 3 &&
+        (segments[2] === "approve" || segments[2] === "reject")
+      ) {
+        return handleApprovalDecisionRequest(ctx, handlerOptions, request, segments[1]!, segments[2], false)
+      }
+
+      if (
+        request.method === "POST" && segments[0] === "api" && segments[1] === "approvals" && segments.length === 4 &&
+        (segments[3] === "approve" || segments[3] === "reject")
+      ) {
+        return handleApprovalDecisionRequest(ctx, handlerOptions, request, segments[2]!, segments[3], true)
+      }
+
+      return errorResponse("Not found.", 404)
+    } catch (err) {
+      return errorResponse(errorMessage(err), 500)
+    }
+  }
+}
+
+function resolveLocalAdminConsoleHost(args: RuntimeRunArgs): string {
+  if (args.flags["ui-host"] === true) throw new Error("`--ui-host` requires a value.")
+  const host = stringFlag(args.flags, "ui-host") ?? DEFAULT_UI_HOST
+  if (host !== "127.0.0.1" && host !== "localhost" && host !== "::1") {
+    throw new Error("Local admin console only binds to loopback hosts: 127.0.0.1, localhost, or ::1.")
+  }
+  return host
+}
+
+function resolveLocalAdminConsolePort(args: RuntimeRunArgs): number {
+  if (args.flags["ui-port"] === true) throw new Error("`--ui-port` requires a numeric value.")
+  const raw = stringFlag(args.flags, "ui-port") ?? String(DEFAULT_UI_PORT)
+  const port = Number(raw)
+  if (!Number.isInteger(port) || port < 0 || port > 65535) {
+    throw new Error(`Invalid local admin console port: ${raw}`)
+  }
+  return port
+}
+
+const localAdminConsoleServers: unknown[] = []
+
+function startLocalAdminConsoleServer(
+  ctx: RuntimeContext,
+  args: RuntimeRunArgs,
+): { url: string; host: string; port: number } {
+  const host = resolveLocalAdminConsoleHost(args)
+  const port = resolveLocalAdminConsolePort(args)
+  const handler = createLocalAdminConsoleHandler(ctx, {
+    target: args.target,
+    args: args.args,
+    flags: args.flags,
+  })
+  const server = Bun.serve({ hostname: host, port, fetch: handler })
+  localAdminConsoleServers.push(server)
+  if (server.port === undefined) throw new Error("Local admin console server did not report a bound port.")
+  const urlHost = host === "::1" ? "[::1]" : host
+  return { url: `http://${urlHost}:${server.port}`, host, port: server.port }
+}
+
 async function initLocalRuntime(
   ctx: RuntimeContext,
   _args: RuntimeInitArgs,
@@ -3050,11 +3856,18 @@ async function runLocalRuntime(
   const target = await resolveRunTarget(ctx, args)
   const harness = resolveHarness(ctx, args)
   const contextMode = resolveContextMode(ctx, args)
+  const uiRequested = booleanFlag(args, "ui")
   if (harness === "none" && piInteractive(args)) {
     throw new Error('`--interactive` requires `--harness pi` or runtime config `harness = "pi"`.')
   }
   if (!(await hasAgenticWorkspace(target.workspace_root))) {
     throw new Error(`No Agentic workspace found at ${target.workspace_root}.`)
+  }
+  if (uiRequested && contextMode === "artifacts") {
+    throw new Error("Local admin console only supports authored bundle runs.")
+  }
+  if (uiRequested && (await bundleRootForWorkspace(target.workspace_root)) === undefined) {
+    throw new Error("Local admin console requires an authored Agentic bundle target.")
   }
   await ensureLocalRuntimeState(target.workspace_root)
 
@@ -3074,6 +3887,7 @@ async function runLocalRuntime(
   if (run === undefined) {
     throw new Error("Local runtime run did not produce a run context.")
   }
+  const ui = uiRequested ? startLocalAdminConsoleServer(ctx, args) : undefined
   const targetName = run.bundle?.manifest.name ?? run.graph?.id ?? run.persona?.name ?? run.context_mode
   const bundleData = run.bundle === undefined
     ? {}
@@ -3092,7 +3906,9 @@ async function runLocalRuntime(
 
   return {
     summary: run.context_mode === "bundle"
-      ? `Prepared local Agentic bundle ${targetName} and wrote run ${run.bundle_run_id}.`
+      ? ui === undefined
+        ? `Prepared local Agentic bundle ${targetName} and wrote run ${run.bundle_run_id}.`
+        : `Prepared local Agentic bundle ${targetName}, wrote run ${run.bundle_run_id}, and started the local admin console at ${ui.url}.`
       : harnessResult === undefined
       ? `Prepared local Agentic run for ${targetName} and wrote artifact ${run.artifact_id}.`
       : `Ran local Agentic target ${targetName} through Pi session ${harnessResult.session_id}.`,
@@ -3112,6 +3928,7 @@ async function runLocalRuntime(
       workflow_id: run.graph?.id ?? null,
       workflow_run_id: run.workflow_run_id ?? null,
       artifact_id: run.context_mode === "bundle" ? null : run.artifact_id,
+      ui: ui ?? null,
       ...bundleData,
       persona: run.persona?.name ?? null,
       skills: run.skills.map((skill) => skill.name),
