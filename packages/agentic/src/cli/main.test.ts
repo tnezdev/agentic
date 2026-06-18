@@ -1188,6 +1188,12 @@ describe("CLI", () => {
 
       const agentBootstrap = await readFile(join(tmpDir, "AGENTS.md"), "utf-8")
       expect(agentBootstrap).toContain("Case Review Bundle")
+      expect(agentBootstrap).toContain("agentic dev . --json")
+
+      const starterPackage = JSON.parse(await readFile(join(tmpDir, "package.json"), "utf-8")) as {
+        scripts: Record<string, string>
+      }
+      expect(starterPackage.scripts.dev).toBe("agentic dev . --json")
 
       const validate = (await runJson(...base, "validate", ".")) as { valid: boolean }
       expect(validate.valid).toBe(true)

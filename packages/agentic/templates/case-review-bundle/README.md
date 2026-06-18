@@ -4,6 +4,14 @@ This workspace is a starter copy of Agentic's canonical authored bundle example.
 
 ## Run It
 
+Use the one-shot authoring loop while editing the starter:
+
+```bash
+agentic dev . --json
+```
+
+Use the explicit lifecycle commands when you want to inspect each phase:
+
 ```bash
 agentic validate . --json
 agentic inspect . --json

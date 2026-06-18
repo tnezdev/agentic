@@ -8,7 +8,13 @@ This directory is an Agentic authored bundle starter for local runtime work.
 
 ## Start Here
 
-Run the local bundle through the runtime:
+Run the one-shot local authoring loop:
+
+```bash
+agentic dev . --json
+```
+
+Use the stable serve path when you only need to rerun runtime execution:
 
 ```bash
 agentic serve . --clean --json

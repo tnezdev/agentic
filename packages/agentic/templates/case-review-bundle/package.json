@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "dev": "agentic dev . --json",
     "validate": "agentic validate . --json",
     "inspect": "agentic inspect . --json",
     "serve": "agentic serve . --clean --json",
