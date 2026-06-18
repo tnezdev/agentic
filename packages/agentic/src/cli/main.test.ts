@@ -1068,6 +1068,50 @@ describe("CLI", () => {
       expect(artifact.artifact.finalized).toBe(true)
     })
 
+    it("scaffolds a runnable case-review bundle example", async () => {
+      const result = (await runJson(...base, "init", "--example", "case-review-bundle")) as {
+        initialized: boolean
+        example: string
+        filesWritten: number
+      }
+
+      expect(result.initialized).toBe(true)
+      expect(result.example).toBe("case-review-bundle")
+      expect(result.filesWritten).toBeGreaterThan(0)
+
+      const agentBootstrap = await readFile(join(tmpDir, "AGENTS.md"), "utf-8")
+      expect(agentBootstrap).toContain("Case Review Bundle")
+
+      const validate = (await runJson(...base, "validate", ".")) as { valid: boolean }
+      expect(validate.valid).toBe(true)
+
+      const inspectBeforeRun = (await runJson(...base, "inspect", ".")) as {
+        ok: boolean
+        bundle: { schema_version: string } | null
+        state: { exists: boolean } | null
+      }
+      expect(inspectBeforeRun.ok).toBe(true)
+      expect(inspectBeforeRun.bundle?.schema_version).toBe("case-review-bundle.example.v0")
+      expect(inspectBeforeRun.state?.exists).toBe(false)
+
+      const runtimeEnv = { AGENTIC_RUNTIME_PACKAGE_DIRS: join(REPO_ROOT, "packages") }
+      const served = (await runJsonWithEnv(runtimeEnv, ...base, "serve", ".", "--clean")) as {
+        command: string
+        status: string
+      }
+      expect(served.command).toBe("serve")
+      expect(served.status).toBe("delegated")
+
+      const evalResult = (await runJson(...base, "eval", ".")) as {
+        ok: boolean
+        evals: Array<{ id: string; ok: boolean }>
+      }
+      expect(evalResult.ok).toBe(true)
+      expect(evalResult.evals).toHaveLength(1)
+      expect(evalResult.evals[0]?.id).toBe("case-review-smoke")
+      expect(evalResult.evals[0]?.ok).toBe(true)
+    })
+
     it("does not overwrite existing files when scaffolding an example", async () => {
       await mkdir(tmpDir, { recursive: true })
       await writeFile(join(tmpDir, "AGENTS.md"), "custom bootstrap")

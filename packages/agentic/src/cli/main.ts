@@ -167,7 +167,7 @@ const USAGE = `Usage: agentic <command> [args] [flags]
        spores  <command> [args] [flags]    (compatibility alias)
 
 Commands:
-  init [--example second-brain]       Scaffold .agentic/ directory
+  init [--example <name>]             Scaffold .agentic/ directory
   run [target]                        Run current workspace with default runtime
   serve [target]                      Serve a target with the default runtime
   eval [path]                         Evaluate local run state against bundle evals

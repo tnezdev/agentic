@@ -1,0 +1,28 @@
+id: handoff.release
+kind: capability_declaration
+description: Release synthetic findings to a reviewer queue only after authenticated approval.
+action: external.handoff
+effects:
+  - external.write:review-queue
+  - artifact.write:handoff-note
+data_classes:
+  - synthetic_regulated_demo
+principals:
+  allowed:
+    - agent:case-reviewer
+integrations:
+  - review-queue
+approval:
+  required: true
+  approver_rule:
+    all_of:
+      - principal.kind == human
+      - principal.roles includes licensed-reviewer
+      - grant.action_digest == action.digest
+      - grant.capability == handoff.release
+    example_principals:
+      - user:reviewer.alba
+handler:
+  kind: external-integration
+  integration: review-queue
+  operation: enqueue_handoff

@@ -35,6 +35,9 @@ npm install @tnezdev/agentic
 # Scaffold .agentic/ directory in your project
 agentic init
 
+# Or scaffold the canonical authored bundle starter
+agentic init --example case-review-bundle
+
 # Store a memory
 agentic memory remember "always emit types from the public API" --tags style,api
 
@@ -53,7 +56,7 @@ agentic persona activate spores-maintainer | llm --system -
 # Preview the runtime package front door
 agentic runtime list
 
-# In this repo, run an authored bundle through the local runtime
+# Run an authored bundle through the local runtime
 agentic serve examples/case-review-bundle --clean --json
 
 # Inspect and evaluate the latest bundle run

@@ -1,0 +1,12 @@
+id: surface.receive
+kind: action_declaration
+description: Record external ingress translated into durable artifacts.
+input:
+  - external_request
+output_artifacts:
+  - case-review-request
+  - case-packet
+effects:
+  - artifact.write:case-review-request
+  - artifact.write:case-packet
+policy: surface principal must be authenticated by the host runtime

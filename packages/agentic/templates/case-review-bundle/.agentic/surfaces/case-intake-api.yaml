@@ -1,0 +1,15 @@
+id: case-intake-api
+kind: surface_declaration
+surface: api
+route: POST /cases
+principal: service:demo-api
+fixture: case-request-001
+proposes:
+  action: surface.receive
+  data_class: synthetic_regulated_demo
+emits:
+  - artifact: case-review-request
+    status: received
+  - artifact: case-packet
+    status: intake_ready
+notes: The surface converts external input into artifacts. It does not validate, hand off, or bypass capability policy.

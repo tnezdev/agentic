@@ -19,7 +19,8 @@ graphs_dir = ".agentic/workflows"
 runs_dir = ".agentic/runs"
 `
 
-const EXAMPLES = new Set(["second-brain"])
+const EXAMPLES = ["second-brain", "case-review-bundle"] as const
+const EXAMPLE_SET = new Set<string>(EXAMPLES)
 
 async function exists(path: string): Promise<boolean> {
   try {
@@ -31,8 +32,8 @@ async function exists(path: string): Promise<boolean> {
 }
 
 function exampleTemplateDir(name: string): string {
-  if (!EXAMPLES.has(name)) {
-    throw new Error(`Unknown example "${name}". Known examples: second-brain.`)
+  if (!EXAMPLE_SET.has(name)) {
+    throw new Error(`Unknown example "${name}". Known examples: ${EXAMPLES.join(", ")}.`)
   }
 
   return fileURLToPath(new URL(`../../../templates/${name}/`, import.meta.url))

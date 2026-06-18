@@ -1,0 +1,12 @@
+{
+  "name": "case-review-bundle-starter",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "validate": "agentic validate . --json",
+    "inspect": "agentic inspect . --json",
+    "serve": "agentic serve . --clean --json",
+    "eval": "agentic eval . --json",
+    "check": "agentic validate . --json && agentic serve . --clean --json && agentic eval . --json"
+  }
+}

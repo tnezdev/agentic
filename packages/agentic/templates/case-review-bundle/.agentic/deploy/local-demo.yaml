@@ -1,0 +1,26 @@
+id: local-demo
+kind: deploy_target
+description: Local filesystem deployment for inspecting the bundle/runtime boundary.
+state:
+  adapter: filesystem
+  dir: .agentic/.data
+runtime:
+  local:
+    handlers:
+      module: ../handlers.ts
+      actions:
+        surface.receive: receiveSurface
+        case.validate: validateCase
+      proposal_payloads:
+        validation-result.propose-handoff: createHandoffPayload
+materializes:
+  - surfaces
+  - schedules
+  - hooks
+  - capabilities
+not_included:
+  - model_provider
+  - approval_ui
+  - real_review_queue
+  - secrets
+  - network_access

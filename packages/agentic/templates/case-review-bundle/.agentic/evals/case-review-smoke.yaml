@@ -1,0 +1,19 @@
+id: case-review-smoke
+kind: eval_declaration
+description: Smoke expectations for the local runner.
+fixture: case-request-001
+expect:
+  artifacts:
+    - case-review-request
+    - case-packet
+    - validation-result
+    - approval-request
+  actions:
+    - surface.receive
+    - schedule.tick
+    - case.validate
+    - hook.run
+    - approval.request
+    - external.handoff
+  approval_required: external.handoff
+  external_write_executed: false

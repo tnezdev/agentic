@@ -1,0 +1,12 @@
+id: external.handoff
+kind: action_declaration
+description: Release a handoff note to an external review queue after policy and approval gates pass.
+capability: handoff.release
+input_artifacts:
+  - case-packet
+  - validation-result
+output_artifacts:
+  - handoff-note
+effects:
+  - external.write:review-queue
+  - artifact.write:handoff-note

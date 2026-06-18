@@ -1,0 +1,18 @@
+id: nightly-qc-sweep
+kind: schedule_declaration
+cron: 0 3 * * *
+timezone: UTC
+principal: service:nightly-scheduler
+selects:
+  artifact: case-packet
+  status: intake_ready
+  tags:
+    - queued-for-validation
+proposes:
+  action: case.validate
+  capability: case.validate
+  principal: agent:case-reviewer
+  data_class: synthetic_regulated_demo
+  payload:
+    guideline_fixture: guideline-excerpt
+notes: Timed ingress proposes validation through the same action gateway an API or human request would use.

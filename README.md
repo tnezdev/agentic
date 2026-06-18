@@ -32,6 +32,13 @@ agentic serve examples/case-review-bundle --clean --json
 agentic eval examples/case-review-bundle --json
 ```
 
+To scaffold a starter copy in a new workspace:
+
+```bash
+agentic init --example case-review-bundle
+agentic serve . --clean --json
+```
+
 `agentic run` remains the lower-level runtime entrypoint for workflow, artifact, and harness-oriented contexts. New bundle docs should prefer `serve`, then use `validate`, `inspect`, and `eval` around it.
 
 ## Design Docs

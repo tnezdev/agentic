@@ -1,0 +1,11 @@
+id: case.validate
+kind: action_declaration
+description: Validate a case packet and write a validation-result artifact.
+capability: case.validate
+input_artifacts:
+  - case-packet
+output_artifacts:
+  - validation-result
+effects:
+  - artifact.read:case-packet
+  - artifact.write:validation-result

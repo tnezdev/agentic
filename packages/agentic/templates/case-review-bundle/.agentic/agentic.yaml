@@ -1,0 +1,94 @@
+schema_version: case-review-bundle.example.v0
+name: regulated-case-review
+version: 0.1.0
+description: Synthetic regulated case-review bundle proving artifacts, actions, capabilities, hooks, surfaces, schedules, approvals, and local runtime state.
+state:
+  adapter: filesystem
+  dir: .agentic/.data
+principals:
+  - id: service:demo-api
+    kind: service
+    description: Trusted local fixture surface for demo intake.
+  - id: service:nightly-scheduler
+    kind: service
+    description: Trusted scheduler principal for selecting queued packets.
+  - id: service:agentic-runtime
+    kind: service
+    description: Runtime-owned principal for hooks and approval-request records.
+  - id: agent:case-reviewer
+    kind: agent
+    description: Model or agent loop operating within declared capabilities.
+  - id: user:reviewer.alba
+    kind: human
+    roles:
+      - licensed-reviewer
+    description: Example reviewer principal who could approve exact handoff actions through a host-owned channel.
+prompts:
+  - id: case-reviewer-startup
+    path: prompts/case-reviewer-startup.md
+  - id: reviewer-handoff
+    path: prompts/reviewer-handoff.md
+skills:
+  - id: intake-normalization
+    path: skills/intake-normalization/SKILL.md
+  - id: validate-case
+    path: skills/validate-case/SKILL.md
+  - id: prepare-handoff
+    path: skills/prepare-handoff/SKILL.md
+artifacts:
+  - id: case-review-request
+    path: artifacts/case-review-request.yaml
+  - id: case-packet
+    path: artifacts/case-packet.yaml
+  - id: validation-result
+    path: artifacts/validation-result.yaml
+  - id: handoff-note
+    path: artifacts/handoff-note.yaml
+  - id: approval-request
+    path: artifacts/approval-request.yaml
+actions:
+  - id: surface.receive
+    path: actions/surface.receive.yaml
+  - id: schedule.tick
+    path: actions/schedule.tick.yaml
+  - id: case.validate
+    path: actions/case.validate.yaml
+  - id: hook.run
+    path: actions/hook.run.yaml
+  - id: approval.request
+    path: actions/approval.request.yaml
+  - id: external.handoff
+    path: actions/external.handoff.yaml
+capabilities:
+  - id: case.validate
+    path: capabilities/case.validate.yaml
+  - id: handoff.release
+    path: capabilities/handoff.release.yaml
+hooks:
+  - id: validation-result.propose-handoff
+    path: hooks/validation-result.propose-handoff.yaml
+surfaces:
+  - id: case-intake-api
+    path: surfaces/case-intake-api.yaml
+schedules:
+  - id: nightly-qc-sweep
+    path: schedules/nightly-qc-sweep.yaml
+integrations:
+  - id: review-queue
+    path: integrations/review-queue.yaml
+policies:
+  - id: data-boundary
+    path: policies/data-boundary.yaml
+  - id: approvals
+    path: policies/approvals.yaml
+deploy:
+  - id: local-demo
+    path: deploy/local-demo.yaml
+evals:
+  - id: case-review-smoke
+    path: evals/case-review-smoke.yaml
+fixtures:
+  - id: case-request-001
+    path: fixtures/case-request-001.json
+  - id: guideline-excerpt
+    path: fixtures/guideline-excerpt.json

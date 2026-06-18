@@ -1,0 +1,43 @@
+{
+  "id": "case-request-001",
+  "kind": "fixture",
+  "request_id": "REQ-ORTHO-001",
+  "received_at": "2026-06-16T20:00:00.000Z",
+  "source": {
+    "surface": "case-intake-api",
+    "external_id": "demo-orthopedic-qc-001"
+  },
+  "case_packet": {
+    "case_id": "CASE-ORTHO-001",
+    "subject_ref": "synthetic-subject-007",
+    "data_class": "synthetic_regulated_demo",
+    "modality": "XR",
+    "body_region": "knee",
+    "laterality": "left",
+    "report_text": "Right knee radiographs demonstrate intact hardware alignment. No acute fracture is identified.",
+    "measurements": [
+      {
+        "name": "tibiofemoral_alignment",
+        "value": "neutral",
+        "unit": "qualitative"
+      }
+    ],
+    "attachments": [
+      {
+        "id": "att-left-knee-ap",
+        "role": "source-image",
+        "media_type": "application/dicom",
+        "ref": "runtime://fixtures/case-request-001/dicom/left-knee-ap.dcm",
+        "name": "left-knee-ap.dcm",
+        "size_bytes": 245760,
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "metadata": {
+          "view": "AP",
+          "laterality": "left"
+        }
+      }
+    ],
+    "requested_review": "qc-before-release",
+    "destination": "orthopedic-qc"
+  }
+}

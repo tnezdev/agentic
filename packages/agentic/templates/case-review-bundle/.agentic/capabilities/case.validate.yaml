@@ -1,0 +1,17 @@
+id: case.validate
+kind: capability_declaration
+description: Allow synthetic case validation inside the local runtime.
+action: case.validate
+effects:
+  - artifact.read:case-packet
+  - artifact.write:validation-result
+data_classes:
+  - synthetic_regulated_demo
+principals:
+  allowed:
+    - agent:case-reviewer
+approval:
+  required: false
+handler:
+  kind: local-function
+  name: validateCase

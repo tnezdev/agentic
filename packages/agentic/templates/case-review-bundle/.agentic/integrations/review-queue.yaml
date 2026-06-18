@@ -1,0 +1,12 @@
+id: review-queue
+kind: integration_requirement
+provider: demo-review-queue
+description: External reviewer queue used by the handoff.release capability.
+availability: declared-for-demo
+required_scopes:
+  - queue.write:orthopedic-qc
+secrets:
+  - name: REVIEW_QUEUE_TOKEN
+    required: true
+    visible_to_model: false
+model_visible_status: available_without_secret_values

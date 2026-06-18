@@ -1,0 +1,10 @@
+id: hook.run
+kind: action_declaration
+description: Record a runtime hook reacting to an artifact or action event.
+input_artifacts:
+  - validation-result
+output:
+  - action_request
+effects:
+  - action.propose:external.handoff
+policy: hooks propose actions; proposed actions still pass capability policy
