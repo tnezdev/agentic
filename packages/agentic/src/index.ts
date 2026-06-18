@@ -67,6 +67,8 @@ export type {
   ActionExecutionResult,
   ApprovalRequestStatus,
   ApprovalRequest,
+  ApprovalDecisionStatus,
+  ApprovalDecisionRecord,
   ActionGatewayEventName,
   ActionGatewayEvent,
   ReadArtifactRequest,

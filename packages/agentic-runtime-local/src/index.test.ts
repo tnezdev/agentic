@@ -684,9 +684,12 @@ describe("local bundle run store", () => {
     await store.init()
 
     expect(await readdir(store.runDir)).toContain("actions.jsonl")
+    expect(await readdir(store.runDir)).toContain("approval-decisions.jsonl")
     expect(await readdir(store.runDir)).toContain("actions")
     expect(await readdir(store.runDir)).toContain("artifacts")
+    expect(await readdir(store.runDir)).toContain("approval-decisions")
     expect(await readFile(store.actionLogPath, "utf-8")).toBe("")
+    expect(await readFile(store.approvalDecisionLogPath, "utf-8")).toBe("")
   })
 
   it("writes artifact records and draft artifact updates", async () => {
@@ -771,6 +774,37 @@ describe("local bundle run store", () => {
       run_dir: store.runDir,
     })
   })
+
+  it("records durable approval decisions", async () => {
+    await store.init()
+
+    const decision = await store.recordApprovalDecision({
+      id: await store.nextApprovalDecisionId(),
+      approval_request_id: "art_approval_request_0001",
+      action_id: "act_external_handoff_0001",
+      action_digest: "digest-123",
+      principal: "user:reviewer.alba",
+      decision: "rejected",
+      expires_at: "2026-06-18T00:00:00.000Z",
+      capability: "handoff.release",
+      comment: "Needs revision.",
+    })
+
+    expect(decision.id).toBe("approval_decision_0001")
+    expect(decision.decided_at).toBeString()
+    expect(await store.readApprovalDecisionByAction("act_external_handoff_0001")).toEqual(decision)
+
+    const persisted = JSON.parse(
+      await readFile(join(store.approvalDecisionDir, "approval_decision_0001.json"), "utf-8"),
+    )
+    expect(persisted).toMatchObject({
+      id: "approval_decision_0001",
+      action_id: "act_external_handoff_0001",
+      decision: "rejected",
+      principal: "user:reviewer.alba",
+    })
+    expect(await readFile(store.approvalDecisionLogPath, "utf-8")).toContain("approval_decision_0001")
+  })
 })
 
 describe("local runtime package", () => {
@@ -816,9 +850,10 @@ describe("local runtime package", () => {
     expect(runtime.api_version).toBe(1)
     expect(runtime.name).toBe("local")
     expect(runtime.package_name).toBe("@tnezdev/agentic-runtime-local")
-    expect(runtime.capabilities).toEqual(["init", "run", "status"])
+    expect(runtime.capabilities).toEqual(["init", "run", "reject", "status"])
     expect(runtime.commands.init).toBeFunction()
     expect(runtime.commands.run).toBeFunction()
+    expect(runtime.commands.reject).toBeFunction()
     expect(runtime.commands.status).toBeFunction()
   })
 
@@ -1092,6 +1127,94 @@ export function createHandoffPayload() {
       artifact_ids: [],
       error: "surface.receive handler exploded",
     })
+  })
+
+  it("records approval rejections without executing external effects", async () => {
+    const workspace = join(tmpDir, "case-review-bundle")
+    await cp(CASE_REVIEW_BUNDLE_TEMPLATE, workspace, { recursive: true })
+
+    const runResult = await runtime.commands.run!(ctx, {
+      target: "case-review-bundle",
+      args: [],
+      flags: { clean: true },
+    })
+    const runData = dataOf(runResult)
+    const runId = runData["run_id"] as string
+    const actionId = runData["approval_required_action_id"] as string
+
+    const rejectResult = await runtime.commands.reject!(ctx, {
+      target: "case-review-bundle",
+      action_id: actionId,
+      principal: "user:reviewer.alba",
+      comment: "Needs revision before handoff.",
+      args: [],
+      flags: {},
+    })
+    const rejectData = rejectResult?.data as Record<string, unknown>
+
+    expect(rejectResult?.summary).toContain(`Rejected approval for action ${actionId}`)
+    expect(rejectData).toMatchObject({
+      run_id: runId,
+      approval_decision_id: "approval_decision_0001",
+      approval_request_id: runData["approval_request_artifact_id"],
+      action_id: actionId,
+      capability: "handoff.release",
+      principal: "user:reviewer.alba",
+      decision: "rejected",
+      comment: "Needs revision before handoff.",
+      external_write_executed: false,
+    })
+
+    const runDir = join(workspace, ".agentic", ".data", "runs", runId)
+    const decision = JSON.parse(
+      await readFile(join(runDir, "approval-decisions", "approval_decision_0001.json"), "utf-8"),
+    )
+    expect(decision).toMatchObject({
+      approval_request_id: runData["approval_request_artifact_id"],
+      action_id: actionId,
+      decision: "rejected",
+      principal: "user:reviewer.alba",
+    })
+    expect(await readFile(join(runDir, "approval-decisions.jsonl"), "utf-8"))
+      .toContain("approval_decision_0001")
+
+    const latest = JSON.parse(await readFile(join(workspace, ".agentic", ".data", "latest.json"), "utf-8"))
+    expect(latest).toMatchObject({
+      run_id: runId,
+      approval_decision_id: "approval_decision_0001",
+      approval_status: "rejected",
+      external_write_executed: false,
+    })
+    expect(latest.approval_decisions).toEqual([
+      {
+        id: "approval_decision_0001",
+        action_id: actionId,
+        decision: "rejected",
+        principal: "user:reviewer.alba",
+        capability: "handoff.release",
+      },
+    ])
+    expect(latest.artifacts.map((artifact: { type: string }) => artifact.type)).not.toContain("handoff-note")
+    expect(latest.actions.find((action: { id: string }) => action.id === actionId)).toMatchObject({
+      status: "approval_required",
+    })
+
+    const summary = await readFile(join(runDir, "summary.md"), "utf-8")
+    expect(summary).toContain("## Approval Decisions")
+    expect(summary).toContain("approval_decision_0001")
+    expect(summary).toContain("rejected")
+
+    const secondReject = await runtime.commands.reject!(ctx, {
+      target: "case-review-bundle",
+      action_id: actionId,
+      principal: "user:reviewer.alba",
+      args: [],
+      flags: {},
+    })
+    expect(secondReject?.summary).toContain("already rejected")
+    const decisionFiles = (await readdir(join(runDir, "approval-decisions")))
+      .filter((entry) => entry.endsWith(".json"))
+    expect(decisionFiles).toEqual(["approval_decision_0001.json"])
   })
 
   it("uses ready task metadata for no-arg run selection", async () => {

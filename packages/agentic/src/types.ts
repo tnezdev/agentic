@@ -639,6 +639,8 @@ export type ActionExecutionResult = {
 
 export type ApprovalRequestStatus = "pending" | "granted" | "rejected" | "expired"
 
+export type ApprovalDecisionStatus = "granted" | "rejected"
+
 export type ApprovalRequest = {
   action_id: string
   action_type: string
@@ -649,6 +651,19 @@ export type ApprovalRequest = {
   expires_at: string
   status: ApprovalRequestStatus
   capability?: string | undefined
+}
+
+export type ApprovalDecisionRecord = {
+  id: string
+  approval_request_id: string
+  action_id: string
+  action_digest: ActionDigest
+  principal: string
+  decision: ApprovalDecisionStatus
+  decided_at: string
+  expires_at: string
+  capability?: string | undefined
+  comment?: string | undefined
 }
 
 export type ActionGatewayEventName =

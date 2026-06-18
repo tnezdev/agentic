@@ -35,6 +35,7 @@ import type {
   ArtifactAdapter,
   ArtifactMetadata,
   ArtifactRecord,
+  ApprovalDecisionRecord,
   ApprovalRequest,
   CheckActionStatusRequest,
   CheckActionStatusResult,
@@ -64,6 +65,7 @@ import type {
   AgenticRuntimePackage,
   RuntimeCommandResult,
   RuntimeContext,
+  RuntimeApprovalDecisionArgs,
   RuntimeInitArgs,
   RuntimeInvocation,
   RuntimeInvocationHarnessRef,
@@ -79,6 +81,8 @@ const TARGETS_DIR = "targets"
 const INVOCATIONS_DIR = "invocations"
 const PI_SESSIONS_DIR = "pi-sessions"
 const STATE_FILE = "runtime.json"
+const APPROVAL_DECISIONS_DIR = "approval-decisions"
+const APPROVAL_DECISIONS_LOG = "approval-decisions.jsonl"
 const ULID_ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
 const TIME_LEN = 10
 const RANDOM_LEN = 16
@@ -86,6 +90,12 @@ const OUTPUT_CAPTURE_LIMIT = 20_000
 
 type LocalHarness = "none" | "pi"
 type LocalContextMode = "workflow" | "artifacts" | "bundle"
+
+type LocalRuntimeTargetArgs = {
+  target?: string | undefined
+  args: string[]
+  flags: RuntimeRunArgs["flags"]
+}
 
 type LocalRuntimeState = {
   version: typeof STATE_VERSION
@@ -221,10 +231,13 @@ export class LocalBundleRunStore {
   readonly artifactDir: string
   readonly actionDir: string
   readonly actionLogPath: string
+  readonly approvalDecisionDir: string
+  readonly approvalDecisionLogPath: string
   readonly summaryPath: string
   readonly latestPath: string
   readonly actions: ActionRecord[] = []
   readonly artifacts: LocalBundleArtifactRecord[] = []
+  readonly approvalDecisions: ApprovalDecisionRecord[] = []
   #sequence = 0
 
   constructor(readonly stateDir: string, readonly runId: string) {
@@ -232,6 +245,8 @@ export class LocalBundleRunStore {
     this.artifactDir = join(this.runDir, "artifacts")
     this.actionDir = join(this.runDir, "actions")
     this.actionLogPath = join(this.runDir, "actions.jsonl")
+    this.approvalDecisionDir = join(this.runDir, APPROVAL_DECISIONS_DIR)
+    this.approvalDecisionLogPath = join(this.runDir, APPROVAL_DECISIONS_LOG)
     this.summaryPath = join(this.runDir, "summary.md")
     this.latestPath = join(stateDir, "latest.json")
   }
@@ -239,7 +254,9 @@ export class LocalBundleRunStore {
   async init(): Promise<void> {
     await mkdir(this.artifactDir, { recursive: true })
     await mkdir(this.actionDir, { recursive: true })
+    await mkdir(this.approvalDecisionDir, { recursive: true })
     await writeFile(this.actionLogPath, "", "utf-8")
+    await writeFile(this.approvalDecisionLogPath, "", "utf-8")
   }
 
   nextId(prefix: string): string {
@@ -326,6 +343,101 @@ export class LocalBundleRunStore {
     }
   }
 
+  async loadActions(): Promise<ActionRecord[]> {
+    let entries: string[]
+    try {
+      entries = await readdir(this.actionDir)
+    } catch {
+      return this.actions
+    }
+    for (const entry of entries.filter((item) => item.endsWith(".json"))) {
+      await this.readAction(entry.replace(/\.json$/, ""))
+    }
+    return this.actions.sort((a, b) => {
+      return a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id)
+    })
+  }
+
+  async loadArtifacts(): Promise<LocalBundleArtifactRecord[]> {
+    let entries: string[]
+    try {
+      entries = await readdir(this.artifactDir)
+    } catch {
+      return this.artifacts
+    }
+    for (const entry of entries.filter((item) => item.endsWith(".json"))) {
+      try {
+        const artifact = JSON.parse(
+          await readFile(join(this.artifactDir, entry), "utf-8"),
+        ) as LocalBundleArtifactRecord
+        this.rememberArtifact(artifact)
+      } catch {
+        // Ignore malformed generated records so later repair remains possible.
+      }
+    }
+    return this.artifacts.sort((a, b) => {
+      return a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id)
+    })
+  }
+
+  async readApprovalRequestArtifact(actionId: string): Promise<LocalBundleArtifactRecord | undefined> {
+    const artifacts = await this.loadArtifacts()
+    return artifacts.find((artifact) => {
+      return artifact.type === "approval-request" && stringJsonValue(artifact.body.action_id) === actionId
+    })
+  }
+
+  async nextApprovalDecisionId(): Promise<string> {
+    await this.loadApprovalDecisions()
+    let index = this.approvalDecisions.length + 1
+    while (true) {
+      const id = `approval_decision_${String(index).padStart(4, "0")}`
+      if (!(await pathExists(join(this.approvalDecisionDir, `${id}.json`)))) return id
+      index += 1
+    }
+  }
+
+  async recordApprovalDecision(
+    input: Omit<ApprovalDecisionRecord, "decided_at">,
+  ): Promise<ApprovalDecisionRecord> {
+    const decision: ApprovalDecisionRecord = {
+      ...input,
+      decided_at: new Date().toISOString(),
+    }
+    this.rememberApprovalDecision(decision)
+    await mkdir(this.approvalDecisionDir, { recursive: true })
+    await writeJson(join(this.approvalDecisionDir, `${decision.id}.json`), decision)
+    await appendFile(this.approvalDecisionLogPath, `${JSON.stringify(decision)}\n`, "utf-8")
+    return decision
+  }
+
+  async readApprovalDecisionByAction(actionId: string): Promise<ApprovalDecisionRecord | undefined> {
+    const decisions = await this.loadApprovalDecisions()
+    return [...decisions].reverse().find((decision) => decision.action_id === actionId)
+  }
+
+  async loadApprovalDecisions(): Promise<ApprovalDecisionRecord[]> {
+    let entries: string[]
+    try {
+      entries = await readdir(this.approvalDecisionDir)
+    } catch {
+      return this.approvalDecisions
+    }
+    for (const entry of entries.filter((item) => item.endsWith(".json"))) {
+      try {
+        const decision = JSON.parse(
+          await readFile(join(this.approvalDecisionDir, entry), "utf-8"),
+        ) as ApprovalDecisionRecord
+        this.rememberApprovalDecision(decision)
+      } catch {
+        // Ignore malformed generated records so status remains usable for repair.
+      }
+    }
+    return this.approvalDecisions.sort((a, b) => {
+      return a.decided_at.localeCompare(b.decided_at) || a.id.localeCompare(b.id)
+    })
+  }
+
   async writeSummary(markdown: string, latest: LocalBundleRunLatest): Promise<void> {
     await writeFile(this.summaryPath, markdown, "utf-8")
     await writeJson(this.latestPath, latest)
@@ -337,6 +449,15 @@ export class LocalBundleRunStore {
       this.artifacts.push(artifact)
     } else {
       this.artifacts[index] = artifact
+    }
+  }
+
+  private rememberApprovalDecision(decision: ApprovalDecisionRecord): void {
+    const index = this.approvalDecisions.findIndex((entry) => entry.id === decision.id)
+    if (index === -1) {
+      this.approvalDecisions.push(decision)
+    } else {
+      this.approvalDecisions[index] = decision
     }
   }
 
@@ -937,6 +1058,8 @@ function completedBundleLatest(
 ): LocalBundleRunLatest {
   const approvalAction = [...store.actions].reverse().find((action) => action.status === "approval_required")
   const approvalArtifact = store.artifacts.find((artifact) => artifact.type === "approval-request")
+  const approvalDecisions = store.approvalDecisions.map(summarizeApprovalDecision)
+  const latestDecision = approvalDecisions.at(-1)
   const latest: LocalBundleRunLatest = {
     ...bundleLatestBase(target, bundle, store, invocation),
     status: "completed",
@@ -947,6 +1070,11 @@ function completedBundleLatest(
   }
   if (approvalAction !== undefined) latest.approval_required_action_id = approvalAction.id
   if (approvalArtifact !== undefined) latest.approval_request_artifact_id = approvalArtifact.id
+  if (approvalDecisions.length > 0) latest.approval_decisions = approvalDecisions
+  if (latestDecision !== undefined) {
+    latest.approval_decision_id = latestDecision.id
+    latest.approval_status = latestDecision.decision
+  }
   return latest
 }
 
@@ -992,6 +1120,19 @@ function summarizeBundleArtifact(
   }
 }
 
+function summarizeApprovalDecision(
+  decision: ApprovalDecisionRecord,
+): Pick<ApprovalDecisionRecord, "id" | "action_id" | "decision" | "principal" | "capability"> {
+  const summary: Pick<ApprovalDecisionRecord, "id" | "action_id" | "decision" | "principal" | "capability"> = {
+    id: decision.id,
+    action_id: decision.action_id,
+    decision: decision.decision,
+    principal: decision.principal,
+  }
+  if (decision.capability !== undefined) summary.capability = decision.capability
+  return summary
+}
+
 function renderBundleCompletedSummary(
   target: LocalRunTarget,
   bundle: LoadedAgenticBundle,
@@ -1027,6 +1168,22 @@ function renderBundleCompletedSummary(
   const approvalArtifactId = typeof latest.approval_request_artifact_id === "string"
     ? latest.approval_request_artifact_id
     : "none"
+  const approvalDecisionRows = store.approvalDecisions.length === 0
+    ? "No approval decisions recorded."
+    : [
+        "| ID | Action | Decision | Principal | Capability | Comment |",
+        "| --- | --- | --- | --- | --- | --- |",
+        ...store.approvalDecisions.map((decision) => {
+          return [
+            `| ${decision.id}`,
+            decision.action_id,
+            decision.decision,
+            decision.principal,
+            decision.capability ?? "none",
+            `${decision.comment ?? ""} |`,
+          ].join(" | ")
+        }),
+      ].join("\n")
 
   return `# Local Bundle Run: ${bundle.manifest.name}
 
@@ -1062,6 +1219,10 @@ ${artifactRows}
 - External write executed: no
 
 The runtime created exact action digests and approval requests. A host-owned authenticated approval channel must grant the exact action before approval-gated external effects execute.
+
+## Approval Decisions
+
+${approvalDecisionRows}
 
 ## Inspect
 
@@ -1515,7 +1676,7 @@ function splitCsvFlag(args: RuntimeRunArgs, name: string): string[] {
 
 async function resolveRunTarget(
   ctx: RuntimeContext,
-  args: RuntimeRunArgs,
+  args: LocalRuntimeTargetArgs,
 ): Promise<LocalRunTarget> {
   const workspaceFlag = stringFlag(args.flags, "workspace")
   const workflowFlag = stringFlag(args.flags, "workflow")
@@ -2479,6 +2640,177 @@ async function ensureLocalRuntimeState(workspaceRoot: string): Promise<{
   return { created, dir, path, targetDir, invocationDir }
 }
 
+type LocalApprovalDecisionContext = {
+  target: LocalRunTarget
+  bundle: LoadedAgenticBundle
+  store: LocalBundleRunStore
+  invocation: RuntimeInvocation
+  action: ActionRecord
+  approvalRequestArtifact: LocalBundleArtifactRecord
+  approvalRequest: ApprovalRequest
+}
+
+async function loadApprovalDecisionContext(
+  ctx: RuntimeContext,
+  args: RuntimeApprovalDecisionArgs,
+): Promise<LocalApprovalDecisionContext> {
+  const target = await resolveRunTarget(ctx, args)
+  if (!(await hasAgenticWorkspace(target.workspace_root))) {
+    throw new Error(`No Agentic workspace found at ${target.workspace_root}.`)
+  }
+
+  const bundleRoot = await bundleRootForWorkspace(target.workspace_root)
+  if (bundleRoot === undefined) {
+    throw new Error(`No Agentic bundle manifest found in ${target.workspace_root}.`)
+  }
+
+  const bundle = await loadAgenticBundle(bundleRoot)
+  if (bundle.manifest.state.adapter !== "filesystem") {
+    throw new Error(`Local approval decisions only support filesystem state, got ${bundle.manifest.state.adapter}.`)
+  }
+
+  const stateDir = resolve(target.workspace_root, bundle.manifest.state.dir)
+  const latestPath = join(stateDir, "latest.json")
+  let latest: LocalBundleRunLatest
+  try {
+    latest = JSON.parse(await readFile(latestPath, "utf-8")) as LocalBundleRunLatest
+  } catch {
+    throw new Error(`No local bundle run state found at ${latestPath}. Run \`agentic serve\` first.`)
+  }
+
+  const runId = typeof latest.run_id === "string" ? latest.run_id : undefined
+  if (runId === undefined) throw new Error(`Local bundle latest state at ${latestPath} has no run_id.`)
+
+  const store = new LocalBundleRunStore(stateDir, runId)
+  await store.loadActions()
+  await store.loadArtifacts()
+  await store.loadApprovalDecisions()
+
+  const action = await store.readAction(args.action_id)
+  if (action === undefined) throw new Error(`Action not found: ${args.action_id}`)
+  if (action.status !== "approval_required") {
+    throw new Error(`Action ${args.action_id} is ${action.status}; only approval_required actions can be decided.`)
+  }
+  if (action.digest === undefined) throw new Error(`Action ${args.action_id} has no digest to bind approval against.`)
+
+  const approvalRequestArtifact = await store.readApprovalRequestArtifact(action.id)
+  if (approvalRequestArtifact === undefined) {
+    throw new Error(`Approval request artifact not found for action ${action.id}.`)
+  }
+  const approvalRequest = approvalRequestFromArtifact(approvalRequestArtifact)
+  if (approvalRequest.action_digest !== action.digest) {
+    throw new Error(`Approval request digest does not match action ${action.id}.`)
+  }
+  if (action.capability !== approvalRequest.capability) {
+    throw new Error(`Approval request capability does not match action ${action.id}.`)
+  }
+
+  assertHumanApprovalPrincipal(bundle, args.principal)
+
+  const runtimeInvocationId = typeof latest.runtime_invocation_id === "string"
+    ? latest.runtime_invocation_id
+    : "approval-decision"
+  return {
+    target,
+    bundle,
+    store,
+    invocation: {
+      id: runtimeInvocationId,
+      runtime: RUNTIME_NAME,
+      runtime_package: PACKAGE_NAME,
+      target: target.workspace_label,
+      workspace_root: target.workspace_root,
+      status: "completed",
+      started_at: new Date().toISOString(),
+      artifact_ids: [],
+    },
+    action,
+    approvalRequestArtifact,
+    approvalRequest,
+  }
+}
+
+function approvalRequestFromArtifact(artifact: LocalBundleArtifactRecord): ApprovalRequest {
+  const request = artifact.body as unknown as ApprovalRequest
+  if (typeof request.action_id !== "string" || typeof request.action_digest !== "string") {
+    throw new Error(`Approval request artifact ${artifact.id} is malformed.`)
+  }
+  return request
+}
+
+function assertHumanApprovalPrincipal(bundle: LoadedAgenticBundle, principal: string): void {
+  const declaration = bundle.manifest.principals.find((entry) => entry.id === principal)
+  if (declaration === undefined) throw new Error(`Approval principal is not declared in the bundle: ${principal}`)
+  if (declaration.kind !== "human") {
+    throw new Error(`Approval principal must be human, got ${declaration.kind ?? "unknown"}.`)
+  }
+}
+
+async function rejectLocalRuntime(
+  ctx: RuntimeContext,
+  args: RuntimeApprovalDecisionArgs,
+): Promise<RuntimeCommandResult> {
+  const decisionContext = await loadApprovalDecisionContext(ctx, args)
+  const { target, bundle, store, invocation, action, approvalRequestArtifact, approvalRequest } = decisionContext
+
+  const existing = await store.readApprovalDecisionByAction(action.id)
+  if (existing !== undefined) {
+    if (existing.decision !== "rejected") {
+      throw new Error(`Action ${action.id} already has approval decision ${existing.decision}.`)
+    }
+    return approvalDecisionResult(ctx, target, store, existing, approvalRequestArtifact.id, true)
+  }
+
+  const input: Omit<ApprovalDecisionRecord, "decided_at"> = {
+    id: await store.nextApprovalDecisionId(),
+    approval_request_id: approvalRequestArtifact.id,
+    action_id: action.id,
+    action_digest: approvalRequest.action_digest,
+    principal: args.principal,
+    decision: "rejected",
+    expires_at: approvalRequest.expires_at,
+  }
+  if (approvalRequest.capability !== undefined) input.capability = approvalRequest.capability
+  if (args.comment !== undefined) input.comment = args.comment
+
+  const decision = await store.recordApprovalDecision(input)
+  const latest = completedBundleLatest(target, bundle, store, invocation)
+  await store.writeSummary(renderBundleCompletedSummary(target, bundle, store, latest), latest)
+  return approvalDecisionResult(ctx, target, store, decision, approvalRequestArtifact.id, false)
+}
+
+function approvalDecisionResult(
+  ctx: RuntimeContext,
+  target: LocalRunTarget,
+  store: LocalBundleRunStore,
+  decision: ApprovalDecisionRecord,
+  approvalRequestId: string,
+  existing: boolean,
+): RuntimeCommandResult {
+  return {
+    summary: existing
+      ? `Approval for action ${decision.action_id} was already ${decision.decision}.`
+      : `Rejected approval for action ${decision.action_id}.`,
+    data: {
+      run_id: store.runId,
+      run_dir: pathRelative(ctx.workspace_root, store.runDir),
+      summary_path: pathRelative(ctx.workspace_root, store.summaryPath),
+      latest_path: pathRelative(ctx.workspace_root, store.latestPath),
+      approval_decision_id: decision.id,
+      approval_request_id: approvalRequestId,
+      action_id: decision.action_id,
+      action_digest: decision.action_digest,
+      capability: decision.capability ?? null,
+      principal: decision.principal,
+      decision: decision.decision,
+      decided_at: decision.decided_at,
+      comment: decision.comment ?? null,
+      external_write_executed: false,
+      workspace: pathRelative(ctx.workspace_root, target.workspace_root),
+    },
+  }
+}
+
 async function initLocalRuntime(
   ctx: RuntimeContext,
   _args: RuntimeInitArgs,
@@ -2624,10 +2956,11 @@ export const runtime: AgenticRuntimePackage = {
   name: RUNTIME_NAME,
   package_name: PACKAGE_NAME,
   description: "Run Agentic workspaces on the local machine.",
-  capabilities: ["init", "run", "status"],
+  capabilities: ["init", "run", "reject", "status"],
   commands: {
     init: initLocalRuntime,
     run: runLocalRuntime,
+    reject: rejectLocalRuntime,
     status: statusLocalRuntime,
   },
 }
