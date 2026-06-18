@@ -1110,11 +1110,13 @@ describe("CLI", () => {
         initialized: boolean
         bundle: boolean
         filesWritten: number
+        next_steps: string[]
       }
 
       expect(result.initialized).toBe(true)
       expect(result.bundle).toBe(true)
       expect(result.filesWritten).toBeGreaterThan(0)
+      expect(result.next_steps).toEqual(["agentic validate .", "agentic inspect ."])
 
       const manifest = await readFile(join(tmpDir, ".agentic", "agentic.yaml"), "utf-8")
       expect(manifest).toContain("schema_version: agentic.bundle.v0")
@@ -1124,7 +1126,9 @@ describe("CLI", () => {
       const validate = (await runJson(...base, "validate", ".")) as { valid: boolean }
       expect(validate.valid).toBe(true)
 
-      await run(...base, "init", "--bundle")
+      const secondInit = await run(...base, "init", "--bundle")
+      expect(secondInit.stdout).toContain("Next steps:")
+      expect(secondInit.stdout).toContain("agentic validate .")
       const gitignore = await readFile(join(tmpDir, ".gitignore"), "utf-8")
       expect(gitignore.match(/\.agentic\/\.data\//g)).toHaveLength(1)
       expect(gitignore.match(/\.agentic\/runtime\//g)).toHaveLength(1)
@@ -1168,11 +1172,19 @@ describe("CLI", () => {
         initialized: boolean
         example: string
         filesWritten: number
+        next_steps: string[]
       }
 
       expect(result.initialized).toBe(true)
       expect(result.example).toBe("case-review-bundle")
       expect(result.filesWritten).toBeGreaterThan(0)
+      expect(result.next_steps).toEqual([
+        "agentic validate .",
+        "agentic inspect .",
+        "agentic dev .",
+        "agentic serve . --clean",
+        "agentic eval .",
+      ])
 
       const agentBootstrap = await readFile(join(tmpDir, "AGENTS.md"), "utf-8")
       expect(agentBootstrap).toContain("Case Review Bundle")
@@ -1205,6 +1217,10 @@ describe("CLI", () => {
       expect(evalResult.evals).toHaveLength(1)
       expect(evalResult.evals[0]?.id).toBe("case-review-smoke")
       expect(evalResult.evals[0]?.ok).toBe(true)
+
+      const secondInit = await run(...base, "init", "--example", "case-review-bundle")
+      expect(secondInit.stdout).toContain("Next steps:")
+      expect(secondInit.stdout).toContain("agentic dev .")
     })
 
     it("does not overwrite existing files when scaffolding an example", async () => {

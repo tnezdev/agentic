@@ -35,6 +35,27 @@ ${AGENTIC_BUNDLE_REF_SECTIONS.map((section) => `${section}: []`).join("\n")}
 `
 
 const BUNDLE_GITIGNORE_ENTRIES = [".agentic/.data/", ".agentic/runtime/"] as const
+const BLANK_BUNDLE_NEXT_STEPS = [
+  "agentic validate .",
+  "agentic inspect .",
+] as const
+const CASE_REVIEW_BUNDLE_NEXT_STEPS = [
+  "agentic validate .",
+  "agentic inspect .",
+  "agentic dev .",
+  "agentic serve . --clean",
+  "agentic eval .",
+] as const
+
+function formatInitResult(summary: string, nextSteps: readonly string[] = []): string {
+  if (nextSteps.length === 0) return summary
+
+  return [
+    summary,
+    "Next steps:",
+    ...nextSteps.map((step) => `  - ${step}`),
+  ].join("\n")
+}
 
 async function exists(path: string): Promise<boolean> {
   try {
@@ -108,6 +129,7 @@ async function initExample(ctx: Parameters<Command>[0], name: string): Promise<v
 
   await mkdir(join(agenticDir, "memory"), { recursive: true })
   await mkdir(join(agenticDir, "runs"), { recursive: true })
+  const nextSteps = name === "case-review-bundle" ? CASE_REVIEW_BUNDLE_NEXT_STEPS : []
 
   output(
     ctx,
@@ -118,11 +140,14 @@ async function initExample(ctx: Parameters<Command>[0], name: string): Promise<v
       alreadyExists,
       filesWritten,
       filesSkipped,
+      next_steps: nextSteps,
     },
-    (d) =>
+    (d) => formatInitResult(
       d.alreadyExists
         ? `Updated ${d.example} example at ${d.path}`
         : `Initialized ${d.example} example at ${d.path}`,
+      d.next_steps,
+    ),
   )
 }
 
@@ -158,11 +183,14 @@ async function initBundle(ctx: Parameters<Command>[0]): Promise<void> {
       alreadyExists,
       filesWritten,
       filesSkipped,
+      next_steps: BLANK_BUNDLE_NEXT_STEPS,
     },
-    (d) =>
+    (d) => formatInitResult(
       d.alreadyExists
         ? `Updated authored bundle at ${d.path}`
         : `Initialized authored bundle at ${d.path}`,
+      d.next_steps,
+    ),
   )
 }
 
