@@ -1,8 +1,9 @@
 import { spawn } from "node:child_process"
-import { access, appendFile, mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises"
+import { access, appendFile, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises"
 import { hostname } from "node:os"
 import { join, relative, resolve } from "node:path"
 import {
+  AGENTIC_BUNDLE_MANIFEST_FILENAMES,
   activatePersona,
   FilesystemArtifactAdapter,
   FilesystemPersonaAdapter,
@@ -11,6 +12,7 @@ import {
   computeActionDigest,
   createApprovalRequest,
   evaluateActionPolicy,
+  loadAgenticBundle,
   loadSkill,
   resolveActionProposal,
 } from "@tnezdev/agentic"
@@ -77,7 +79,7 @@ const RANDOM_LEN = 16
 const OUTPUT_CAPTURE_LIMIT = 20_000
 
 type LocalHarness = "none" | "pi"
-type LocalContextMode = "workflow" | "artifacts"
+type LocalContextMode = "workflow" | "artifacts" | "bundle"
 
 type LocalRuntimeState = {
   version: typeof STATE_VERSION
@@ -96,6 +98,11 @@ type LocalRunTarget = {
 type LocalRunContext = {
   context_mode: LocalContextMode
   target: LocalRunTarget
+  bundle?: LoadedAgenticBundle | undefined
+  bundle_run_id?: string | undefined
+  bundle_run_dir?: string | undefined
+  bundle_summary_path?: string | undefined
+  bundle_latest_path?: string | undefined
   graph?: GraphDef | undefined
   persona?: PersonaFile | undefined
   activated_persona?: Persona | undefined
@@ -801,6 +808,20 @@ async function hasAgenticWorkspace(path: string): Promise<boolean> {
   return (await dirExists(join(path, ".agentic"))) || (await dirExists(join(path, ".spores")))
 }
 
+async function hasBundleManifest(path: string): Promise<boolean> {
+  for (const filename of AGENTIC_BUNDLE_MANIFEST_FILENAMES) {
+    if (await pathExists(join(path, filename))) return true
+  }
+  return false
+}
+
+async function bundleRootForWorkspace(workspaceRoot: string): Promise<string | undefined> {
+  const agenticRoot = join(workspaceRoot, ".agentic")
+  if (await hasBundleManifest(agenticRoot)) return agenticRoot
+  if (await hasBundleManifest(workspaceRoot)) return workspaceRoot
+  return undefined
+}
+
 function resolveFromWorkspace(ctx: RuntimeContext, path: string): string {
   return resolve(ctx.workspace_root, path)
 }
@@ -811,6 +832,10 @@ function stringFlag(
 ): string | undefined {
   const value = flags[name]
   return typeof value === "string" && value.length > 0 ? value : undefined
+}
+
+function booleanFlag(args: RuntimeRunArgs, name: string): boolean {
+  return args.flags[name] === true
 }
 
 function stringRuntimeConfig(ctx: RuntimeContext, name: string): string | undefined {
@@ -844,8 +869,9 @@ function resolveContextMode(ctx: RuntimeContext, args: RuntimeRunArgs): LocalCon
   const value = stringFlag(args.flags, "context") ?? stringRuntimeConfig(ctx, "context") ?? "workflow"
   if (value === "workflow") return "workflow"
   if (value === "artifacts" || value === "artifact") return "artifacts"
+  if (value === "bundle") return "bundle"
 
-  throw new Error('Unsupported local runtime context "' + value + '". Supported values: workflow, artifacts.')
+  throw new Error('Unsupported local runtime context "' + value + '". Supported values: workflow, artifacts, bundle.')
 }
 
 function splitCsvFlag(args: RuntimeRunArgs, name: string): string[] {
@@ -1225,6 +1251,10 @@ async function createInvocation(
   })
 }
 
+function invocationArtifactIds(run: LocalRunContext): string[] {
+  return run.context_mode === "bundle" ? [] : [run.artifact_id]
+}
+
 async function completeInvocation(
   invocation: RuntimeInvocation,
   run: LocalRunContext,
@@ -1234,7 +1264,7 @@ async function completeInvocation(
     status: "completed",
     ended_at: new Date().toISOString(),
     workflow_run_id: run.workflow_run_id,
-    artifact_ids: [run.artifact_id],
+    artifact_ids: invocationArtifactIds(run),
   })
 }
 
@@ -1249,7 +1279,7 @@ async function failInvocation(
     status: "failed",
     ended_at: new Date().toISOString(),
     workflow_run_id: run?.workflow_run_id ?? invocation.workflow_run_id,
-    artifact_ids: run === undefined ? invocation.artifact_ids : [run.artifact_id],
+    artifact_ids: run === undefined ? invocation.artifact_ids : invocationArtifactIds(run),
     error: message,
   })
 }
@@ -1627,6 +1657,88 @@ async function prepareArtifactContextRun(
   return run
 }
 
+async function prepareBundleLocalRun(
+  target: LocalRunTarget,
+  invocation: RuntimeInvocation,
+  args: RuntimeRunArgs,
+  bundleRoot: string,
+): Promise<LocalRunContext> {
+  const bundle = await loadAgenticBundle(bundleRoot)
+  if (bundle.manifest.state.adapter !== "filesystem") {
+    throw new Error(`Local bundle mode only supports filesystem state, got ${bundle.manifest.state.adapter}.`)
+  }
+
+  const stateDir = resolve(target.workspace_root, bundle.manifest.state.dir)
+  if (booleanFlag(args, "clean")) await rm(stateDir, { recursive: true, force: true })
+
+  const store = new LocalBundleRunStore(stateDir, createLocalBundleRunId())
+  await store.init()
+
+  const latest: LocalBundleRunLatest = {
+    run_id: store.runId,
+    context_mode: "bundle",
+    status: "prepared",
+    bundle: {
+      name: bundle.manifest.name,
+      version: bundle.manifest.version,
+    },
+    runtime_invocation_id: invocation.id,
+    run_dir: pathRelative(target.workspace_root, store.runDir),
+    summary_path: pathRelative(target.workspace_root, store.summaryPath),
+    latest_path: pathRelative(target.workspace_root, store.latestPath),
+    message: "Bundle execution is prepared; trigger execution is not implemented yet.",
+  }
+  await store.writeSummary(renderBundlePreparedSummary(target, bundle, store, invocation), latest)
+
+  return {
+    context_mode: "bundle",
+    target,
+    bundle,
+    bundle_run_id: store.runId,
+    bundle_run_dir: store.runDir,
+    bundle_summary_path: store.summaryPath,
+    bundle_latest_path: store.latestPath,
+    skills: [],
+    input_artifacts: [],
+    artifact_id: "pending",
+    invocation_id: invocation.id,
+    harness_ref: invocation.harness_ref,
+  }
+}
+
+function renderBundlePreparedSummary(
+  target: LocalRunTarget,
+  bundle: LoadedAgenticBundle,
+  store: LocalBundleRunStore,
+  invocation: RuntimeInvocation,
+): string {
+  return `# Local Bundle Run: ${bundle.manifest.name}
+
+## Summary
+
+The local runtime loaded this authored Agentic bundle, initialized filesystem runtime state, and recorded a dry bundle invocation.
+
+Trigger execution, action proposal handling, handler loading, and domain artifact materialization are not implemented in this path yet.
+
+## Bundle
+
+- Name: ${bundle.manifest.name}
+- Version: ${bundle.manifest.version}
+- Schema version: ${bundle.manifest.schema_version}
+- Root: ${pathRelative(target.workspace_root, bundle.root)}
+
+## Runtime State
+
+- Context mode: bundle
+- Runtime invocation id: ${invocation.id}
+- Bundle run id: ${store.runId}
+- Run directory: ${pathRelative(target.workspace_root, store.runDir)}
+- Actions log: ${pathRelative(target.workspace_root, store.actionLogPath)}
+- Summary path: ${pathRelative(target.workspace_root, store.summaryPath)}
+- Latest pointer: ${pathRelative(target.workspace_root, store.latestPath)}
+`
+}
+
 async function prepareLocalRun(
   ctx: RuntimeContext,
   target: LocalRunTarget,
@@ -1646,6 +1758,15 @@ async function prepareLocalRun(
   if (contextMode === "artifacts") {
     return prepareArtifactContextRun(ctx, target, invocation, args)
   }
+
+  const bundleRoot = await bundleRootForWorkspace(target.workspace_root)
+  if (contextMode === "bundle" || bundleRoot !== undefined) {
+    if (bundleRoot === undefined) {
+      throw new Error(`No Agentic bundle manifest found in ${target.workspace_root}.`)
+    }
+    return prepareBundleLocalRun(target, invocation, args, bundleRoot)
+  }
+
   return prepareWorkflowLocalRun(ctx, target, invocation, args)
 }
 
@@ -1739,10 +1860,25 @@ async function runLocalRuntime(
   if (run === undefined) {
     throw new Error("Local runtime run did not produce a run context.")
   }
-  const targetName = run.graph?.id ?? run.persona?.name ?? run.context_mode
+  const targetName = run.bundle?.manifest.name ?? run.graph?.id ?? run.persona?.name ?? run.context_mode
+  const bundleData = run.bundle === undefined
+    ? {}
+    : {
+        bundle: {
+          name: run.bundle.manifest.name,
+          version: run.bundle.manifest.version,
+          schema_version: run.bundle.manifest.schema_version,
+        },
+        run_id: run.bundle_run_id,
+        run_dir: pathRelative(ctx.workspace_root, run.bundle_run_dir!),
+        summary_path: pathRelative(ctx.workspace_root, run.bundle_summary_path!),
+        latest_path: pathRelative(ctx.workspace_root, run.bundle_latest_path!),
+      }
 
   return {
-    summary: harnessResult === undefined
+    summary: run.context_mode === "bundle"
+      ? `Prepared local Agentic bundle ${targetName} and wrote run ${run.bundle_run_id}.`
+      : harnessResult === undefined
       ? `Prepared local Agentic run for ${targetName} and wrote artifact ${run.artifact_id}.`
       : `Ran local Agentic target ${targetName} through Pi session ${harnessResult.session_id}.`,
     data: {
@@ -1760,7 +1896,8 @@ async function runLocalRuntime(
       harness_result: harnessResult === undefined ? null : harnessResult,
       workflow_id: run.graph?.id ?? null,
       workflow_run_id: run.workflow_run_id ?? null,
-      artifact_id: run.artifact_id,
+      artifact_id: run.context_mode === "bundle" ? null : run.artifact_id,
+      ...bundleData,
       persona: run.persona?.name ?? null,
       skills: run.skills.map((skill) => skill.name),
       input_artifacts: run.input_artifacts.map((artifact) => ({

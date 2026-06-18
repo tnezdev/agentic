@@ -171,6 +171,37 @@ Read mounted artifacts, brief the user, and wait for confirmation before doing f
   )
 }
 
+async function writeMinimalBundleWorkspace(baseDir: string): Promise<void> {
+  await writeText(
+    join(baseDir, ".agentic", "agentic.json"),
+    JSON.stringify(
+      {
+        schema_version: "agentic-next.example.v0",
+        name: "minimal-bundle",
+        version: "0.1.0",
+        description: "Minimal authored bundle for local runtime tests.",
+        state: { adapter: "filesystem", dir: ".agentic/.data" },
+        principals: [{ id: "service:test", kind: "service" }],
+        prompts: [],
+        skills: [],
+        artifacts: [],
+        actions: [],
+        capabilities: [],
+        hooks: [],
+        surfaces: [],
+        schedules: [],
+        integrations: [],
+        policies: [],
+        deploy: [],
+        evals: [],
+        fixtures: [],
+      },
+      null,
+      2,
+    ),
+  )
+}
+
 async function writeStewardPersonaAndWorkflow(baseDir: string): Promise<void> {
   await writeText(
     join(baseDir, ".agentic", "personas", "second-brain-steward.md"),
@@ -689,6 +720,63 @@ describe("local runtime package", () => {
       await readFile(join(tmpDir, ".agentic", "runtime", "local", "runtime.json"), "utf-8"),
     )
     expect(state.runtime).toBe("local")
+  })
+
+  it("auto-detects authored bundle workspaces and writes dry bundle state", async () => {
+    await writeMinimalBundleWorkspace(tmpDir)
+    await writeText(join(tmpDir, ".agentic", ".data", "stale.txt"), "stale state\n")
+
+    const result = await runtime.commands.run!(ctx, {
+      args: [],
+      flags: { clean: true },
+    })
+    const data = dataOf(result)
+    const runId = data["run_id"] as string
+    const invocationId = data["invocation_id"] as string
+
+    expect(result?.summary).toContain("Prepared local Agentic bundle minimal-bundle")
+    expect(data).toMatchObject({
+      context_mode: "bundle",
+      workflow_id: null,
+      workflow_run_id: null,
+      artifact_id: null,
+      bundle: {
+        name: "minimal-bundle",
+        version: "0.1.0",
+      },
+      run_id: runId,
+      run_dir: `.agentic/.data/runs/${runId}`,
+      summary_path: `.agentic/.data/runs/${runId}/summary.md`,
+      latest_path: ".agentic/.data/latest.json",
+    })
+    expect(await readdir(join(tmpDir, ".agentic", ".data"))).not.toContain("stale.txt")
+    expect(await readdir(join(tmpDir, ".agentic", ".data", "runs", runId))).toContain("actions.jsonl")
+    expect(await readFile(join(tmpDir, ".agentic", ".data", "runs", runId, "actions.jsonl"), "utf-8"))
+      .toBe("")
+
+    const latest = JSON.parse(await readFile(join(tmpDir, ".agentic", ".data", "latest.json"), "utf-8"))
+    expect(latest).toMatchObject({
+      run_id: runId,
+      context_mode: "bundle",
+      status: "prepared",
+      message: "Bundle execution is prepared; trigger execution is not implemented yet.",
+    })
+    const summary = await readFile(join(tmpDir, ".agentic", ".data", "runs", runId, "summary.md"), "utf-8")
+    expect(summary).toContain("Trigger execution, action proposal handling, handler loading")
+
+    const invocation = JSON.parse(
+      await readFile(
+        join(tmpDir, ".agentic", "runtime", "local", "invocations", `${invocationId}.json`),
+        "utf-8",
+      ),
+    )
+    expect(invocation).toMatchObject({
+      id: invocationId,
+      target: ".",
+      workspace_root: tmpDir,
+      status: "completed",
+      artifact_ids: [],
+    })
   })
 
   it("uses ready task metadata for no-arg run selection", async () => {
