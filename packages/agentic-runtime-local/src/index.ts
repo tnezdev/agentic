@@ -153,6 +153,7 @@ export type LocalAdminConsoleState = {
     summary_path: string
     latest_path: string
     status: string
+    summary_markdown?: string | undefined
   }
   latest: LocalBundleRunLatest
   actions: ActionRecord[]
@@ -3136,6 +3137,13 @@ export async function loadLocalAdminConsoleState(
   const artifacts = await store.loadArtifacts()
   const approvalDecisions = await store.loadApprovalDecisions()
   const approvals: LocalAdminApproval[] = []
+  let summaryMarkdown: string | undefined
+
+  try {
+    summaryMarkdown = await readFile(store.summaryPath, "utf-8")
+  } catch {
+    summaryMarkdown = undefined
+  }
 
   for (const artifact of artifacts.filter((entry) => entry.type === "approval-request")) {
     const approvalRequest = approvalRequestFromArtifact(artifact)
@@ -3178,6 +3186,7 @@ export async function loadLocalAdminConsoleState(
       summary_path: pathRelative(target.workspace_root, store.summaryPath),
       latest_path: pathRelative(target.workspace_root, store.latestPath),
       status: typeof latest.status === "string" ? latest.status : "unknown",
+      summary_markdown: summaryMarkdown,
     },
     latest,
     actions,
@@ -3586,6 +3595,7 @@ function renderAdminDesignSystemStyles(): string {
     .technical-details { margin-bottom: 14px; background: rgba(255, 254, 251, 0.82); }
     .technical-details > summary { cursor: pointer; color: var(--accent-strong); font-weight: 760; }
     .technical-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 12px; }
+    .technical-grid.two-column { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     dl { display: grid; grid-template-columns: 140px minmax(0, 1fr); gap: 7px 12px; margin: 0; }
     .kv { grid-template-columns: 118px minmax(0, 1fr); }
     dt { color: var(--muted); }
@@ -3620,6 +3630,15 @@ function renderAdminDesignSystemStyles(): string {
     .inset-card { background: var(--surface-strong); }
     .pills { display: flex; gap: 6px; flex-wrap: wrap; }
     .pill { display: inline-flex; align-items: center; border: 1px solid var(--line); background: var(--surface-tint); border-radius: var(--radius-sm); padding: 2px 7px; color: #3f3a33; }
+    .button-link { display: inline-flex; align-items: center; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); padding: 8px 13px; color: var(--ink); font-weight: 600; background: var(--surface-strong); }
+    .button-link:hover { text-decoration: none; background: var(--surface-tint); }
+    .button-link.primary { background: var(--accent-warm); }
+    .next-actions p { margin-bottom: 12px; color: var(--muted); }
+    .record-list { display: grid; gap: 8px; }
+    .record-row { display: grid; grid-template-columns: 150px minmax(0, 1fr) minmax(160px, 0.5fr); gap: 10px; align-items: baseline; padding: 8px 0; border-bottom: 1px solid var(--line); }
+    .record-row:last-child { border-bottom: 0; }
+    .record-row strong { font-weight: 620; overflow-wrap: anywhere; }
+    .summary-markdown { max-height: 440px; white-space: pre-wrap; }
     @media (max-width: 980px) {
       .hero-card, .detail-hero, .review-sections, .technical-grid, .summary-grid { grid-template-columns: 1fr; }
       .review-top { grid-template-columns: 1fr; }
@@ -3631,12 +3650,24 @@ function renderAdminDesignSystemStyles(): string {
       .stats { grid-template-columns: 1fr 1fr; }
       dl, .kv, .workspace-card dl { grid-template-columns: 1fr; }
       .summary-list, .summary-list div { grid-template-columns: 1fr; }
+      .record-row { grid-template-columns: 1fr; }
     }
     @media (max-width: 520px) { .stats { grid-template-columns: 1fr; } }
   `
 }
 
-function renderLayout(title: string, state: LocalAdminConsoleState, body: string): string {
+type LocalAdminConsolePage = "run" | "actions" | "artifacts" | "approvals"
+
+function currentPageAttr(page: LocalAdminConsolePage, currentPage: LocalAdminConsolePage): string {
+  return page === currentPage ? ` aria-current="page"` : ""
+}
+
+function renderLayout(
+  title: string,
+  state: LocalAdminConsoleState,
+  body: string,
+  currentPage: LocalAdminConsolePage,
+): string {
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -3659,7 +3690,10 @@ ${renderAdminDesignSystemStyles()}
         </div>
       </div>
       <nav class="nav" aria-label="Admin navigation">
-        <a href="/approvals" aria-current="page">Approvals</a>
+        <a href="/runs/latest"${currentPageAttr("run", currentPage)}>Run</a>
+        <a href="/actions"${currentPageAttr("actions", currentPage)}>Actions</a>
+        <a href="/artifacts"${currentPageAttr("artifacts", currentPage)}>Artifacts</a>
+        <a href="/approvals"${currentPageAttr("approvals", currentPage)}>Approvals</a>
       </nav>
     </header>
     ${body}
@@ -3674,6 +3708,397 @@ function renderMetricCard(label: string, value: string | number, detail: string)
     <div class="stat-value">${escapeHtml(value)}</div>
     <div class="metric-detail">${escapeHtml(detail)}</div>
   </div>`
+}
+
+function latestMessage(state: LocalAdminConsoleState): string {
+  return typeof state.latest.message === "string" ? state.latest.message : "Latest run state is available for local inspection."
+}
+
+function actionSource(action: ActionRecord): string {
+  if (action.surface !== undefined) return `surface:${action.surface}`
+  if (action.schedule !== undefined) return `schedule:${action.schedule}`
+  if (action.hook !== undefined) return `hook:${action.hook}`
+  return "direct"
+}
+
+function actionPrimaryEffect(action: ActionRecord): string {
+  const effect = primaryExternalEffect(action.effects ?? [])
+  return effect === undefined ? "No external effect" : humanizeEffect(effect)
+}
+
+function artifactReferences(
+  state: LocalAdminConsoleState,
+  ids: readonly string[] | undefined,
+): LocalBundleArtifactRecord[] {
+  if (ids === undefined || ids.length === 0) return []
+  const wanted = new Set(ids)
+  return state.artifacts.filter((artifact) => wanted.has(artifact.id))
+}
+
+function renderArtifactReferenceList(
+  state: LocalAdminConsoleState,
+  ids: readonly string[] | undefined,
+  emptyText: string,
+): string {
+  const artifacts = artifactReferences(state, ids)
+  if (ids === undefined || ids.length === 0) return `<p class="meta">${escapeHtml(emptyText)}</p>`
+  if (artifacts.length === 0) return renderPills(ids.map(compactId))
+  return `<div class="record-list">${artifacts.map((artifact) => {
+    return `<div class="record-row"><a class="mono record-link" href="/artifacts/${encodeURIComponent(artifact.id)}" title="${escapeHtml(artifact.id)}">${escapeHtml(compactId(artifact.id))}</a><strong>${escapeHtml(artifact.title)}</strong><span class="meta">${escapeHtml(artifact.type)} - ${escapeHtml(artifact.status)}</span></div>`
+  }).join("")}</div>`
+}
+
+function artifactCreatorLink(state: LocalAdminConsoleState, artifact: LocalBundleArtifactRecord): string {
+  const action = state.actions.find((entry) => entry.id === artifact.created_by_action_id)
+  if (action === undefined) return `<span class="mono">${escapeHtml(artifact.created_by_action_id)}</span>`
+  return `<a class="mono record-link" href="/actions/${encodeURIComponent(action.id)}">${escapeHtml(action.id)}</a>`
+}
+
+function approvalForArtifact(state: LocalAdminConsoleState, artifact: LocalBundleArtifactRecord): LocalAdminApproval | undefined {
+  if (artifact.type !== "approval-request") return undefined
+  return state.approvals.find((approval) => approval.approval_request_artifact.id === artifact.id)
+}
+
+function renderArtifactRows(state: LocalAdminConsoleState): string {
+  return [...state.artifacts].reverse().map((artifact) => {
+    return `<tr>
+      <td>${renderStatusPill(artifact.status)}</td>
+      <td><a class="record-link mono" href="/artifacts/${encodeURIComponent(artifact.id)}">${escapeHtml(artifact.id)}</a><br><span class="meta">${escapeHtml(artifact.title)}</span></td>
+      <td>${escapeHtml(artifact.type)}<br><span class="meta">${escapeHtml(artifact.data_class)}</span></td>
+      <td>${renderPills(artifact.tags)}</td>
+      <td>${artifactCreatorLink(state, artifact)}</td>
+      <td><span class="mono" title="${escapeHtml(artifact.created_at)}">${escapeHtml(formatAdminDateTime(artifact.created_at))}</span></td>
+    </tr>`
+  }).join("")
+}
+
+function actionApproval(state: LocalAdminConsoleState, action: ActionRecord): LocalAdminApproval | undefined {
+  return state.approvals.find((approval) => approval.action.id === action.id)
+}
+
+function renderActionRows(state: LocalAdminConsoleState): string {
+  return [...state.actions].reverse().map((action) => {
+    const approval = actionApproval(state, action)
+    const approvalStatus = approval === undefined ? "none" : approvalDisplayStatus(approval)
+    return `<tr>
+      <td>${renderStatusPill(action.status)}</td>
+      <td><a class="record-link mono" href="/actions/${encodeURIComponent(action.id)}">${escapeHtml(action.id)}</a><br><span class="meta">${escapeHtml(action.type)}</span></td>
+      <td>${escapeHtml(action.capability ?? "none")}</td>
+      <td><span class="mono">${escapeHtml(action.principal)}</span><br><span class="meta">${escapeHtml(actionSource(action))}</span></td>
+      <td>${escapeHtml(actionPrimaryEffect(action))}</td>
+      <td>${approval === undefined ? `<span class="meta">none</span>` : `<a href="/approvals/${encodeURIComponent(action.id)}">${renderStatusPill(approvalStatus)}</a>`}</td>
+    </tr>`
+  }).join("")
+}
+
+function renderRunOverviewPage(state: LocalAdminConsoleState): string {
+  const pendingCount = state.approvals.filter((approval) => approvalDisplayStatus(approval) === "pending").length
+  const externalWriteCount = state.actions.filter((action) => {
+    return (action.effects ?? []).some((effect) => effect.startsWith("external.write:"))
+  }).length
+  const body = `<section class="card hero-card">
+    <div>
+      <div class="eyebrow">Latest local run</div>
+      <h2>Run Overview ${renderStatusPill(state.run.status)}</h2>
+      <p class="hero-copy">${escapeHtml(latestMessage(state))}</p>
+    </div>
+    <div class="workspace-card">
+      <dl>
+        <dt>Workspace</dt><dd>${escapeHtml(state.workspace.label)}</dd>
+        <dt>Manifest</dt><dd class="mono">${escapeHtml(state.bundle.manifest_path)}</dd>
+        <dt>Run Dir</dt><dd class="mono">${escapeHtml(state.run.dir)}</dd>
+      </dl>
+    </div>
+  </section>
+  <section class="grid stats">
+    ${renderMetricCard("Actions", state.actions.length, "Recorded in this run")}
+    ${renderMetricCard("Artifacts", state.artifacts.length, "Generated or loaded")}
+    ${renderMetricCard("Pending", pendingCount, "Approval decisions needed")}
+    ${renderMetricCard("External Writes", externalWriteCount, "Tracked effects")}
+  </section>
+  <section class="review-sections">
+    <div class="card">
+      <h2>Operational Snapshot</h2>
+      <dl>
+        <dt>Status</dt><dd>${renderStatusPill(state.run.status)}</dd>
+        <dt>Run</dt><dd class="mono">${escapeHtml(state.run.id)}</dd>
+        <dt>Latest Pointer</dt><dd class="mono">${escapeHtml(state.run.latest_path)}</dd>
+        <dt>Summary</dt><dd class="mono">${escapeHtml(state.run.summary_path)}</dd>
+      </dl>
+    </div>
+    <div class="card next-actions">
+      <h2>Review Queue</h2>
+      <p>${pendingCount === 0 ? "No pending human approval is blocking this run." : `${pendingCount} approval request${pendingCount === 1 ? "" : "s"} need a human decision.`}</p>
+      <div class="button-row">
+        <a class="button-link primary" href="/approvals">Open Approvals</a>
+        <a class="button-link" href="/actions">Inspect Actions</a>
+      </div>
+    </div>
+  </section>
+  <section class="card">
+    <div class="section-heading">
+      <div>
+        <h2>Recent Actions</h2>
+        <p>Runtime actions from the latest run, newest first.</p>
+      </div>
+      <a class="record-link" href="/actions">View all</a>
+    </div>
+    ${state.actions.length === 0 ? `<div class="empty">No actions were recorded in the latest run.</div>` : `<div class="table-wrap"><table>
+      <thead><tr><th>Status</th><th>Action</th><th>Capability</th><th>Principal</th><th>Primary Effect</th><th>Approval</th></tr></thead>
+      <tbody>${renderActionRows(state)}</tbody>
+    </table></div>`}
+  </section>
+  <details class="card technical-details">
+    <summary>Runtime summary and latest pointer</summary>
+    <div class="technical-grid two-column">
+      <div class="card">
+        <h3>Summary Markdown</h3>
+        ${state.run.summary_markdown === undefined ? `<p class="meta">No summary file was available for this run.</p>` : `<pre class="summary-markdown">${escapeHtml(state.run.summary_markdown)}</pre>`}
+      </div>
+      <div class="card">
+        <h3>Latest JSON</h3>
+        ${renderJsonBlock(state.latest)}
+      </div>
+    </div>
+  </details>`
+  return renderLayout("Run Overview", state, body, "run")
+}
+
+function renderActionsPage(state: LocalAdminConsoleState): string {
+  const completedCount = state.actions.filter((action) => action.status === "completed").length
+  const blockedCount = state.actions.filter((action) => action.status === "approval_required").length
+  const failedCount = state.actions.filter((action) => action.status === "failed" || action.status === "denied").length
+  const body = `<section class="card hero-card">
+    <div>
+      <div class="eyebrow">Runtime observability</div>
+      <h2>Action Log</h2>
+      <p class="hero-copy">Trace every proposed action from the latest local run, including policy status, effects, principals, and approval handoffs.</p>
+    </div>
+    <div class="workspace-card">
+      <dl>
+        <dt>Run</dt><dd class="mono">${escapeHtml(compactId(state.run.id))}</dd>
+        <dt>Status</dt><dd>${renderStatusPill(state.run.status)}</dd>
+        <dt>Actions</dt><dd>${escapeHtml(state.actions.length)}</dd>
+      </dl>
+    </div>
+  </section>
+  <section class="grid stats">
+    ${renderMetricCard("Completed", completedCount, "Finished actions")}
+    ${renderMetricCard("Blocked", blockedCount, "Approval required")}
+    ${renderMetricCard("Failed", failedCount, "Denied or failed")}
+    ${renderMetricCard("Approvals", state.approvals.length, "Approval request artifacts")}
+  </section>
+  <section class="card">
+    <div class="section-heading">
+      <div>
+        <h2>Action Log</h2>
+        <p>${state.actions.length} action${state.actions.length === 1 ? "" : "s"} in the latest run</p>
+      </div>
+    </div>
+    ${state.actions.length === 0 ? `<div class="empty">No actions were recorded in the latest run.</div>` : `<div class="table-wrap"><table>
+      <thead><tr><th>Status</th><th>Action</th><th>Capability</th><th>Principal</th><th>Primary Effect</th><th>Approval</th></tr></thead>
+      <tbody>${renderActionRows(state)}</tbody>
+    </table></div>`}
+  </section>`
+  return renderLayout("Actions", state, body, "actions")
+}
+
+function renderActionPolicySummary(action: ActionRecord): string {
+  const policy = action.policy
+  if (policy === undefined) return `<p class="meta">No policy decision was recorded for this action.</p>`
+  const clauses = approvalRuleClauses(policy.required_approval)
+  return `<dl class="kv">
+    <dt>Decision</dt><dd>${renderStatusPill(policy.decision)}</dd>
+    <dt>Code</dt><dd><span class="mono">${escapeHtml(policy.code ?? "none")}</span></dd>
+    <dt>Capability</dt><dd>${escapeHtml(policy.capability ?? action.capability ?? "none")}</dd>
+    <dt>Reason</dt><dd>${escapeHtml(policy.reason)}</dd>
+    <dt>Approval Rule</dt><dd>${renderPills(clauses.map(humanizeApprovalClause))}</dd>
+  </dl>`
+}
+
+function renderActionDetailPage(state: LocalAdminConsoleState, action: ActionRecord): string {
+  const approval = actionApproval(state, action)
+  const effects = action.effects ?? []
+  const approvalPanel = approval === undefined
+    ? `<p class="meta">No approval request is associated with this action.</p>`
+    : `<dl class="kv">
+        <dt>Status</dt><dd>${renderStatusPill(approvalDisplayStatus(approval))}</dd>
+        <dt>Request</dt><dd><span class="mono" title="${escapeHtml(approval.approval_request_artifact.id)}">${escapeHtml(compactId(approval.approval_request_artifact.id))}</span></dd>
+        <dt>Expires</dt><dd title="${escapeHtml(approval.approval_request.expires_at)}">${escapeHtml(formatAdminDateTime(approval.approval_request.expires_at))}</dd>
+        <dt>Review</dt><dd><a class="record-link" href="/approvals/${encodeURIComponent(action.id)}">Open approval detail</a></dd>
+      </dl>`
+  const body = `<p class="breadcrumb"><a href="/actions">Actions</a> / <span class="mono">${escapeHtml(action.id)}</span></p>
+  <section class="card detail-hero">
+    <div>
+      <div class="eyebrow">Action trace</div>
+      <h2>Action Detail ${renderStatusPill(action.status)}</h2>
+      <p class="hero-copy">Inspect the policy result, recorded effects, payload summary, and linked artifacts for this exact stored action.</p>
+    </div>
+    <div class="hero-meta">
+      <dl class="kv">
+        <dt>Status</dt><dd>${renderStatusPill(action.status)}</dd>
+        <dt>Type</dt><dd>${escapeHtml(action.type)}</dd>
+        <dt>Created</dt><dd title="${escapeHtml(action.created_at)}">${escapeHtml(formatAdminDateTime(action.created_at))}</dd>
+      </dl>
+    </div>
+  </section>
+  <section class="review-top">
+    <div class="card">
+      <h2>Action at a glance</h2>
+      <dl>
+        <dt>Action</dt><dd class="mono">${escapeHtml(action.id)}</dd>
+        <dt>Principal</dt><dd class="mono">${escapeHtml(action.principal)}</dd>
+        <dt>Capability</dt><dd>${escapeHtml(action.capability ?? "none")}</dd>
+        <dt>Source</dt><dd class="mono">${escapeHtml(actionSource(action))}</dd>
+        <dt>Digest</dt><dd>${action.digest === undefined ? `<span class="meta">none</span>` : `<span class="mono" title="${escapeHtml(action.digest)}">${escapeHtml(shortValue(action.digest, 18, 10))}</span>`}</dd>
+        <dt>Primary Effect</dt><dd>${escapeHtml(actionPrimaryEffect(action))}</dd>
+      </dl>
+    </div>
+    <div class="card">
+      <h2>Approval Handoff</h2>
+      ${approvalPanel}
+    </div>
+  </section>
+  <section class="review-sections">
+    <div class="card">
+      <h3>Policy Decision</h3>
+      ${renderActionPolicySummary(action)}
+    </div>
+    <div class="card">
+      <h3>Effects</h3>
+      ${effects.length === 0 ? `<p class="meta">No effects were recorded.</p>` : renderPills(effects.map(humanizeEffect))}
+    </div>
+  </section>
+  <section class="review-sections">
+    <div class="card">
+      <h3>Input Artifacts</h3>
+      ${renderArtifactReferenceList(state, action.input_artifact_ids, "No input artifacts were recorded.")}
+    </div>
+    <div class="card">
+      <h3>Output Artifacts</h3>
+      ${renderArtifactReferenceList(state, action.output_artifact_ids, "No output artifacts were recorded.")}
+    </div>
+  </section>
+  <details class="card technical-details">
+    <summary>Payload and raw action record</summary>
+    <div class="technical-grid two-column">
+      <div class="card">
+        <h3>Payload Summary</h3>
+        ${renderObjectSummary(action.payload ?? {})}
+        ${rawJsonDetails("Raw payload JSON", action.payload ?? {})}
+      </div>
+      <div class="card">
+        <h3>Action Record</h3>
+        ${renderJsonBlock(action)}
+      </div>
+    </div>
+  </details>`
+  return renderLayout(`Action ${action.id}`, state, body, "actions")
+}
+
+function renderArtifactsPage(state: LocalAdminConsoleState): string {
+  const finalizedCount = state.artifacts.filter((artifact) => artifact.finalized).length
+  const draftCount = state.artifacts.filter((artifact) => !artifact.finalized).length
+  const approvalRequestCount = state.artifacts.filter((artifact) => artifact.type === "approval-request").length
+  const types = new Set(state.artifacts.map((artifact) => artifact.type))
+  const body = `<section class="card hero-card">
+    <div>
+      <div class="eyebrow">Runtime artifacts</div>
+      <h2>Artifact Browser</h2>
+      <p class="hero-copy">Inspect generated artifacts from the latest local run, including lineage, status, data class, and safely escaped structured bodies.</p>
+    </div>
+    <div class="workspace-card">
+      <dl>
+        <dt>Run</dt><dd class="mono">${escapeHtml(compactId(state.run.id))}</dd>
+        <dt>Status</dt><dd>${renderStatusPill(state.run.status)}</dd>
+        <dt>Artifacts</dt><dd>${escapeHtml(state.artifacts.length)}</dd>
+      </dl>
+    </div>
+  </section>
+  <section class="grid stats">
+    ${renderMetricCard("Artifacts", state.artifacts.length, "Available in this run")}
+    ${renderMetricCard("Types", types.size, "Distinct artifact types")}
+    ${renderMetricCard("Finalized", finalizedCount, "Read-only records")}
+    ${renderMetricCard("Approval Requests", approvalRequestCount, "Human review packets")}
+  </section>
+  <section class="card">
+    <div class="section-heading">
+      <div>
+        <h2>Artifact Browser</h2>
+        <p>${draftCount === 0 ? "All artifacts are finalized." : `${draftCount} draft artifact${draftCount === 1 ? "" : "s"} remain writable.`}</p>
+      </div>
+    </div>
+    ${state.artifacts.length === 0 ? `<div class="empty">No artifacts were recorded in the latest run.</div>` : `<div class="table-wrap"><table>
+      <thead><tr><th>Status</th><th>Artifact</th><th>Type</th><th>Tags</th><th>Created By</th><th>Created</th></tr></thead>
+      <tbody>${renderArtifactRows(state)}</tbody>
+    </table></div>`}
+  </section>`
+  return renderLayout("Artifacts", state, body, "artifacts")
+}
+
+function renderArtifactDetailPage(state: LocalAdminConsoleState, artifact: LocalBundleArtifactRecord): string {
+  const createdByAction = state.actions.find((action) => action.id === artifact.created_by_action_id)
+  const approval = approvalForArtifact(state, artifact)
+  const approvalLink = approval === undefined
+    ? `<p class="meta">This artifact is not an approval request.</p>`
+    : `<dl class="kv">
+        <dt>Approval</dt><dd><a class="record-link" href="/approvals/${encodeURIComponent(approval.action.id)}">Open approval detail</a></dd>
+        <dt>Action</dt><dd><a class="mono record-link" href="/actions/${encodeURIComponent(approval.action.id)}">${escapeHtml(approval.action.id)}</a></dd>
+        <dt>Status</dt><dd>${renderStatusPill(approvalDisplayStatus(approval))}</dd>
+      </dl>`
+  const body = `<p class="breadcrumb"><a href="/artifacts">Artifacts</a> / <span class="mono">${escapeHtml(artifact.id)}</span></p>
+  <section class="card detail-hero">
+    <div>
+      <div class="eyebrow">Artifact record</div>
+      <h2>${escapeHtml(artifact.title)} ${renderStatusPill(artifact.status)}</h2>
+      <p class="hero-copy">Review the artifact's lineage and structured body without treating the body as trusted HTML.</p>
+    </div>
+    <div class="hero-meta">
+      <dl class="kv">
+        <dt>Type</dt><dd>${escapeHtml(artifact.type)}</dd>
+        <dt>Version</dt><dd>${escapeHtml(artifact.version)}</dd>
+        <dt>Finalized</dt><dd>${escapeHtml(artifact.finalized ? "yes" : "no")}</dd>
+      </dl>
+    </div>
+  </section>
+  <section class="review-top">
+    <div class="card">
+      <h2>Artifact at a glance</h2>
+      <dl>
+        <dt>Artifact</dt><dd class="mono">${escapeHtml(artifact.id)}</dd>
+        <dt>Data Class</dt><dd>${escapeHtml(artifact.data_class)}</dd>
+        <dt>Tags</dt><dd>${renderPills(artifact.tags)}</dd>
+        <dt>Created</dt><dd title="${escapeHtml(artifact.created_at)}">${escapeHtml(formatAdminDateTime(artifact.created_at))}</dd>
+        <dt>Created By</dt><dd>${artifactCreatorLink(state, artifact)}</dd>
+        <dt>Source</dt><dd>${artifact.source === undefined ? `<span class="meta">not recorded</span>` : renderInlineJsonValue(artifact.source)}</dd>
+      </dl>
+    </div>
+    <div class="card">
+      <h2>Approval Context</h2>
+      ${approvalLink}
+    </div>
+  </section>
+  <section class="review-sections">
+    <div class="card">
+      <h3>Derived From</h3>
+      ${renderArtifactReferenceList(state, artifact.derived_from, "No source artifacts were recorded.")}
+    </div>
+    <div class="card">
+      <h3>Created Action</h3>
+      ${createdByAction === undefined ? `<p class="meta">No matching action record was found.</p>` : `<dl class="kv">
+        <dt>Status</dt><dd>${renderStatusPill(createdByAction.status)}</dd>
+        <dt>Type</dt><dd>${escapeHtml(createdByAction.type)}</dd>
+        <dt>Capability</dt><dd>${escapeHtml(createdByAction.capability ?? "none")}</dd>
+        <dt>Open</dt><dd><a class="record-link" href="/actions/${encodeURIComponent(createdByAction.id)}">Open action detail</a></dd>
+      </dl>`}
+    </div>
+  </section>
+  <section class="card">
+    <h2>Artifact Body</h2>
+    ${renderObjectSummary(artifact.body)}
+    ${rawJsonDetails("Raw Artifact JSON", artifact)}
+  </section>`
+  return renderLayout(`Artifact ${artifact.id}`, state, body, "artifacts")
 }
 
 function renderApprovalsPage(state: LocalAdminConsoleState): string {
@@ -3721,7 +4146,7 @@ function renderApprovalsPage(state: LocalAdminConsoleState): string {
       <tbody>${rows}</tbody>
     </table></div>`}
   </section>`
-  return renderLayout("Approvals", state, body)
+  return renderLayout("Approvals", state, body, "approvals")
 }
 
 function principalOptions(state: LocalAdminConsoleState): string {
@@ -3821,7 +4246,7 @@ function renderApprovalDetailPage(
     <h2>Input Artifacts</h2>
     ${artifacts.length === 0 ? `<div class="card empty">No input artifacts were recorded for this approval.</div>` : artifacts}
   </section>`
-  return renderLayout(`Approval ${approval.action.id}`, state, body)
+  return renderLayout(`Approval ${approval.action.id}`, state, body, "approvals")
 }
 
 function htmlResponse(html: string, status = 200): Response {
@@ -3862,6 +4287,52 @@ function apiApproval(approval: LocalAdminApproval): Record<string, unknown> {
   }
 }
 
+function apiAction(state: LocalAdminConsoleState, action: ActionRecord): Record<string, unknown> {
+  const approval = actionApproval(state, action)
+  return {
+    id: action.id,
+    type: action.type,
+    status: action.status,
+    principal: action.principal,
+    created_at: action.created_at,
+    completed_at: action.completed_at ?? null,
+    data_class: action.data_class ?? null,
+    capability: action.capability ?? null,
+    source: actionSource(action),
+    effects: action.effects ?? [],
+    primary_effect: actionPrimaryEffect(action),
+    policy: action.policy ?? null,
+    digest: action.digest ?? null,
+    input_artifact_ids: action.input_artifact_ids ?? [],
+    output_artifact_ids: action.output_artifact_ids ?? [],
+    approval: approval === undefined ? null : apiApproval(approval),
+    payload: redactSensitiveJson(action.payload ?? {}),
+    error: action.error ?? null,
+  }
+}
+
+function apiArtifact(state: LocalAdminConsoleState, artifact: LocalBundleArtifactRecord): Record<string, unknown> {
+  const approval = approvalForArtifact(state, artifact)
+  const createdByAction = state.actions.find((action) => action.id === artifact.created_by_action_id)
+  return {
+    id: artifact.id,
+    type: artifact.type,
+    title: artifact.title,
+    status: artifact.status,
+    version: artifact.version,
+    finalized: artifact.finalized,
+    data_class: artifact.data_class,
+    tags: artifact.tags,
+    source: artifact.source === undefined ? null : redactSensitiveJson(artifact.source),
+    derived_from: artifact.derived_from ?? [],
+    created_by_action_id: artifact.created_by_action_id,
+    created_at: artifact.created_at,
+    created_by_action: createdByAction === undefined ? null : apiAction(state, createdByAction),
+    approval: approval === undefined ? null : apiApproval(approval),
+    body: redactSensitiveJson(artifact.body),
+  }
+}
+
 function apiConsoleState(state: LocalAdminConsoleState): Record<string, unknown> {
   return {
     workspace: state.workspace,
@@ -3873,6 +4344,9 @@ function apiConsoleState(state: LocalAdminConsoleState): Record<string, unknown>
       actions: state.actions.length,
       artifacts: state.artifacts.length,
     },
+    latest: state.latest,
+    actions: state.actions.map((action) => apiAction(state, action)),
+    artifacts: state.artifacts.map((artifact) => apiArtifact(state, artifact)),
     approvals: state.approvals.map(apiApproval),
   }
 }
@@ -3946,7 +4420,38 @@ export function createLocalAdminConsoleHandler(
     const segments = url.pathname.split("/").filter(Boolean).map((segment) => decodeURIComponent(segment))
 
     try {
-      if (request.method === "GET" && segments.length === 0) return redirectResponse("/approvals")
+      if (request.method === "GET" && segments.length === 0) {
+        return htmlResponse(renderRunOverviewPage(await loadLocalAdminConsoleState(ctx, handlerOptions)))
+      }
+
+      if (request.method === "GET" && segments[0] === "api" && segments[1] === "runs" && segments[2] === "latest" && segments.length === 3) {
+        const state = await loadLocalAdminConsoleState(ctx, handlerOptions)
+        return jsonResponse({ ...apiConsoleState(state), summary_markdown: state.run.summary_markdown ?? null })
+      }
+
+      if (request.method === "GET" && segments[0] === "api" && segments[1] === "actions" && segments.length === 2) {
+        const state = await loadLocalAdminConsoleState(ctx, handlerOptions)
+        return jsonResponse({ run: state.run, actions: state.actions.map((action) => apiAction(state, action)) })
+      }
+
+      if (request.method === "GET" && segments[0] === "api" && segments[1] === "actions" && segments.length === 3) {
+        const state = await loadLocalAdminConsoleState(ctx, handlerOptions)
+        const action = state.actions.find((entry) => entry.id === segments[2])
+        if (action === undefined) return jsonResponse({ error: "action not found" }, 404)
+        return jsonResponse(apiAction(state, action))
+      }
+
+      if (request.method === "GET" && segments[0] === "api" && segments[1] === "artifacts" && segments.length === 2) {
+        const state = await loadLocalAdminConsoleState(ctx, handlerOptions)
+        return jsonResponse({ run: state.run, artifacts: state.artifacts.map((artifact) => apiArtifact(state, artifact)) })
+      }
+
+      if (request.method === "GET" && segments[0] === "api" && segments[1] === "artifacts" && segments.length === 3) {
+        const state = await loadLocalAdminConsoleState(ctx, handlerOptions)
+        const artifact = state.artifacts.find((entry) => entry.id === segments[2])
+        if (artifact === undefined) return jsonResponse({ error: "artifact not found" }, 404)
+        return jsonResponse(apiArtifact(state, artifact))
+      }
 
       if (request.method === "GET" && segments[0] === "api" && segments[1] === "approvals" && segments.length === 2) {
         return jsonResponse(apiConsoleState(await loadLocalAdminConsoleState(ctx, handlerOptions)))
@@ -3961,6 +4466,32 @@ export function createLocalAdminConsoleHandler(
 
       if (request.method === "GET" && segments[0] === "approvals" && segments.length === 1) {
         return htmlResponse(renderApprovalsPage(await loadLocalAdminConsoleState(ctx, handlerOptions)))
+      }
+
+      if (request.method === "GET" && segments[0] === "runs" && segments[1] === "latest" && segments.length === 2) {
+        return htmlResponse(renderRunOverviewPage(await loadLocalAdminConsoleState(ctx, handlerOptions)))
+      }
+
+      if (request.method === "GET" && segments[0] === "actions" && segments.length === 1) {
+        return htmlResponse(renderActionsPage(await loadLocalAdminConsoleState(ctx, handlerOptions)))
+      }
+
+      if (request.method === "GET" && segments[0] === "actions" && segments.length === 2) {
+        const state = await loadLocalAdminConsoleState(ctx, handlerOptions)
+        const action = state.actions.find((entry) => entry.id === segments[1])
+        if (action === undefined) return errorResponse("Action not found.", 404)
+        return htmlResponse(renderActionDetailPage(state, action))
+      }
+
+      if (request.method === "GET" && segments[0] === "artifacts" && segments.length === 1) {
+        return htmlResponse(renderArtifactsPage(await loadLocalAdminConsoleState(ctx, handlerOptions)))
+      }
+
+      if (request.method === "GET" && segments[0] === "artifacts" && segments.length === 2) {
+        const state = await loadLocalAdminConsoleState(ctx, handlerOptions)
+        const artifact = state.artifacts.find((entry) => entry.id === segments[1])
+        if (artifact === undefined) return errorResponse("Artifact not found.", 404)
+        return htmlResponse(renderArtifactDetailPage(state, artifact))
       }
 
       if (request.method === "GET" && segments[0] === "approvals" && segments.length === 2) {

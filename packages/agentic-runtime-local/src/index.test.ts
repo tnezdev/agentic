@@ -1334,6 +1334,79 @@ export async function releaseHandoff() {
     expect(detailHtml).toContain("test-token")
   })
 
+  it("renders run overview and action pages for local admin observability", async () => {
+    const workspace = join(tmpDir, "case-review-bundle")
+    await cp(CASE_REVIEW_BUNDLE_TEMPLATE, workspace, { recursive: true })
+
+    const runResult = await runtime.commands.run!(ctx, {
+      target: "case-review-bundle",
+      args: [],
+      flags: { clean: true },
+    })
+    const runData = dataOf(runResult)
+    const runId = runData["run_id"] as string
+    const actionId = runData["approval_required_action_id"] as string
+    const artifactId = runData["approval_request_artifact_id"] as string
+    const handler = createLocalAdminConsoleHandler(ctx, {
+      target: "case-review-bundle",
+      csrfToken: "test-token",
+    })
+
+    const overviewResponse = await handler(new Request("http://127.0.0.1/"))
+    const overviewHtml = await overviewResponse.text()
+    expect(overviewResponse.status).toBe(200)
+    expect(overviewHtml).toContain("Run Overview")
+    expect(overviewHtml).toContain("Recent Actions")
+    expect(overviewHtml).toContain(actionId)
+
+    const runResponse = await handler(new Request("http://127.0.0.1/runs/latest"))
+    expect(runResponse.status).toBe(200)
+    expect(await runResponse.text()).toContain(runId)
+
+    const actionsResponse = await handler(new Request("http://127.0.0.1/actions"))
+    const actionsHtml = await actionsResponse.text()
+    expect(actionsResponse.status).toBe(200)
+    expect(actionsHtml).toContain("Action Log")
+    expect(actionsHtml).toContain("handoff.release")
+
+    const detailResponse = await handler(new Request(`http://127.0.0.1/actions/${actionId}`))
+    const detailHtml = await detailResponse.text()
+    expect(detailResponse.status).toBe(200)
+    expect(detailHtml).toContain("Action Detail")
+    expect(detailHtml).toContain("Policy Decision")
+    expect(detailHtml).toContain(`/approvals/${actionId}`)
+
+    const artifactsResponse = await handler(new Request("http://127.0.0.1/artifacts"))
+    const artifactsHtml = await artifactsResponse.text()
+    expect(artifactsResponse.status).toBe(200)
+    expect(artifactsHtml).toContain("Artifact Browser")
+    expect(artifactsHtml).toContain(artifactId)
+
+    const artifactDetailResponse = await handler(new Request(`http://127.0.0.1/artifacts/${artifactId}`))
+    const artifactDetailHtml = await artifactDetailResponse.text()
+    expect(artifactDetailResponse.status).toBe(200)
+    expect(artifactDetailHtml).toContain("Artifact record")
+    expect(artifactDetailHtml).toContain("Raw Artifact JSON")
+    expect(artifactDetailHtml).toContain(`/actions/${actionId}`)
+    expect(artifactDetailHtml).toContain(`/approvals/${actionId}`)
+
+    const apiRunResponse = await handler(new Request("http://127.0.0.1/api/runs/latest"))
+    const apiRun = JSON.parse(await apiRunResponse.text()) as Record<string, unknown>
+    expect(apiRunResponse.status).toBe(200)
+    expect(apiRun.run).toMatchObject({ id: runId })
+    expect(apiRun.summary_markdown).toEqual(expect.stringContaining("# Local Bundle Run"))
+
+    const apiActionResponse = await handler(new Request(`http://127.0.0.1/api/actions/${actionId}`))
+    const apiAction = JSON.parse(await apiActionResponse.text()) as Record<string, unknown>
+    expect(apiActionResponse.status).toBe(200)
+    expect(apiAction).toMatchObject({ id: actionId, capability: "handoff.release" })
+
+    const apiArtifactResponse = await handler(new Request(`http://127.0.0.1/api/artifacts/${artifactId}`))
+    const apiArtifact = JSON.parse(await apiArtifactResponse.text()) as Record<string, unknown>
+    expect(apiArtifactResponse.status).toBe(200)
+    expect(apiArtifact).toMatchObject({ id: artifactId, type: "approval-request" })
+  })
+
   it("protects local admin approval POSTs with a CSRF token", async () => {
     const workspace = join(tmpDir, "case-review-bundle")
     await cp(CASE_REVIEW_BUNDLE_TEMPLATE, workspace, { recursive: true })
