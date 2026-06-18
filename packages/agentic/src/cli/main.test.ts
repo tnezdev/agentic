@@ -938,6 +938,36 @@ describe("CLI", () => {
     expect(result.result.data.json).toBe(true)
   })
 
+  it("top-level serve delegates to runtime run with a serve output envelope", async () => {
+    await writeRuntimePackage(tmpDir)
+
+    const result = (await runJson(
+      ...base,
+      "serve",
+      "inbox-review",
+      "extra",
+      "--interactive",
+    )) as {
+      command: string
+      status: string
+      result: {
+        data: {
+          target: string
+          args: string[]
+          flags: Record<string, string | true>
+          json: boolean
+        }
+      }
+    }
+
+    expect(result.command).toBe("serve")
+    expect(result.status).toBe("delegated")
+    expect(result.result.data.target).toBe("inbox-review")
+    expect(result.result.data.args).toEqual(["extra"])
+    expect(result.result.data.flags.interactive).toBe(true)
+    expect(result.result.data.json).toBe(true)
+  })
+
   it("runtime init passes opaque runtime config to the package", async () => {
     await writeRuntimePackage(tmpDir)
     await mkdir(join(tmpDir, ".agentic"), { recursive: true })

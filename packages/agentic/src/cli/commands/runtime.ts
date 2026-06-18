@@ -42,6 +42,8 @@ type ResolvedRuntime = OfficialRuntime & {
   runtime_config: Record<string, string>
 }
 
+type RuntimeDelegatedCommandName = "init" | "run" | "status"
+
 const OFFICIAL_RUNTIMES: OfficialRuntime[] = [
   {
     name: "local",
@@ -465,9 +467,10 @@ async function loadRuntimeForDelegation(
 
 async function delegateRuntimeCommand(
   ctx: Ctx,
-  command: "init" | "run" | "status",
+  command: RuntimeDelegatedCommandName,
   runtime: ResolvedRuntime,
   args: RuntimeInitArgs | RuntimeRunArgs | RuntimeStatusArgs,
+  options?: { outputCommand?: RuntimeCommandName | undefined },
 ): Promise<void> {
   const manifest = await loadRuntimeForDelegation(ctx, runtime)
   const handler = manifest.commands[command]
@@ -482,10 +485,16 @@ async function delegateRuntimeCommand(
   const message = result?.summary ?? `Runtime "${runtime.name}" ${command} completed.`
   output(
     ctx,
-    runtimeAction(command, runtimeRef(runtime, "configured", manifest), "delegated", message, {
-      target: "target" in args ? args.target : undefined,
-      result: result ?? undefined,
-    }),
+    runtimeAction(
+      options?.outputCommand ?? command,
+      runtimeRef(runtime, "configured", manifest),
+      "delegated",
+      message,
+      {
+        target: "target" in args ? args.target : undefined,
+        result: result ?? undefined,
+      },
+    ),
     formatRuntimeAction,
   )
 }
@@ -589,6 +598,21 @@ export const runtimeRunCommand: Command = async (ctx, args, flags) => {
     args: args.slice(1),
     flags,
   })
+}
+
+export const serveCommand: Command = async (ctx, args, flags) => {
+  const runtime = resolveRuntime(ctx, defaultRuntimeName(ctx))
+  await delegateRuntimeCommand(
+    ctx,
+    "run",
+    runtime,
+    {
+      target: args[0],
+      args: args.slice(1),
+      flags,
+    },
+    { outputCommand: "serve" },
+  )
 }
 
 export const runtimeStatusCommand: Command = async (ctx, args, flags) => {

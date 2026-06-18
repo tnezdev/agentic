@@ -65,6 +65,7 @@ import {
   runtimeInitCommand,
   runtimeListCommand,
   runtimeRunCommand,
+  serveCommand,
   runtimeStatusCommand,
 } from "./commands/runtime.js"
 import { evalCommand } from "./commands/eval.js"
@@ -152,6 +153,7 @@ const commands: Record<string, Command> = {
   "capability validate": capabilityValidateCommand,
   runtime: runtimeHelpCommand,
   run: runtimeRunCommand,
+  serve: serveCommand,
   "runtime help": runtimeHelpCommand,
   "runtime list": runtimeListCommand,
   "runtime add": runtimeAddCommand,
@@ -167,6 +169,7 @@ const USAGE = `Usage: agentic <command> [args] [flags]
 Commands:
   init [--example second-brain]       Scaffold .agentic/ directory
   run [target]                        Run current workspace with default runtime
+  serve [target]                      Serve a target with the default runtime
   eval [path]                         Evaluate local run state against bundle evals
   inspect [path]                      Inspect an Agentic bundle and local state
   validate [path]                     Validate an Agentic bundle

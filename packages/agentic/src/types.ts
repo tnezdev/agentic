@@ -750,7 +750,7 @@ export type RuntimeCapability =
   | "json-events"
   | "harness-sessions"
 
-export type RuntimeCommandName = "add" | "init" | "run" | "status"
+export type RuntimeCommandName = "add" | "init" | "run" | "serve" | "status"
 
 export type RuntimeCommandFlags = Record<string, string | true>
 
