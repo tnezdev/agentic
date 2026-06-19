@@ -1405,6 +1405,57 @@ export async function releaseHandoff() {
     const apiArtifact = JSON.parse(await apiArtifactResponse.text()) as Record<string, unknown>
     expect(apiArtifactResponse.status).toBe(200)
     expect(apiArtifact).toMatchObject({ id: artifactId, type: "approval-request" })
+
+    const integrationsResponse = await handler(new Request("http://127.0.0.1/integrations"))
+    const integrationsHtml = await integrationsResponse.text()
+    expect(integrationsResponse.status).toBe(200)
+    expect(integrationsHtml).toContain("Integration Declarations")
+    expect(integrationsHtml).toContain("review-queue")
+    expect(integrationsHtml).toContain("handoff.release")
+
+    const capabilitiesResponse = await handler(new Request("http://127.0.0.1/capabilities"))
+    const capabilitiesHtml = await capabilitiesResponse.text()
+    expect(capabilitiesResponse.status).toBe(200)
+    expect(capabilitiesHtml).toContain("Capability Inspector")
+    expect(capabilitiesHtml).toContain("case.validate")
+    expect(capabilitiesHtml).toContain("handoff.release")
+
+    const capabilityDetailResponse = await handler(new Request("http://127.0.0.1/capabilities/handoff.release"))
+    const capabilityDetailHtml = await capabilityDetailResponse.text()
+    expect(capabilityDetailResponse.status).toBe(200)
+    expect(capabilityDetailHtml).toContain("Capability policy")
+    expect(capabilityDetailHtml).toContain("approval_required")
+    expect(capabilityDetailHtml).toContain("review-queue")
+    expect(capabilityDetailHtml).toContain("Bundle Policies")
+
+    const apiIntegrationsResponse = await handler(new Request("http://127.0.0.1/api/integrations"))
+    const apiIntegrations = JSON.parse(await apiIntegrationsResponse.text()) as {
+      integrations: Array<Record<string, unknown>>
+    }
+    expect(apiIntegrationsResponse.status).toBe(200)
+    expect(apiIntegrations.integrations[0]).toMatchObject({
+      id: "review-queue",
+      status: "declared",
+      provider: "demo-review-queue",
+      required_by_capabilities: ["handoff.release"],
+    })
+    expect(apiIntegrations.integrations[0]?.secret_refs).toEqual(["REVIEW_QUEUE_TOKEN (required)"])
+
+    const apiCapabilityResponse = await handler(new Request("http://127.0.0.1/api/capabilities/handoff.release"))
+    const apiCapability = JSON.parse(await apiCapabilityResponse.text()) as Record<string, unknown>
+    expect(apiCapabilityResponse.status).toBe(200)
+    expect(apiCapability).toMatchObject({
+      id: "handoff.release",
+      status: "approval_required",
+      missing_integrations: [],
+      unavailable_integrations: [],
+    })
+    expect(apiCapability.integrations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "review-queue" }),
+    ]))
+    expect(apiCapability.policies).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "data-boundary" }),
+    ]))
   })
 
   it("protects local admin approval POSTs with a CSRF token", async () => {

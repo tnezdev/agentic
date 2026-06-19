@@ -136,6 +136,13 @@ export type LocalAdminApproval = {
   decision?: ApprovalDecisionRecord | undefined
 }
 
+export type LocalAdminBundleDeclarations = {
+  actions: LoadedAgenticBundleData[]
+  capabilities: LoadedAgenticBundleData[]
+  integrations: LoadedAgenticBundleData[]
+  policies: LoadedAgenticBundleData[]
+}
+
 export type LocalAdminConsoleState = {
   workspace: {
     root: string
@@ -161,6 +168,7 @@ export type LocalAdminConsoleState = {
   approval_decisions: ApprovalDecisionRecord[]
   approvals: LocalAdminApproval[]
   human_principals: LocalAdminPrincipal[]
+  declarations: LocalAdminBundleDeclarations
 }
 
 type LocalRunContext = {
@@ -3204,6 +3212,12 @@ export async function loadLocalAdminConsoleState(
         if (principal.description !== undefined) info.description = principal.description
         return info
       }),
+    declarations: {
+      actions: bundle.actions,
+      capabilities: bundle.capabilities,
+      integrations: bundle.integrations,
+      policies: bundle.policies,
+    },
   }
 }
 
@@ -3232,8 +3246,8 @@ function escapeHtml(value: unknown): string {
 
 function statusClass(status: string): string {
   if (status === "pending" || status === "approval_required") return "status-pending"
-  if (status === "granted" || status === "completed") return "status-good"
-  if (status === "rejected" || status === "denied" || status === "failed") return "status-bad"
+  if (status === "granted" || status === "completed" || status === "available" || status === "configured" || status === "healthy") return "status-good"
+  if (status === "rejected" || status === "denied" || status === "failed" || status === "blocked" || status === "missing" || status === "unavailable" || status === "expired" || status === "misconfigured") return "status-bad"
   return "status-muted"
 }
 
@@ -3281,6 +3295,185 @@ function humanizeEffect(effect: string): string {
 function renderPills(values: readonly string[]): string {
   if (values.length === 0) return `<span class="meta">none</span>`
   return `<span class="pills">${values.map((value) => `<span class="pill mono">${escapeHtml(value)}</span>`).join("")}</span>`
+}
+
+type LocalCapabilityInspection = {
+  entry: LoadedAgenticBundleData
+  capability: ActionCapabilityDeclaration
+  action?: LoadedAgenticBundleData | undefined
+  integrations: LoadedAgenticBundleData[]
+  missing_integrations: string[]
+  unavailable_integrations: LoadedAgenticBundleData[]
+  related_actions: ActionRecord[]
+  status: "available" | "approval_required" | "blocked"
+  reasons: string[]
+}
+
+function jsonStringArray(value: JsonValue | undefined): string[] {
+  return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : []
+}
+
+function dataString(value: JsonValue | undefined): string | undefined {
+  return typeof value === "string" && value.trim() !== "" ? value : undefined
+}
+
+function dataObject(value: JsonValue | undefined): JsonObject | undefined {
+  return value !== null && typeof value === "object" && !Array.isArray(value) ? value : undefined
+}
+
+function actionDeclaration(entry: LoadedAgenticBundleData): ActionDeclaration {
+  return entry.data as unknown as ActionDeclaration
+}
+
+function capabilityDeclaration(entry: LoadedAgenticBundleData): ActionCapabilityDeclaration {
+  return entry.data as unknown as ActionCapabilityDeclaration
+}
+
+function integrationDeclaration(entry: LoadedAgenticBundleData): ActionIntegrationDeclaration {
+  return entry.data as unknown as ActionIntegrationDeclaration
+}
+
+function dataBoundaryPolicy(entry: LoadedAgenticBundleData | undefined): ActionDataBoundaryPolicy | undefined {
+  return entry === undefined ? undefined : entry.data as unknown as ActionDataBoundaryPolicy
+}
+
+function findActionDeclaration(state: LocalAdminConsoleState, id: string | undefined): LoadedAgenticBundleData | undefined {
+  if (id === undefined) return undefined
+  return state.declarations.actions.find((entry) => entry.id === id)
+}
+
+function findIntegrationDeclaration(state: LocalAdminConsoleState, id: string): LoadedAgenticBundleData | undefined {
+  return state.declarations.integrations.find((entry) => entry.id === id)
+}
+
+function capabilityIntegrationIds(capability: ActionCapabilityDeclaration): string[] {
+  return capability.integrations ?? []
+}
+
+function capabilityPrincipalIds(capability: ActionCapabilityDeclaration): string[] {
+  return capability.principals?.allowed ?? []
+}
+
+function integrationAvailability(integration: LoadedAgenticBundleData): string {
+  return integrationDeclaration(integration).availability ?? "declared"
+}
+
+function integrationDisplayStatus(integration: LoadedAgenticBundleData): string {
+  const availability = integrationAvailability(integration)
+  if (["available", "configured", "healthy"].includes(availability)) return availability
+  if (["missing", "unavailable", "expired", "misconfigured"].includes(availability)) return availability
+  return "declared"
+}
+
+function integrationProvider(integration: LoadedAgenticBundleData): string {
+  return dataString(integration.data.provider) ?? "unspecified"
+}
+
+function integrationRequiredScopes(integration: LoadedAgenticBundleData): string[] {
+  return jsonStringArray(integration.data.required_scopes)
+}
+
+function integrationSecretSummaries(integration: LoadedAgenticBundleData): string[] {
+  const secrets = integration.data.secrets
+  if (!Array.isArray(secrets)) return []
+  return secrets.map((entry) => {
+    const object = dataObject(entry)
+    const name = object === undefined ? undefined : dataString(object.name)
+    const required = object?.required === true ? "required" : "optional"
+    return name === undefined ? undefined : `${name} (${required})`
+  }).filter((entry): entry is string => entry !== undefined)
+}
+
+function capabilitiesUsingIntegration(state: LocalAdminConsoleState, integrationId: string): LoadedAgenticBundleData[] {
+  return state.declarations.capabilities.filter((entry) => {
+    return capabilityIntegrationIds(capabilityDeclaration(entry)).includes(integrationId)
+  })
+}
+
+function dataBoundaryReasons(state: LocalAdminConsoleState, capability: ActionCapabilityDeclaration): string[] {
+  const policy = dataBoundaryPolicy(state.declarations.policies.find((entry) => entry.id === "data-boundary"))
+  if (policy === undefined) return []
+  const dataClasses = capability.data_classes ?? []
+  const allowed = policy.allowed_data_classes ?? []
+  const disallowed = policy.disallowed ?? []
+  const reasons: string[] = []
+  for (const dataClass of dataClasses) {
+    if (disallowed.includes(dataClass)) {
+      reasons.push(`Data class ${dataClass} is blocked by policy data-boundary.`)
+    } else if (allowed.length > 0 && !allowed.includes(dataClass)) {
+      reasons.push(`Data class ${dataClass} is not listed in policy data-boundary.`)
+    }
+  }
+  return reasons
+}
+
+function inspectCapability(state: LocalAdminConsoleState, entry: LoadedAgenticBundleData): LocalCapabilityInspection {
+  const capability = capabilityDeclaration(entry)
+  const action = findActionDeclaration(state, capability.action)
+    ?? state.declarations.actions.find((candidate) => actionDeclaration(candidate).capability === capability.id)
+  const integrationIds = capabilityIntegrationIds(capability)
+  const integrations = integrationIds.map((id) => findIntegrationDeclaration(state, id)).filter((candidate): candidate is LoadedAgenticBundleData => candidate !== undefined)
+  const missingIntegrations = integrationIds.filter((id) => findIntegrationDeclaration(state, id) === undefined)
+  const unavailableIntegrations = integrations.filter((integration) => {
+    const availability = integrationAvailability(integration)
+    return availability === "missing" || availability === "unavailable"
+  })
+  const reasons: string[] = []
+  let blocked = false
+  if (capability.action !== undefined && action === undefined) {
+    blocked = true
+    reasons.push(`Capability ${capability.id} references missing action ${capability.action}.`)
+  }
+  if (action !== undefined) {
+    const declaredAction = actionDeclaration(action)
+    const actionCapability = declaredAction.capability
+    if (actionCapability !== undefined && actionCapability !== capability.id) {
+      blocked = true
+      reasons.push(`Action ${action.id} declares capability ${actionCapability}, not ${capability.id}.`)
+    }
+    const capabilityEffects = capability.effects ?? []
+    for (const effect of declaredAction.effects ?? []) {
+      if (!capabilityEffects.includes(effect)) {
+        blocked = true
+        reasons.push(`Action ${action.id} declares effect ${effect} outside capability ${capability.id}.`)
+      }
+    }
+  }
+  for (const integrationId of missingIntegrations) {
+    blocked = true
+    reasons.push(`Required integration ${integrationId} is not declared.`)
+  }
+  for (const integration of unavailableIntegrations) {
+    blocked = true
+    reasons.push(`Required integration ${integration.id} is ${integrationAvailability(integration)}.`)
+  }
+  const boundaryReasons = dataBoundaryReasons(state, capability)
+  if (boundaryReasons.length > 0) blocked = true
+  reasons.push(...boundaryReasons)
+  if (reasons.length === 0 && capability.approval?.required === true) {
+    reasons.push(`${capability.id} requires a runtime-authenticated approval grant before execution.`)
+  }
+  if (reasons.length === 0) reasons.push(`${capability.id} is available under the current declarations.`)
+
+  const status = blocked ? "blocked" : capability.approval?.required === true
+    ? "approval_required"
+    : "available"
+
+  return {
+    entry,
+    capability,
+    action,
+    integrations,
+    missing_integrations: missingIntegrations,
+    unavailable_integrations: unavailableIntegrations,
+    related_actions: state.actions.filter((actionRecord) => actionRecord.capability === capability.id),
+    status,
+    reasons,
+  }
+}
+
+function inspectCapabilities(state: LocalAdminConsoleState): LocalCapabilityInspection[] {
+  return state.declarations.capabilities.map((entry) => inspectCapability(state, entry))
 }
 
 function renderInlineJsonValue(value: unknown): string {
@@ -3656,7 +3849,7 @@ function renderAdminDesignSystemStyles(): string {
   `
 }
 
-type LocalAdminConsolePage = "run" | "actions" | "artifacts" | "approvals"
+type LocalAdminConsolePage = "run" | "actions" | "artifacts" | "integrations" | "capabilities" | "approvals"
 
 function currentPageAttr(page: LocalAdminConsolePage, currentPage: LocalAdminConsolePage): string {
   return page === currentPage ? ` aria-current="page"` : ""
@@ -3693,6 +3886,8 @@ ${renderAdminDesignSystemStyles()}
         <a href="/runs/latest"${currentPageAttr("run", currentPage)}>Run</a>
         <a href="/actions"${currentPageAttr("actions", currentPage)}>Actions</a>
         <a href="/artifacts"${currentPageAttr("artifacts", currentPage)}>Artifacts</a>
+        <a href="/integrations"${currentPageAttr("integrations", currentPage)}>Integrations</a>
+        <a href="/capabilities"${currentPageAttr("capabilities", currentPage)}>Capabilities</a>
         <a href="/approvals"${currentPageAttr("approvals", currentPage)}>Approvals</a>
       </nav>
     </header>
@@ -3776,14 +3971,14 @@ function actionApproval(state: LocalAdminConsoleState, action: ActionRecord): Lo
   return state.approvals.find((approval) => approval.action.id === action.id)
 }
 
-function renderActionRows(state: LocalAdminConsoleState): string {
-  return [...state.actions].reverse().map((action) => {
+function renderActionRows(state: LocalAdminConsoleState, actions: readonly ActionRecord[] = state.actions): string {
+  return [...actions].reverse().map((action) => {
     const approval = actionApproval(state, action)
     const approvalStatus = approval === undefined ? "none" : approvalDisplayStatus(approval)
     return `<tr>
       <td>${renderStatusPill(action.status)}</td>
       <td><a class="record-link mono" href="/actions/${encodeURIComponent(action.id)}">${escapeHtml(action.id)}</a><br><span class="meta">${escapeHtml(action.type)}</span></td>
-      <td>${escapeHtml(action.capability ?? "none")}</td>
+      <td>${renderCapabilityLink(state, action.capability)}</td>
       <td><span class="mono">${escapeHtml(action.principal)}</span><br><span class="meta">${escapeHtml(actionSource(action))}</span></td>
       <td>${escapeHtml(actionPrimaryEffect(action))}</td>
       <td>${approval === undefined ? `<span class="meta">none</span>` : `<a href="/approvals/${encodeURIComponent(action.id)}">${renderStatusPill(approvalStatus)}</a>`}</td>
@@ -3948,7 +4143,7 @@ function renderActionDetailPage(state: LocalAdminConsoleState, action: ActionRec
       <dl>
         <dt>Action</dt><dd class="mono">${escapeHtml(action.id)}</dd>
         <dt>Principal</dt><dd class="mono">${escapeHtml(action.principal)}</dd>
-        <dt>Capability</dt><dd>${escapeHtml(action.capability ?? "none")}</dd>
+        <dt>Capability</dt><dd>${renderCapabilityLink(state, action.capability)}</dd>
         <dt>Source</dt><dd class="mono">${escapeHtml(actionSource(action))}</dd>
         <dt>Digest</dt><dd>${action.digest === undefined ? `<span class="meta">none</span>` : `<span class="mono" title="${escapeHtml(action.digest)}">${escapeHtml(shortValue(action.digest, 18, 10))}</span>`}</dd>
         <dt>Primary Effect</dt><dd>${escapeHtml(actionPrimaryEffect(action))}</dd>
@@ -4088,7 +4283,7 @@ function renderArtifactDetailPage(state: LocalAdminConsoleState, artifact: Local
       ${createdByAction === undefined ? `<p class="meta">No matching action record was found.</p>` : `<dl class="kv">
         <dt>Status</dt><dd>${renderStatusPill(createdByAction.status)}</dd>
         <dt>Type</dt><dd>${escapeHtml(createdByAction.type)}</dd>
-        <dt>Capability</dt><dd>${escapeHtml(createdByAction.capability ?? "none")}</dd>
+        <dt>Capability</dt><dd>${renderCapabilityLink(state, createdByAction.capability)}</dd>
         <dt>Open</dt><dd><a class="record-link" href="/actions/${encodeURIComponent(createdByAction.id)}">Open action detail</a></dd>
       </dl>`}
     </div>
@@ -4101,6 +4296,235 @@ function renderArtifactDetailPage(state: LocalAdminConsoleState, artifact: Local
   return renderLayout(`Artifact ${artifact.id}`, state, body, "artifacts")
 }
 
+function renderCapabilityLink(state: LocalAdminConsoleState, capabilityId: string | undefined): string {
+  if (capabilityId === undefined) return `<span class="meta">none</span>`
+  const capability = state.declarations.capabilities.find((entry) => entry.id === capabilityId)
+  if (capability === undefined) return `<span class="mono">${escapeHtml(capabilityId)}</span>`
+  return `<a class="record-link mono" href="/capabilities/${encodeURIComponent(capabilityId)}">${escapeHtml(capabilityId)}</a>`
+}
+
+function renderCapabilityPills(state: LocalAdminConsoleState, capabilities: readonly LoadedAgenticBundleData[]): string {
+  if (capabilities.length === 0) return `<span class="meta">none</span>`
+  return `<span class="pills">${capabilities.map((capability) => `<a class="pill mono" href="/capabilities/${encodeURIComponent(capability.id)}">${escapeHtml(capability.id)}</a>`).join("")}</span>`
+}
+
+function renderIntegrationRows(state: LocalAdminConsoleState): string {
+  return state.declarations.integrations.map((integration) => {
+    const capabilities = capabilitiesUsingIntegration(state, integration.id)
+    const scopes = integrationRequiredScopes(integration)
+    const secrets = integrationSecretSummaries(integration)
+    const status = integrationDisplayStatus(integration)
+    return `<tr>
+      <td>${renderStatusPill(status)}</td>
+      <td><span class="record-link mono">${escapeHtml(integration.id)}</span><br><span class="meta">${escapeHtml(dataString(integration.data.description) ?? integration.path)}</span></td>
+      <td>${escapeHtml(integrationProvider(integration))}<br><span class="meta mono">${escapeHtml(integrationAvailability(integration))}</span></td>
+      <td>${renderPills(scopes)}</td>
+      <td>${renderCapabilityPills(state, capabilities)}</td>
+      <td>${renderPills(secrets)}</td>
+    </tr>`
+  }).join("")
+}
+
+function renderIntegrationsPage(state: LocalAdminConsoleState): string {
+  const integrations = state.declarations.integrations
+  const blockedCount = integrations.filter((integration) => {
+    const status = integrationDisplayStatus(integration)
+    return status === "missing" || status === "unavailable" || status === "expired" || status === "misconfigured"
+  }).length
+  const capabilityCount = new Set(integrations.flatMap((integration) => {
+    return capabilitiesUsingIntegration(state, integration.id).map((capability) => capability.id)
+  })).size
+  const scopeCount = integrations.reduce((count, integration) => count + integrationRequiredScopes(integration).length, 0)
+  const body = `<section class="card hero-card">
+    <div>
+      <div class="eyebrow">Runtime declarations</div>
+      <h2>Integration Declarations</h2>
+      <p class="hero-copy">Inspect provider requirements and local availability signals without exposing credentials or adding connection mutation to the console.</p>
+    </div>
+    <div class="workspace-card">
+      <dl>
+        <dt>Bundle</dt><dd>${escapeHtml(state.bundle.name)}</dd>
+        <dt>Manifest</dt><dd class="mono">${escapeHtml(state.bundle.manifest_path)}</dd>
+        <dt>Mode</dt><dd>read-only</dd>
+      </dl>
+    </div>
+  </section>
+  <section class="grid stats">
+    ${renderMetricCard("Declared", integrations.length, "Integration requirements")}
+    ${renderMetricCard("Blocked", blockedCount, "Unavailable declarations")}
+    ${renderMetricCard("Capabilities", capabilityCount, "Use integrations")}
+    ${renderMetricCard("Scopes", scopeCount, "Requested provider scopes")}
+  </section>
+  <section class="card">
+    <div class="section-heading">
+      <div>
+        <h2>Declared Integrations</h2>
+        <p>Connection setup is runtime-owned; this page only explains what the bundle declares and what capabilities depend on it.</p>
+      </div>
+    </div>
+    ${integrations.length === 0 ? `<div class="empty">No integration declarations are present in this bundle.</div>` : `<div class="table-wrap"><table>
+      <thead><tr><th>Status</th><th>Integration</th><th>Provider</th><th>Scopes</th><th>Required By</th><th>Secret Refs</th></tr></thead>
+      <tbody>${renderIntegrationRows(state)}</tbody>
+    </table></div>`}
+  </section>
+  <details class="card technical-details">
+    <summary>Raw integration declarations</summary>
+    <div class="technical-grid two-column">
+      ${integrations.length === 0 ? `<p class="meta">No declarations to inspect.</p>` : integrations.map((integration) => `<div class="card"><h3>${escapeHtml(integration.id)}</h3>${renderJsonBlock({ id: integration.id, path: integration.path, data: integration.data })}</div>`).join("")}
+    </div>
+  </details>`
+  return renderLayout("Integrations", state, body, "integrations")
+}
+
+function renderCapabilityRows(state: LocalAdminConsoleState): string {
+  return inspectCapabilities(state).map((inspection) => {
+    const capability = inspection.capability
+    const action = inspection.action === undefined ? undefined : actionDeclaration(inspection.action)
+    return `<tr>
+      <td>${renderStatusPill(inspection.status)}</td>
+      <td><a class="record-link mono" href="/capabilities/${encodeURIComponent(capability.id)}">${escapeHtml(capability.id)}</a><br><span class="meta">${escapeHtml(dataString(inspection.entry.data.description) ?? inspection.entry.path)}</span></td>
+      <td>${action === undefined ? `<span class="meta">none</span>` : `<span class="mono">${escapeHtml(action.id)}</span>`}</td>
+      <td>${renderPills(capabilityPrincipalIds(capability))}</td>
+      <td>${renderPills(capabilityIntegrationIds(capability))}</td>
+      <td>${capability.approval?.required === true ? renderStatusPill("approval_required") : renderStatusPill("available")}</td>
+    </tr>`
+  }).join("")
+}
+
+function renderCapabilitiesPage(state: LocalAdminConsoleState): string {
+  const inspections = inspectCapabilities(state)
+  const availableCount = inspections.filter((entry) => entry.status === "available").length
+  const approvalCount = inspections.filter((entry) => entry.status === "approval_required").length
+  const blockedCount = inspections.filter((entry) => entry.status === "blocked").length
+  const body = `<section class="card hero-card">
+    <div>
+      <div class="eyebrow">Policy contracts</div>
+      <h2>Capability Inspector</h2>
+      <p class="hero-copy">Review portable capability declarations, policy gates, required integrations, allowed principals, and linked runtime actions.</p>
+    </div>
+    <div class="workspace-card">
+      <dl>
+        <dt>Bundle</dt><dd>${escapeHtml(state.bundle.name)}</dd>
+        <dt>Policies</dt><dd>${escapeHtml(state.declarations.policies.length)}</dd>
+        <dt>Actions</dt><dd>${escapeHtml(state.declarations.actions.length)}</dd>
+      </dl>
+    </div>
+  </section>
+  <section class="grid stats">
+    ${renderMetricCard("Capabilities", inspections.length, "Policy contracts")}
+    ${renderMetricCard("Available", availableCount, "No blocking declaration issues")}
+    ${renderMetricCard("Approval", approvalCount, "Require human grant")}
+    ${renderMetricCard("Blocked", blockedCount, "Declaration or policy issue")}
+  </section>
+  <section class="card">
+    <div class="section-heading">
+      <div>
+        <h2>Capabilities</h2>
+        <p>Each row links to the action declaration, integration requirements, data boundary, and recent runtime decisions for that capability.</p>
+      </div>
+    </div>
+    ${inspections.length === 0 ? `<div class="empty">No capability declarations are present in this bundle.</div>` : `<div class="table-wrap"><table>
+      <thead><tr><th>Status</th><th>Capability</th><th>Action</th><th>Principals</th><th>Integrations</th><th>Approval</th></tr></thead>
+      <tbody>${renderCapabilityRows(state)}</tbody>
+    </table></div>`}
+  </section>`
+  return renderLayout("Capabilities", state, body, "capabilities")
+}
+
+function renderCapabilityDetailPage(state: LocalAdminConsoleState, inspection: LocalCapabilityInspection): string {
+  const capability = inspection.capability
+  const action = inspection.action === undefined ? undefined : actionDeclaration(inspection.action)
+  const policies = state.declarations.policies
+  const integrationCards = inspection.integrations.map((integration) => {
+    return `<div class="card inset-card">
+      <h3>${escapeHtml(integration.id)}</h3>
+      <dl class="kv">
+        <dt>Status</dt><dd>${renderStatusPill(integrationDisplayStatus(integration))}</dd>
+        <dt>Provider</dt><dd>${escapeHtml(integrationProvider(integration))}</dd>
+        <dt>Availability</dt><dd><span class="mono">${escapeHtml(integrationAvailability(integration))}</span></dd>
+        <dt>Scopes</dt><dd>${renderPills(integrationRequiredScopes(integration))}</dd>
+        <dt>Secret Refs</dt><dd>${renderPills(integrationSecretSummaries(integration))}</dd>
+      </dl>
+      ${rawJsonDetails("Raw integration JSON", integration.data)}
+    </div>`
+  }).join("")
+  const actionPanel = inspection.action === undefined || action === undefined
+    ? `<p class="meta">No matching action declaration was found for this capability.</p>`
+    : `<dl class="kv">
+        <dt>Action</dt><dd><span class="mono">${escapeHtml(action.id)}</span></dd>
+        <dt>Effects</dt><dd>${renderPills(action.effects ?? [])}</dd>
+        <dt>Inputs</dt><dd>${renderPills(jsonStringArray(inspection.action.data.input_artifacts))}</dd>
+        <dt>Outputs</dt><dd>${renderPills(jsonStringArray(inspection.action.data.output_artifacts))}</dd>
+      </dl>${rawJsonDetails("Raw action declaration", inspection.action.data)}`
+  const body = `<p class="breadcrumb"><a href="/capabilities">Capabilities</a> / <span class="mono">${escapeHtml(capability.id)}</span></p>
+  <section class="card detail-hero">
+    <div>
+      <div class="eyebrow">Capability policy</div>
+      <h2>${escapeHtml(capability.id)} ${renderStatusPill(inspection.status)}</h2>
+      <p class="hero-copy">Trace how this capability becomes available, blocked, or approval-gated through declarations rather than prompt text.</p>
+    </div>
+    <div class="hero-meta">
+      <dl class="kv">
+        <dt>Status</dt><dd>${renderStatusPill(inspection.status)}</dd>
+        <dt>Action</dt><dd>${action === undefined ? `<span class="meta">none</span>` : `<span class="mono">${escapeHtml(action.id)}</span>`}</dd>
+        <dt>Runtime Uses</dt><dd>${escapeHtml(inspection.related_actions.length)}</dd>
+      </dl>
+    </div>
+  </section>
+  <section class="review-top">
+    <div class="card">
+      <h2>Capability at a glance</h2>
+      <dl>
+        <dt>Capability</dt><dd class="mono">${escapeHtml(capability.id)}</dd>
+        <dt>Principals</dt><dd>${renderPills(capabilityPrincipalIds(capability))}</dd>
+        <dt>Data Classes</dt><dd>${renderPills(capability.data_classes ?? [])}</dd>
+        <dt>Effects</dt><dd>${renderPills(capability.effects ?? [])}</dd>
+        <dt>Integrations</dt><dd>${renderPills(capabilityIntegrationIds(capability))}</dd>
+      </dl>
+    </div>
+    <div class="card">
+      <h2>Policy Result</h2>
+      <dl class="kv">
+        <dt>Status</dt><dd>${renderStatusPill(inspection.status)}</dd>
+        <dt>Approval</dt><dd>${capability.approval?.required === true ? renderStatusPill("approval_required") : renderStatusPill("available")}</dd>
+        <dt>Reasons</dt><dd>${renderPills(inspection.reasons)}</dd>
+      </dl>
+    </div>
+  </section>
+  <section class="review-sections">
+    <div class="card">
+      <h3>Action Declaration</h3>
+      ${actionPanel}
+    </div>
+    <div class="card">
+      <h3>Bundle Policies</h3>
+      ${policies.length === 0 ? `<p class="meta">No policy declarations are present.</p>` : `<div class="record-list">${policies.map((policy) => `<div class="record-row"><span class="mono">${escapeHtml(policy.id)}</span><strong>${escapeHtml(dataString(policy.data.description) ?? policy.path)}</strong><span class="meta">${escapeHtml(policy.path)}</span></div>`).join("")}</div>`}
+    </div>
+  </section>
+  <section class="review-sections">
+    <div class="card">
+      <h3>Integrations</h3>
+      ${inspection.missing_integrations.length === 0 ? "" : `<p class="meta">Missing: ${inspection.missing_integrations.map(escapeHtml).join(", ")}</p>`}
+      ${integrationCards === "" ? `<p class="meta">No integration requirements are declared for this capability.</p>` : `<div class="grid">${integrationCards}</div>`}
+    </div>
+    <div class="card">
+      <h3>Recent Runtime Actions</h3>
+      ${inspection.related_actions.length === 0 ? `<p class="meta">No actions in the latest run used this capability.</p>` : `<div class="table-wrap"><table>
+        <thead><tr><th>Status</th><th>Action</th><th>Capability</th><th>Principal</th><th>Primary Effect</th><th>Approval</th></tr></thead>
+        <tbody>${renderActionRows(state, inspection.related_actions)}</tbody>
+      </table></div>`}
+    </div>
+  </section>
+  <details class="card technical-details">
+    <summary>Raw capability and policy declarations</summary>
+    <div class="technical-grid two-column">
+      <div class="card"><h3>Capability Declaration</h3>${renderJsonBlock(inspection.entry.data)}</div>
+      <div class="card"><h3>Policies</h3>${renderJsonBlock(policies.map((policy) => ({ id: policy.id, path: policy.path, data: policy.data })))}</div>
+    </div>
+  </details>`
+  return renderLayout(`Capability ${capability.id}`, state, body, "capabilities")
+}
+
 function renderApprovalsPage(state: LocalAdminConsoleState): string {
   const pendingCount = state.approvals.filter((approval) => approvalDisplayStatus(approval) === "pending").length
   const decidedCount = state.approvals.filter((approval) => approval.decision !== undefined).length
@@ -4109,7 +4533,7 @@ function renderApprovalsPage(state: LocalAdminConsoleState): string {
     return `<tr>
       <td>${renderStatusPill(status)}</td>
       <td><a class="record-link mono" href="/approvals/${encodeURIComponent(approval.action.id)}">${escapeHtml(approval.action.id)}</a><br><span class="meta">${escapeHtml(approval.action.type)}</span></td>
-      <td>${escapeHtml(approval.action.capability ?? "none")}</td>
+      <td>${renderCapabilityLink(state, approval.action.capability)}</td>
       <td class="mono">${escapeHtml(approval.action.principal)}</td>
       <td><span class="mono" title="${escapeHtml(approval.approval_request.expires_at)}">${escapeHtml(formatAdminDateTime(approval.approval_request.expires_at))}</span></td>
     </tr>`
@@ -4200,7 +4624,7 @@ function renderApprovalDetailPage(
       <dl class="kv">
         <dt>Status</dt><dd>${renderStatusPill(status)}</dd>
         <dt>Expires</dt><dd title="${escapeHtml(approval.approval_request.expires_at)}">${escapeHtml(formatAdminDateTime(approval.approval_request.expires_at))}</dd>
-        <dt>Capability</dt><dd>${escapeHtml(approval.action.capability ?? "none")}</dd>
+        <dt>Capability</dt><dd>${renderCapabilityLink(state, approval.action.capability)}</dd>
       </dl>
     </div>
   </section>
@@ -4211,7 +4635,7 @@ function renderApprovalDetailPage(
         <dt>Action</dt><dd class="mono">${escapeHtml(approval.action.id)}</dd>
         <dt>Type</dt><dd>${escapeHtml(approval.action.type)}</dd>
         <dt>Requester</dt><dd class="mono">${escapeHtml(approval.action.principal)}</dd>
-        <dt>Capability</dt><dd>${escapeHtml(approval.action.capability ?? "none")}</dd>
+        <dt>Capability</dt><dd>${renderCapabilityLink(state, approval.action.capability)}</dd>
         <dt>Effects</dt><dd>${renderPills(approval.approval_request.effects.map(humanizeEffect))}</dd>
         <dt>Expires</dt><dd title="${escapeHtml(approval.approval_request.expires_at)}">${escapeHtml(formatAdminDateTime(approval.approval_request.expires_at))}</dd>
       </dl>
@@ -4333,6 +4757,48 @@ function apiArtifact(state: LocalAdminConsoleState, artifact: LocalBundleArtifac
   }
 }
 
+function apiDeclaration(entry: LoadedAgenticBundleData): Record<string, unknown> {
+  return {
+    id: entry.id,
+    path: entry.path,
+    data: redactSensitiveJson(entry.data),
+  }
+}
+
+function apiIntegration(state: LocalAdminConsoleState, integration: LoadedAgenticBundleData): Record<string, unknown> {
+  return {
+    id: integration.id,
+    path: integration.path,
+    status: integrationDisplayStatus(integration),
+    provider: integrationProvider(integration),
+    availability: integrationAvailability(integration),
+    required_scopes: integrationRequiredScopes(integration),
+    secret_refs: integrationSecretSummaries(integration),
+    required_by_capabilities: capabilitiesUsingIntegration(state, integration.id).map((capability) => capability.id),
+    declaration: apiDeclaration(integration),
+  }
+}
+
+function apiCapabilityInspection(state: LocalAdminConsoleState, inspection: LocalCapabilityInspection): Record<string, unknown> {
+  return {
+    id: inspection.capability.id,
+    path: inspection.entry.path,
+    status: inspection.status,
+    reasons: inspection.reasons,
+    action: inspection.action === undefined ? null : apiDeclaration(inspection.action),
+    effects: inspection.capability.effects ?? [],
+    data_classes: inspection.capability.data_classes ?? [],
+    principals: capabilityPrincipalIds(inspection.capability),
+    integrations: inspection.integrations.map((integration) => apiIntegration(state, integration)),
+    missing_integrations: inspection.missing_integrations,
+    unavailable_integrations: inspection.unavailable_integrations.map((integration) => integration.id),
+    approval: inspection.capability.approval ?? null,
+    recent_actions: inspection.related_actions.map((action) => apiAction(state, action)),
+    policies: state.declarations.policies.map(apiDeclaration),
+    declaration: apiDeclaration(inspection.entry),
+  }
+}
+
 function apiConsoleState(state: LocalAdminConsoleState): Record<string, unknown> {
   return {
     workspace: state.workspace,
@@ -4343,11 +4809,15 @@ function apiConsoleState(state: LocalAdminConsoleState): Record<string, unknown>
       pending_approvals: state.approvals.filter((approval) => approvalDisplayStatus(approval) === "pending").length,
       actions: state.actions.length,
       artifacts: state.artifacts.length,
+      integrations: state.declarations.integrations.length,
+      capabilities: state.declarations.capabilities.length,
     },
     latest: state.latest,
     actions: state.actions.map((action) => apiAction(state, action)),
     artifacts: state.artifacts.map((artifact) => apiArtifact(state, artifact)),
     approvals: state.approvals.map(apiApproval),
+    integrations: state.declarations.integrations.map((integration) => apiIntegration(state, integration)),
+    capabilities: inspectCapabilities(state).map((inspection) => apiCapabilityInspection(state, inspection)),
   }
 }
 
@@ -4453,6 +4923,34 @@ export function createLocalAdminConsoleHandler(
         return jsonResponse(apiArtifact(state, artifact))
       }
 
+      if (request.method === "GET" && segments[0] === "api" && segments[1] === "integrations" && segments.length === 2) {
+        const state = await loadLocalAdminConsoleState(ctx, handlerOptions)
+        return jsonResponse({
+          run: state.run,
+          integrations: state.declarations.integrations.map((integration) => apiIntegration(state, integration)),
+        })
+      }
+
+      if (request.method === "GET" && segments[0] === "api" && segments[1] === "capabilities" && segments.length === 2) {
+        const state = await loadLocalAdminConsoleState(ctx, handlerOptions)
+        return jsonResponse({
+          run: state.run,
+          capabilities: inspectCapabilities(state).map((inspection) => apiCapabilityInspection(state, inspection)),
+        })
+      }
+
+      if (request.method === "GET" && segments[0] === "api" && segments[1] === "capabilities" && segments.length === 3) {
+        const state = await loadLocalAdminConsoleState(ctx, handlerOptions)
+        const capability = state.declarations.capabilities.find((entry) => entry.id === segments[2])
+        if (capability === undefined) return jsonResponse({ error: "capability not found" }, 404)
+        return jsonResponse(apiCapabilityInspection(state, inspectCapability(state, capability)))
+      }
+
+      if (request.method === "GET" && segments[0] === "api" && segments[1] === "policies" && segments.length === 2) {
+        const state = await loadLocalAdminConsoleState(ctx, handlerOptions)
+        return jsonResponse({ run: state.run, policies: state.declarations.policies.map(apiDeclaration) })
+      }
+
       if (request.method === "GET" && segments[0] === "api" && segments[1] === "approvals" && segments.length === 2) {
         return jsonResponse(apiConsoleState(await loadLocalAdminConsoleState(ctx, handlerOptions)))
       }
@@ -4492,6 +4990,21 @@ export function createLocalAdminConsoleHandler(
         const artifact = state.artifacts.find((entry) => entry.id === segments[1])
         if (artifact === undefined) return errorResponse("Artifact not found.", 404)
         return htmlResponse(renderArtifactDetailPage(state, artifact))
+      }
+
+      if (request.method === "GET" && segments[0] === "integrations" && segments.length === 1) {
+        return htmlResponse(renderIntegrationsPage(await loadLocalAdminConsoleState(ctx, handlerOptions)))
+      }
+
+      if (request.method === "GET" && segments[0] === "capabilities" && segments.length === 1) {
+        return htmlResponse(renderCapabilitiesPage(await loadLocalAdminConsoleState(ctx, handlerOptions)))
+      }
+
+      if (request.method === "GET" && segments[0] === "capabilities" && segments.length === 2) {
+        const state = await loadLocalAdminConsoleState(ctx, handlerOptions)
+        const capability = state.declarations.capabilities.find((entry) => entry.id === segments[1])
+        if (capability === undefined) return errorResponse("Capability not found.", 404)
+        return htmlResponse(renderCapabilityDetailPage(state, inspectCapability(state, capability)))
       }
 
       if (request.method === "GET" && segments[0] === "approvals" && segments.length === 2) {
