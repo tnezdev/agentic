@@ -1,0 +1,7 @@
+id: approvals
+kind: policy_declaration
+description: Release mutation approvals are host-authenticated runtime records, not agent prose.
+rules:
+  - Approval binds to action id, action digest, capability, effects, input artifact ids, expiration, and approving principal.
+  - Agents may request release approval and explain the request. They may not approve their own tag, push, or publish-triggering effects.
+  - After approval is requested, the runtime must execute the stored action payload, not a fresh agent-supplied payload.

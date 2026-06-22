@@ -1,0 +1,20 @@
+id: approval-request
+kind: artifact_declaration
+description: Runtime-created request for an authenticated maintainer to approve an exact release action digest.
+data_classes:
+  - project_public_state
+statuses:
+  - pending
+  - approved
+  - denied
+  - expired
+required_fields:
+  - action_id
+  - action_digest
+  - capability
+  - approver_rule
+  - expires_at
+  - status
+default_tags:
+  - approval
+  - release

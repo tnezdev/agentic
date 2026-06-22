@@ -1,0 +1,10 @@
+id: hook.run
+kind: action_declaration
+description: Record a runtime hook reacting to a release-readiness artifact.
+input_artifacts:
+  - release-readiness-report
+output:
+  - action_request
+effects:
+  - action.propose:release.cut
+policy: hooks propose actions; proposed actions still pass capability policy

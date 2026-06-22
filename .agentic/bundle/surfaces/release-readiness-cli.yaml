@@ -1,0 +1,16 @@
+id: release-readiness-cli
+kind: surface_declaration
+surface: cli
+route: agentic serve . --clean --json
+principal: service:agentic-cli
+proposes:
+  action: release.assess
+  capability: release.assess
+  principal: agent:project-steward
+  data_class: project_public_state
+  payload:
+    purpose: release-readiness
+    source: repo-local-dogfood
+emits:
+  - artifact: release-readiness-report
+notes: The CLI surface asks for assessment only. It does not tag, push, publish, or approve release effects.

@@ -1,8 +1,8 @@
 import { spawn } from "node:child_process"
 import { access, appendFile, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises"
 import { hostname } from "node:os"
-import { isAbsolute, join, relative, resolve } from "node:path"
-import { pathToFileURL } from "node:url"
+import { dirname, isAbsolute, join, relative, resolve } from "node:path"
+import { fileURLToPath, pathToFileURL } from "node:url"
 import {
   AGENTIC_BUNDLE_MANIFEST_FILENAMES,
   activatePersona,
@@ -180,6 +180,7 @@ type LocalRunContext = {
   bundle_summary_path?: string | undefined
   bundle_latest_path?: string | undefined
   bundle_latest?: LocalBundleRunLatest | undefined
+  bundle_harness_result?: PiHarnessResult | undefined
   graph?: GraphDef | undefined
   persona?: PersonaFile | undefined
   activated_persona?: Persona | undefined
@@ -708,6 +709,7 @@ export type LocalBundleRuntimeBindings = {
   proposalPayloads: Partial<Record<string, LocalBundleProposalPayloadFactory>>
   deploy?: LoadedAgenticBundleData | undefined
   handlerModulePath?: string | undefined
+  pi?: LocalBundlePiSpec | undefined
 }
 
 export type LoadLocalBundleHandlersOptions = {
@@ -719,6 +721,21 @@ type LocalBundleHandlerSpec = {
   module: string
   actions: Record<string, string>
   proposalPayloads: Record<string, string>
+}
+
+type LocalBundlePiSpec = {
+  prompt: string
+  extension?: string | undefined
+  tools: string[]
+  actions: string[]
+  approve: boolean
+  noBuiltinTools: boolean
+}
+
+type LocalBundleTriggerExecutionOptions = LoadLocalBundleHandlersOptions & {
+  harness: LocalHarness
+  runtimeContext: RuntimeContext
+  runtimeArgs: RuntimeRunArgs
 }
 
 export function createLocalBundlePorts(
@@ -751,11 +768,12 @@ export async function loadLocalBundleRuntimeBindings(
   store: LocalBundleRunStore,
   options: LoadLocalBundleHandlersOptions = {},
 ): Promise<LocalBundleRuntimeBindings> {
-  const deploy = selectLocalBundleHandlerDeploy(bundle, options.deployId)
+  const deploy = selectLocalBundleRuntimeDeploy(bundle, options.deployId)
   if (deploy === undefined) return { handlers: {}, proposalPayloads: {} }
 
   const spec = localBundleHandlerSpec(deploy)
-  if (spec === undefined) return { handlers: {}, proposalPayloads: {} }
+  const pi = localBundlePiSpec(deploy)
+  if (spec === undefined) return { handlers: {}, proposalPayloads: {}, deploy, pi }
 
   const modulePath = resolveLocalBundleHandlerModulePath(bundle, spec.module, options.workspaceRoot)
   let moduleExports: Record<string, unknown>
@@ -794,10 +812,10 @@ export async function loadLocalBundleRuntimeBindings(
     proposalPayloads[triggerId] = factory as LocalBundleProposalPayloadFactory
   }
 
-  return { handlers, proposalPayloads, deploy, handlerModulePath: modulePath }
+  return { handlers, proposalPayloads, deploy, handlerModulePath: modulePath, pi }
 }
 
-function selectLocalBundleHandlerDeploy(
+function selectLocalBundleRuntimeDeploy(
   bundle: LoadedAgenticBundle,
   deployId: string | undefined,
 ): LoadedAgenticBundleData | undefined {
@@ -806,7 +824,9 @@ function selectLocalBundleHandlerDeploy(
     if (deploy === undefined) throw new Error(`Missing local bundle deploy target: ${deployId}`)
     return deploy
   }
-  return bundle.deploy.find((entry) => localBundleHandlersConfig(entry.data) !== undefined)
+  return bundle.deploy.find((entry) => {
+    return localBundleHandlersConfig(entry.data) !== undefined || localBundlePiConfig(entry.data) !== undefined
+  })
 }
 
 function localBundleHandlerSpec(deploy: LoadedAgenticBundleData): LocalBundleHandlerSpec | undefined {
@@ -834,18 +854,54 @@ function localBundleHandlersConfig(deploy: JsonObject): JsonObject | undefined {
   return jsonObjectConfig(local?.handlers)
 }
 
+function localBundlePiSpec(deploy: LoadedAgenticBundleData): LocalBundlePiSpec | undefined {
+  const pi = localBundlePiConfig(deploy.data)
+  if (pi === undefined) return undefined
+
+  const prompt = nonEmptyConfigString(pi.prompt)
+  if (prompt === undefined) {
+    throw new Error(`deploy ${deploy.id} runtime.pi.prompt must be a non-empty string.`)
+  }
+
+  const spec: LocalBundlePiSpec = {
+    prompt,
+    tools: stringArrayConfig(pi.tools, `deploy ${deploy.id} runtime.pi.tools`),
+    actions: stringArrayConfig(pi.actions, `deploy ${deploy.id} runtime.pi.actions`),
+    approve: pi.approve !== false,
+    noBuiltinTools: pi.no_builtin_tools !== false,
+  }
+  const extension = nonEmptyConfigString(pi.extension)
+  if (extension !== undefined) spec.extension = extension
+  return spec
+}
+
+function localBundlePiConfig(deploy: JsonObject): JsonObject | undefined {
+  const runtime = jsonObjectConfig(deploy.runtime)
+  return jsonObjectConfig(runtime?.pi)
+}
+
 function resolveLocalBundleHandlerModulePath(
   bundle: LoadedAgenticBundle,
   moduleRef: string,
   workspaceRoot: string | undefined,
 ): string {
-  if (isAbsolute(moduleRef) || moduleRef.startsWith("\\") || /^[A-Za-z]:[\\/]/.test(moduleRef)) {
-    throw new Error(`Local bundle handler module ${moduleRef} must be a relative path.`)
+  return resolveLocalBundleRelativePath(bundle, moduleRef, workspaceRoot, "Local bundle handler module")
+}
+
+function resolveLocalBundleRelativePath(
+  bundle: LoadedAgenticBundle,
+  pathRef: string,
+  workspaceRoot: string | undefined,
+  label: string,
+): string {
+  const ref = pathRef.trim()
+  if (isAbsolute(ref) || ref.startsWith("\\") || /^[A-Za-z]:[\\/]/.test(ref)) {
+    throw new Error(`${label} ${ref} must be a relative path.`)
   }
-  const modulePath = resolve(bundle.root, moduleRef)
+  const modulePath = resolve(bundle.root, ref)
   const boundaryRoot = resolve(workspaceRoot ?? bundle.root)
   if (!pathIsInside(boundaryRoot, modulePath)) {
-    throw new Error(`Local bundle handler module ${moduleRef} must stay inside workspace root ${boundaryRoot}.`)
+    throw new Error(`${label} ${ref} must stay inside workspace root ${boundaryRoot}.`)
   }
   return modulePath
 }
@@ -878,6 +934,17 @@ function stringRecordConfig(value: JsonValue | undefined, field: string): Record
     record[key] = entry
   }
   return record
+}
+
+function stringArrayConfig(value: JsonValue | undefined, field: string): string[] {
+  if (value === undefined) return []
+  if (!Array.isArray(value)) throw new Error(`${field} must be an array of strings.`)
+  return value.map((entry, index) => {
+    if (typeof entry !== "string" || entry.trim() === "") {
+      throw new Error(`${field}[${index}] must be a non-empty string.`)
+    }
+    return entry
+  })
 }
 
 export type LocalBundleActionRequestOptions = {
@@ -956,6 +1023,196 @@ function createLocalBundleActionRequest(
 type LocalBundleTriggerExecutionResult = {
   latest: LocalBundleRunLatest
   summary: string
+  harnessResult?: PiHarnessResult | undefined
+}
+
+function localBundlePiActionTypes(bundle: LoadedAgenticBundle, spec: LocalBundlePiSpec): string[] {
+  if (spec.actions.length > 0) return spec.actions
+  return bundle.actions.filter((entry) => {
+    const execution = jsonObjectConfig(entry.data.execution)
+    const target = jsonObjectConfig(execution?.target)
+    return nonEmptyConfigString(target?.kind) === "pi-agent-loop"
+  }).map((entry) => entry.id)
+}
+
+function declaredActionOutputArtifacts(bundle: LoadedAgenticBundle, actionType: string): string[] {
+  const action = bundle.actions.find((entry) => entry.id === actionType)
+  return jsonStringArray(action?.data.output_artifacts)
+}
+
+function newLocalBundlePiArtifacts(
+  store: LocalBundleRunStore,
+  before: Set<string>,
+  outputTypes: string[],
+): LocalBundleArtifactRecord[] {
+  return store.artifacts.filter((artifact) => {
+    if (before.has(artifact.id)) return false
+    return outputTypes.length === 0 || outputTypes.includes(artifact.type)
+  })
+}
+
+function resolveLocalBundlePromptPath(
+  bundle: LoadedAgenticBundle,
+  promptRef: string,
+  workspaceRoot: string,
+): string {
+  const prompt = bundle.prompts.find((entry) => entry.id === promptRef)
+  return resolveLocalBundleRelativePath(
+    bundle,
+    prompt?.path ?? promptRef,
+    workspaceRoot,
+    "Local bundle Pi prompt",
+  )
+}
+
+function resolveLocalBundlePiExtensionPath(
+  bundle: LoadedAgenticBundle,
+  spec: LocalBundlePiSpec,
+  workspaceRoot: string,
+): string | undefined {
+  if (spec.extension === undefined) return undefined
+  if (spec.extension.startsWith("runtime:")) return resolveRuntimeLocalBundlePiExtensionPath(spec.extension)
+  return resolveLocalBundleRelativePath(bundle, spec.extension, workspaceRoot, "Local bundle Pi extension")
+}
+
+function resolveRuntimeLocalBundlePiExtensionPath(extensionRef: string): string {
+  const extensionName = extensionRef.slice("runtime:".length).trim()
+  if (extensionName !== "agentic-tools") {
+    throw new Error(`Unknown local runtime Pi extension: ${extensionRef}`)
+  }
+
+  const runtimeEntry = fileURLToPath(import.meta.url)
+  const runtimeEntryExtension = runtimeEntry.endsWith(".ts") ? "ts" : "js"
+  return join(dirname(runtimeEntry), `pi-agentic-tools.${runtimeEntryExtension}`)
+}
+
+function piBundleActionSessionId(invocationId: string, actionType: string): string {
+  return `${invocationId}-${actionType.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "")}`
+}
+
+function piBundleActionUserPromptPathFor(workspaceRoot: string, invocationId: string, actionType: string): string {
+  return join(invocationsDirFor(workspaceRoot), `${invocationId}.${actionType.replace(/[^a-z0-9]+/gi, "-")}.pi-user.md`)
+}
+
+function renderPiBundleActionUserPrompt(
+  bundle: LoadedAgenticBundle,
+  action: ActionExecutionContext,
+): string {
+  const payload = JSON.stringify(redactSensitiveJson(action.proposal.payload ?? {}), null, 2)
+  const outputArtifacts = declaredActionOutputArtifacts(bundle, action.proposal.type)
+  return `Execute Agentic bundle action ${action.proposal.type} through Agentic-aware tools.
+
+Bundle: ${bundle.manifest.name}@${bundle.manifest.version}
+Action id: ${action.action_id}
+Capability: ${action.proposal.capability ?? "none"}
+Data class: ${action.proposal.data_class}
+Expected output artifacts: ${outputArtifacts.join(", ") || "none declared"}
+
+Use only the Agentic-aware tools exposed by the runtime. Persist declared durable outputs with artifact.write. Request host-owned effects through action.request; do not run tag, push, publish, or external mutation commands directly.
+
+Proposal payload:
+
+\`\`\`json
+${payload}
+\`\`\`
+`
+}
+
+function piBundleHarnessArgs(input: {
+  spec: LocalBundlePiSpec
+  sessionDir: string
+  sessionId: string
+  actionType: string
+  promptPath: string
+  userPromptPath: string
+  extensionPath?: string | undefined
+  mode: "print" | "interactive"
+}): string[] {
+  const args = [
+    "--session-dir",
+    input.sessionDir,
+    "--session-id",
+    input.sessionId,
+    "--name",
+    `Agentic ${input.actionType}`,
+  ]
+
+  if (input.spec.approve) args.push("--approve")
+  if (input.spec.noBuiltinTools) args.push("--no-builtin-tools")
+  if (input.spec.tools.length > 0) args.push("--tools", input.spec.tools.join(","))
+  if (input.extensionPath !== undefined) args.push("--extension", input.extensionPath)
+  args.push("--append-system-prompt", input.promptPath, `@${input.userPromptPath}`)
+
+  if (input.mode === "interactive") return args
+  return ["--print", "--mode", "text", ...args]
+}
+
+async function runLocalBundlePiAction(input: {
+  ctx: RuntimeContext
+  args: RuntimeRunArgs
+  target: LocalRunTarget
+  bundle: LoadedAgenticBundle
+  store: LocalBundleRunStore
+  invocation: RuntimeInvocation
+  spec: LocalBundlePiSpec
+  action: ActionExecutionContext
+}): Promise<PiHarnessResult> {
+  const mode = piInteractive(input.args) ? "interactive" : "print"
+  const sessionDir = piSessionsDirFor(input.target.workspace_root)
+  const sessionId = piBundleActionSessionId(input.invocation.id, input.action.proposal.type)
+  const promptPath = resolveLocalBundlePromptPath(input.bundle, input.spec.prompt, input.target.workspace_root)
+  const extensionPath = resolveLocalBundlePiExtensionPath(input.bundle, input.spec, input.target.workspace_root)
+  const userPromptPath = piBundleActionUserPromptPathFor(
+    input.target.workspace_root,
+    input.invocation.id,
+    input.action.proposal.type,
+  )
+
+  await mkdir(invocationsDirFor(input.target.workspace_root), { recursive: true })
+  await mkdir(sessionDir, { recursive: true })
+  await writeFile(userPromptPath, renderPiBundleActionUserPrompt(input.bundle, input.action), "utf-8")
+
+  const command = piCommand(input.ctx, input.args)
+  const commandArgs = piBundleHarnessArgs({
+    spec: input.spec,
+    sessionDir,
+    sessionId,
+    actionType: input.action.proposal.type,
+    promptPath,
+    userPromptPath,
+    extensionPath,
+    mode,
+  })
+  const processOptions = {
+    cwd: input.target.workspace_root,
+    env: {
+      ...process.env,
+      ...input.ctx.env,
+      AGENTIC_PI_RUN_ID: input.store.runId,
+      AGENTIC_PI_ACTION_ID: input.action.action_id,
+      AGENTIC_PI_ACTION_TYPE: input.action.proposal.type,
+      AGENTIC_PI_BUNDLE_ROOT: input.bundle.root,
+      AGENTIC_PI_WORKSPACE_ROOT: input.target.workspace_root,
+    },
+  }
+  const result = mode === "interactive"
+    ? await runInteractiveProcess(command, commandArgs, processOptions)
+    : await runProcess(command, commandArgs, processOptions)
+
+  if (result.exit_code !== 0) {
+    const detail = result.stderr.trim() || result.stdout.trim() || `exit code ${result.exit_code}`
+    throw new Error(`Pi harness failed: ${detail}`)
+  }
+
+  return {
+    provider: "pi",
+    mode,
+    session_id: sessionId,
+    session_dir: pathRelative(input.target.workspace_root, sessionDir),
+    system_prompt_path: pathRelative(input.target.workspace_root, promptPath),
+    user_prompt_path: pathRelative(input.target.workspace_root, userPromptPath),
+    ...result,
+  }
 }
 
 async function executeLocalBundleTriggers(
@@ -963,7 +1220,7 @@ async function executeLocalBundleTriggers(
   bundle: LoadedAgenticBundle,
   store: LocalBundleRunStore,
   invocation: RuntimeInvocation,
-  options: LoadLocalBundleHandlersOptions,
+  options: LocalBundleTriggerExecutionOptions,
 ): Promise<LocalBundleTriggerExecutionResult> {
   if (bundle.surfaces.length === 0 && bundle.schedules.length === 0 && bundle.hooks.length === 0) {
     const latest = preparedBundleLatest(target, bundle, store, invocation)
@@ -971,7 +1228,40 @@ async function executeLocalBundleTriggers(
   }
 
   const bindings = await loadLocalBundleRuntimeBindings(bundle, store, options)
-  const ports = createLocalBundlePorts(bundle, store, { handlers: bindings.handlers })
+  let harnessResult: PiHarnessResult | undefined
+  const handlers: Partial<Record<string, LocalActionHandler<LocalBundleArtifactRecord>>> = { ...bindings.handlers }
+  if (options.harness === "pi" && bindings.pi !== undefined) {
+    for (const actionType of localBundlePiActionTypes(bundle, bindings.pi)) {
+      handlers[actionType] = async (action) => {
+        const beforeArtifacts = new Set(store.artifacts.map((artifact) => artifact.id))
+        const result = await runLocalBundlePiAction({
+          ctx: options.runtimeContext,
+          args: options.runtimeArgs,
+          target,
+          bundle,
+          store,
+          invocation,
+          spec: bindings.pi!,
+          action,
+        })
+        harnessResult = result
+        await store.loadActions()
+        await store.loadArtifacts()
+        return {
+          artifacts: newLocalBundlePiArtifacts(
+            store,
+            beforeArtifacts,
+            declaredActionOutputArtifacts(bundle, action.proposal.type),
+          ),
+          payload: {
+            ...(action.proposal.payload ?? {}),
+            harness: { provider: "pi", session_id: result.session_id },
+          },
+        }
+      }
+    }
+  }
+  const ports = createLocalBundlePorts(bundle, store, { handlers })
   const surfaces = bundle.surfaces.map((entry) => entry.data as unknown as SurfaceDeclaration)
   const schedules = bundle.schedules.map((entry) => entry.data as unknown as ScheduleDeclaration)
   const hooks = bundle.hooks.map((entry) => entry.data as unknown as HookDeclaration)
@@ -1038,7 +1328,11 @@ async function executeLocalBundleTriggers(
   }
 
   const latest = completedBundleLatest(target, bundle, store, invocation)
-  return { latest, summary: renderBundleCompletedSummary(target, bundle, store, latest) }
+  if (harnessResult !== undefined) {
+    latest.harness_result = harnessResult
+    latest.message = "Bundle execution completed through Pi-backed local trigger declarations."
+  }
+  return { latest, summary: renderBundleCompletedSummary(target, bundle, store, latest), harnessResult }
 }
 
 function surfacePayload(surface: SurfaceDeclaration): JsonObject | undefined {
@@ -1133,11 +1427,8 @@ function completedBundleLatest(
   store: LocalBundleRunStore,
   invocation: RuntimeInvocation,
 ): LocalBundleRunLatest {
-  const approvalAction = [...store.actions].reverse().find((action) => action.status === "approval_required")
   const approvalArtifact = store.artifacts.find((artifact) => artifact.type === "approval-request")
-  const approvalActionId = approvalAction?.id ?? (
-    approvalArtifact === undefined ? undefined : stringJsonValue(approvalArtifact.body.action_id)
-  )
+  const approvalActionId = approvalArtifact === undefined ? undefined : stringJsonValue(approvalArtifact.body.action_id)
   const approvalDecisions = store.approvalDecisions.map(summarizeApprovalDecision)
   const latestDecision = approvalDecisions.at(-1)
   const externalWriteExecuted = store.actions.some((action) => {
@@ -2608,6 +2899,7 @@ async function prepareArtifactContextRun(
 }
 
 async function prepareBundleLocalRun(
+  ctx: RuntimeContext,
   target: LocalRunTarget,
   invocation: RuntimeInvocation,
   args: RuntimeRunArgs,
@@ -2629,6 +2921,9 @@ async function prepareBundleLocalRun(
     execution = await executeLocalBundleTriggers(target, bundle, store, invocation, {
       deployId: stringFlag(args.flags, "deploy"),
       workspaceRoot: target.workspace_root,
+      harness: invocation.harness_ref?.provider === "pi" ? "pi" : "none",
+      runtimeContext: ctx,
+      runtimeArgs: args,
     })
   } catch (err) {
     const latest = failedBundleLatest(target, bundle, store, invocation, err)
@@ -2646,6 +2941,7 @@ async function prepareBundleLocalRun(
     bundle_summary_path: store.summaryPath,
     bundle_latest_path: store.latestPath,
     bundle_latest: execution.latest,
+    bundle_harness_result: execution.harnessResult,
     skills: [],
     input_artifacts: [],
     artifact_id: "pending",
@@ -2748,7 +3044,7 @@ async function prepareLocalRun(
     if (bundleRoot === undefined) {
       throw new Error(`No Agentic bundle manifest found in ${target.workspace_root}.`)
     }
-    return prepareBundleLocalRun(target, invocation, args, bundleRoot)
+    return prepareBundleLocalRun(ctx, target, invocation, args, bundleRoot)
   }
 
   return prepareWorkflowLocalRun(ctx, target, invocation, args)
@@ -5123,7 +5419,7 @@ async function runLocalRuntime(
 
   try {
     run = await prepareLocalRun(ctx, target, invocation, args, contextMode)
-    harnessResult = await runHarness(ctx, args, run)
+    harnessResult = run.context_mode === "bundle" ? run.bundle_harness_result : await runHarness(ctx, args, run)
     await completeInvocation(invocation, run)
   } catch (err) {
     await failInvocation(invocation, err, run)

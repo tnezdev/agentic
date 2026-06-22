@@ -1,0 +1,30 @@
+id: release.assess
+kind: action_declaration
+description: Assess release readiness through either the current local handler spike or the target Pi agent loop.
+capability: release.assess
+output_artifacts:
+  - release-readiness-report
+effects:
+  - repo.read
+  - git.read
+  - package.read
+  - process.spawn
+  - filesystem.read
+  - network.read:github
+  - network.read:npm
+  - process.check
+  - artifact.write:release-readiness-report
+  - action.request:release.cut
+execution:
+  current:
+    kind: local-function-spike
+    handler: assessReleaseReadiness
+    note: Proves the bundle can run, but keeps too much workflow behavior inside TypeScript.
+  target:
+    kind: pi-agent-loop
+    prompt: release-readiness-agent
+    tools:
+      - agentic_bundle_context
+      - agentic_shell_exec
+      - agentic_artifact_write
+      - agentic_action_request

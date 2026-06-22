@@ -1,0 +1,10 @@
+id: release-readiness-smoke
+kind: eval_declaration
+description: Smoke expectations for the local release-readiness slice.
+expect:
+  artifacts:
+    - release-readiness-report
+  actions:
+    - release.assess
+  external_write_executed: false
+  external_write_action: release.cut

@@ -18,6 +18,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./pi-agentic-tools": {
+      "types": "./dist/pi-agentic-tools.d.ts",
+      "default": "./dist/pi-agentic-tools.js"
     }
   },
   "files": [

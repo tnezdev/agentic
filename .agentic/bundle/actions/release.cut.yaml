@@ -1,0 +1,13 @@
+id: release.cut
+kind: action_declaration
+description: Execute the tag-push release handoff after explicit maintainer approval.
+capability: release.cut
+input_artifacts:
+  - release-readiness-report
+output_artifacts:
+  - release-plan
+effects:
+  - git.tag:release
+  - git.push:tag
+  - ci.trigger:publish
+  - artifact.write:release-plan

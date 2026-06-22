@@ -1,0 +1,13 @@
+id: release-readiness.ready.propose-cut
+kind: hook_declaration
+description: When a readiness report says the repo is ready, propose the approval-gated release cut.
+on:
+  artifact.type: release-readiness-report
+  artifact.status: ready_to_cut
+proposes:
+  action: release.cut
+  capability: release.cut
+  principal: agent:project-steward
+  data_class: project_public_state
+  reason: Release readiness report passed all gates and can move to explicit maintainer approval.
+policy_note: This hook proposes the release cut only. Tag push and publish-triggering effects require a runtime-authenticated maintainer approval.

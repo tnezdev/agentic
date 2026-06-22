@@ -1,0 +1,19 @@
+id: release-plan
+kind: artifact_declaration
+description: Approval-bound plan for tag, push, publish, and post-publish verification.
+data_classes:
+  - project_public_state
+statuses:
+  - draft
+  - approval_required
+  - approved
+  - executed
+  - failed
+required_fields:
+  - version
+  - tag
+  - steps
+  - approval_boundary
+default_tags:
+  - release
+  - plan

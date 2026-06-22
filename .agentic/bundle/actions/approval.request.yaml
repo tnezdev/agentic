@@ -1,0 +1,9 @@
+id: approval.request
+kind: action_declaration
+description: Create an approval-request artifact for an exact pending release action digest.
+input:
+  - action_request
+output_artifacts:
+  - approval-request
+effects:
+  - artifact.write:approval-request

@@ -1,0 +1,12 @@
+id: npm-registry
+kind: integration_requirement
+provider: npm
+description: npm Trusted Publishing target for @tnezdev/agentic and @tnezdev/agentic-runtime-local.
+availability: declared-host-owned
+required_scopes:
+  - trusted-publishing
+secrets:
+  - name: npm_oidc_token
+    required: false
+    visible_to_model: false
+    model_visible_status: minted_by_github_actions_not_available_to_model

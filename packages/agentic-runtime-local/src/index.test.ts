@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test"
-import { chmod, cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises"
+import { chmod, cp, mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from "node:fs/promises"
 import { dirname, join, resolve } from "node:path"
 import { tmpdir } from "node:os"
 import { fileURLToPath } from "node:url"
@@ -222,6 +222,119 @@ async function writeMinimalBundleWorkspace(baseDir: string): Promise<void> {
   )
 }
 
+async function writePiBundleWorkspace(baseDir: string): Promise<void> {
+  await writeText(
+    join(baseDir, ".agentic", "agentic.json"),
+    JSON.stringify(
+      {
+        schema_version: "agentic-bundle.example.v0",
+        name: "pi-bundle",
+        version: "0.1.0",
+        description: "Authored bundle for local Pi runtime tests.",
+        state: { adapter: "filesystem", dir: ".agentic/.data" },
+        principals: [
+          { id: "service:test", kind: "service" },
+          { id: "agent:steward", kind: "agent" },
+        ],
+        prompts: [{ id: "pi-action", path: "prompts/pi-action.md" }],
+        skills: [],
+        artifacts: [{ id: "release-readiness-report", path: "artifacts/release-readiness-report.json" }],
+        actions: [{ id: "release.assess", path: "actions/release.assess.json" }],
+        capabilities: [{ id: "release.assess", path: "capabilities/release.assess.json" }],
+        hooks: [],
+        surfaces: [{ id: "release-cli", path: "surfaces/release-cli.json" }],
+        schedules: [],
+        integrations: [],
+        policies: [],
+        deploy: [{ id: "local-pi", path: "deploy/local-pi.json" }],
+        evals: [],
+        fixtures: [],
+      },
+      null,
+      2,
+    ),
+  )
+  await writeText(join(baseDir, ".agentic", "prompts", "pi-action.md"), "Assess release readiness through tools.\n")
+  await writeText(
+    join(baseDir, ".agentic", "artifacts", "release-readiness-report.json"),
+    JSON.stringify({ id: "release-readiness-report", kind: "artifact_declaration" }, null, 2),
+  )
+  await writeText(
+    join(baseDir, ".agentic", "actions", "release.assess.json"),
+    JSON.stringify(
+      {
+        id: "release.assess",
+        kind: "action_declaration",
+        capability: "release.assess",
+        effects: ["artifact.write:release-readiness-report"],
+        output_artifacts: ["release-readiness-report"],
+        execution: {
+          target: {
+            kind: "pi-agent-loop",
+            prompt: "pi-action",
+          },
+        },
+      },
+      null,
+      2,
+    ),
+  )
+  await writeText(
+    join(baseDir, ".agentic", "capabilities", "release.assess.json"),
+    JSON.stringify(
+      {
+        id: "release.assess",
+        kind: "capability_declaration",
+        action: "release.assess",
+        effects: ["artifact.write:release-readiness-report"],
+        data_classes: ["project_public_state"],
+        principals: { allowed: ["agent:steward"] },
+        approval: { required: false },
+      },
+      null,
+      2,
+    ),
+  )
+  await writeText(
+    join(baseDir, ".agentic", "surfaces", "release-cli.json"),
+    JSON.stringify(
+      {
+        id: "release-cli",
+        kind: "surface_declaration",
+        surface: "cli",
+        principal: "service:test",
+        proposes: {
+          action: "release.assess",
+          capability: "release.assess",
+          principal: "agent:steward",
+          data_class: "project_public_state",
+          payload: { purpose: "release-readiness" },
+        },
+      },
+      null,
+      2,
+    ),
+  )
+  await writeText(
+    join(baseDir, ".agentic", "deploy", "local-pi.json"),
+    JSON.stringify(
+      {
+        id: "local-pi",
+        kind: "deploy_target",
+        runtime: {
+          pi: {
+            prompt: "pi-action",
+            extension: "runtime:agentic-tools",
+            tools: ["agentic_artifact_write"],
+          },
+        },
+      },
+      null,
+      2,
+    ),
+  )
+}
+
 async function writeStewardPersonaAndWorkflow(baseDir: string): Promise<void> {
   await writeText(
     join(baseDir, ".agentic", "personas", "second-brain-steward.md"),
@@ -269,6 +382,52 @@ if [ -n "$PI_STDOUT_FILE" ]; then
 else
   printf 'fake pi completed\n'
 fi
+`,
+  )
+  await chmod(path, 0o755)
+  return path
+}
+
+async function writeFakeBundlePi(binDir: string): Promise<string> {
+  const path = join(binDir, "pi")
+  await writeText(
+    path,
+    `#!/bin/sh
+printf '%s\n' "$@" > "$PI_ARGS_FILE"
+printf '%s\n' "$PWD" > "$PI_CWD_FILE"
+if [ -n "$PI_ENV_FILE" ]; then
+  printf 'run=%s\naction=%s\ntype=%s\n' "$AGENTIC_PI_RUN_ID" "$AGENTIC_PI_ACTION_ID" "$AGENTIC_PI_ACTION_TYPE" > "$PI_ENV_FILE"
+fi
+run_dir=".agentic/.data/runs/$AGENTIC_PI_RUN_ID"
+mkdir -p "$run_dir/actions" "$run_dir/artifacts"
+cat > "$run_dir/actions/act_tool_artifact_write_pi.json" <<EOF
+{
+  "id": "act_tool_artifact_write_pi",
+  "type": "artifact.write",
+  "status": "completed",
+  "principal": "agent:steward",
+  "data_class": "project_public_state",
+  "effects": ["artifact.write:release-readiness-report"],
+  "created_at": "2026-06-20T00:00:00.000Z",
+  "completed_at": "2026-06-20T00:00:00.000Z"
+}
+EOF
+cat > "$run_dir/artifacts/art_release_readiness_report_pi.json" <<EOF
+{
+  "id": "art_release_readiness_report_pi",
+  "type": "release-readiness-report",
+  "title": "Pi readiness report",
+  "status": "ready_to_cut",
+  "version": 1,
+  "finalized": true,
+  "data_class": "project_public_state",
+  "tags": ["release", "pi"],
+  "body": { "recommendation": { "status": "ready_to_cut" } },
+  "created_by_action_id": "act_tool_artifact_write_pi",
+  "created_at": "2026-06-20T00:00:00.000Z"
+}
+EOF
+printf 'fake pi completed\n'
 `,
   )
   await chmod(path, 0o755)
@@ -991,6 +1150,87 @@ describe("local runtime package", () => {
       workspace_root: tmpDir,
       status: "completed",
       artifact_ids: [],
+    })
+  })
+
+  it("routes Pi-targeted bundle actions through the Pi harness", async () => {
+    await writePiBundleWorkspace(tmpDir)
+    await runtime.commands.init!(ctx, { args: [], flags: {} })
+
+    const binDir = join(tmpDir, "bin")
+    const piArgsFile = join(tmpDir, "pi-args.txt")
+    const piCwdFile = join(tmpDir, "pi-cwd.txt")
+    const piEnvFile = join(tmpDir, "pi-env.txt")
+    await writeFakeBundlePi(binDir)
+
+    const result = await runtime.commands.run!({
+      ...ctx,
+      env: {
+        PATH: `${binDir}:${process.env.PATH ?? ""}`,
+        PI_ARGS_FILE: piArgsFile,
+        PI_CWD_FILE: piCwdFile,
+        PI_ENV_FILE: piEnvFile,
+      },
+    }, {
+      args: [],
+      flags: { clean: true, harness: "pi" },
+    })
+    const data = dataOf(result)
+    const invocationId = data["invocation_id"] as string
+    const runId = data["run_id"] as string
+    const sessionId = `${invocationId}-release-assess`
+
+    expect(result?.summary).toContain("Prepared local Agentic bundle pi-bundle")
+    expect(data["harness"]).toEqual({ provider: "pi", id: invocationId })
+    expect(data["harness_result"]).toMatchObject({
+      provider: "pi",
+      mode: "print",
+      session_id: sessionId,
+      session_dir: ".agentic/runtime/local/pi-sessions",
+      system_prompt_path: ".agentic/prompts/pi-action.md",
+      user_prompt_path: `.agentic/runtime/local/invocations/${invocationId}.release-assess.pi-user.md`,
+      exit_code: 0,
+      stdout: "fake pi completed\n",
+    })
+    expect(data["message"]).toBe("Bundle execution completed through Pi-backed local trigger declarations.")
+    expect(data["actions"]).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: "artifact.write", status: "completed" }),
+      expect.objectContaining({ type: "release.assess", status: "completed", capability: "release.assess" }),
+    ]))
+    expect(data["artifacts"]).toEqual([
+      {
+        id: "art_release_readiness_report_pi",
+        type: "release-readiness-report",
+        title: "Pi readiness report",
+        status: "ready_to_cut",
+      },
+    ])
+
+    const piArgs = (await readFile(piArgsFile, "utf-8")).split("\n")
+    expect(piArgs).toContain("--approve")
+    expect(piArgs).toContain("--no-builtin-tools")
+    expect(piArgs).toContain("--tools")
+    expect(piArgs).toContain("agentic_artifact_write")
+    expect(piArgs).toContain("--extension")
+    expect(piArgs).toContain(resolve(dirname(fileURLToPath(import.meta.url)), "pi-agentic-tools.ts"))
+    expect(piArgs).toContain("--append-system-prompt")
+    expect(piArgs).toContain(join(tmpDir, ".agentic", "prompts", "pi-action.md"))
+    expect(piArgs).toContain(`@${join(tmpDir, ".agentic", "runtime", "local", "invocations", `${invocationId}.release-assess.pi-user.md`)}`)
+    expect(await realpath((await readFile(piCwdFile, "utf-8")).trim())).toBe(await realpath(tmpDir))
+    expect(await readFile(piEnvFile, "utf-8")).toContain(`run=${runId}`)
+    expect(await readFile(piEnvFile, "utf-8")).toContain("type=release.assess")
+
+    const releaseAction = JSON.parse(
+      await readFile(join(tmpDir, ".agentic", ".data", "runs", runId, "actions", "act_release_assess_0001.json"), "utf-8"),
+    )
+    expect(releaseAction).toMatchObject({
+      type: "release.assess",
+      status: "completed",
+      output_artifact_ids: ["art_release_readiness_report_pi"],
+      payload: {
+        purpose: "release-readiness",
+        harness: { provider: "pi", session_id: sessionId },
+      },
     })
   })
 

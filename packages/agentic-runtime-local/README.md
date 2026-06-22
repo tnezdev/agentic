@@ -34,6 +34,8 @@ https://pi.dev/, not Raspberry Pi. `pi` is not a public runtime target.
 - `run --harness pi` also invokes the Pi CLI as the local harness driver after
   the Agentic run packet is prepared. Add `--interactive` when you want to land
   in a live Pi terminal session instead of one-shot print mode.
+- Bundle deploys can set `runtime.pi.extension: runtime:agentic-tools` to mount
+  the package's runtime-owned Agentic-aware Pi tools.
 - `status` reports whether the local runtime glue has been initialized and
   summarizes the latest invocation.
 

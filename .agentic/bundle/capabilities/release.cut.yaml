@@ -1,0 +1,30 @@
+id: release.cut
+kind: capability_declaration
+description: Gate tag push and publish-triggering release effects behind explicit maintainer approval.
+action: release.cut
+effects:
+  - git.tag:release
+  - git.push:tag
+  - ci.trigger:publish
+  - artifact.write:release-plan
+data_classes:
+  - project_public_state
+principals:
+  allowed:
+    - agent:project-steward
+integrations:
+  - github-actions
+  - npm-registry
+approval:
+  required: true
+  approver_rule:
+    all_of:
+      - principal.kind == human
+      - principal.roles includes maintainer
+      - grant.action_digest == action.digest
+      - grant.capability == release.cut
+    example_principals:
+      - user:maintainer
+handler:
+  kind: host-owned
+  name: releaseCutRequiresMaintainer

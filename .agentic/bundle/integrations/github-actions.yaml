@@ -1,0 +1,9 @@
+id: github-actions
+kind: integration_requirement
+provider: github-actions
+description: Publish workflow triggered by pushing a version tag.
+availability: declared-host-owned
+required_scopes:
+  - contents.read
+  - id-token.write
+secrets: []

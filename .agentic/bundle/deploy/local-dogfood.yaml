@@ -1,0 +1,32 @@
+id: local-dogfood
+kind: deploy_target
+description: Local filesystem deployment for inspecting the Agentic project-stewardship bundle.
+state:
+  adapter: filesystem
+  dir: .agentic/.data
+runtime:
+  local:
+    handlers:
+      module: bundle/handlers.ts
+      actions:
+        release.assess: assessReleaseReadiness
+        release.cut: releaseCutRequiresMaintainer
+  pi:
+    status: runtime-selectable
+    prompt: bundle/prompts/release-readiness-agent.md
+    extension: runtime:agentic-tools
+    tools:
+      - agentic_bundle_context
+      - agentic_shell_exec
+      - agentic_artifact_write
+      - agentic_action_request
+    note: Run `agentic serve . --clean --json --harness pi` to route Pi-targeted bundle actions through this tool loop; local handlers remain the fallback/default path.
+materializes:
+  - surfaces
+  - hooks
+  - capabilities
+not_included:
+  - real_tag_push
+  - npm_publish
+  - github_approval_ui
+  - credential_access

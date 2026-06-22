@@ -1,0 +1,41 @@
+id: release.assess
+kind: capability_declaration
+description: Allow the project steward to assess release readiness through bounded repo inspection and declared artifact/action tools.
+action: release.assess
+effects:
+  - repo.read
+  - git.read
+  - package.read
+  - process.spawn
+  - filesystem.read
+  - network.read:github
+  - network.read:npm
+  - process.check
+  - artifact.write:release-readiness-report
+  - action.request:release.cut
+tools:
+  - agentic_bundle_context
+  - agentic_shell_exec
+  - agentic_artifact_write
+  - agentic_action_request
+data_classes:
+  - project_public_state
+principals:
+  allowed:
+    - agent:project-steward
+approval:
+  required: false
+execution:
+  current:
+    kind: local-function-spike
+    handler: assessReleaseReadiness
+  target:
+    kind: pi-agent-loop
+    prompt: release-readiness-agent
+    shell_policy:
+      default: read_check_only
+      approval_required:
+        - git.tag:release
+        - git.push:tag
+        - ci.trigger:publish
+        - external.write

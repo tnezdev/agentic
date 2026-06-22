@@ -1,0 +1,22 @@
+id: release-readiness-report
+kind: artifact_declaration
+description: Project-stewardship assessment of whether Agentic is ready to cut a release.
+data_classes:
+  - project_public_state
+statuses:
+  - needs_version_bump
+  - needs_clean_worktree
+  - needs_checks
+  - blocked
+  - ready_to_cut
+required_fields:
+  - generated_at
+  - recommendation
+  - package_versions
+  - git
+  - checks
+  - release_sequence
+default_tags:
+  - release
+  - readiness
+  - project-stewardship

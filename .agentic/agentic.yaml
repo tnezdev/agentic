@@ -1,0 +1,79 @@
+schema_version: agentic-project-steward.v0
+name: agentic-project-steward
+version: 0.1.0
+description: Repo-local dogfood bundle for operating Agentic itself through release readiness and stewardship artifacts.
+state:
+  adapter: filesystem
+  dir: .agentic/.data
+principals:
+  - id: service:agentic-cli
+    kind: service
+    description: Local CLI surface that starts project-stewardship runs.
+  - id: service:agentic-runtime
+    kind: service
+    description: Runtime-owned principal for hooks and approval-request records.
+  - id: agent:project-steward
+    kind: agent
+    description: Agentic project steward operating within declared repo-maintenance capabilities.
+  - id: user:maintainer
+    kind: human
+    roles:
+      - maintainer
+    description: Human maintainer who can approve release-cut effects through a host-owned channel.
+prompts:
+  - id: project-steward-startup
+    path: bundle/prompts/project-steward-startup.md
+  - id: release-readiness-agent
+    path: bundle/prompts/release-readiness-agent.md
+skills:
+  - id: release-readiness
+    path: bundle/skills/release-readiness/SKILL.md
+  - id: release-cut
+    path: bundle/skills/release-cut/SKILL.md
+artifacts:
+  - id: release-readiness-report
+    path: bundle/artifacts/release-readiness-report.yaml
+  - id: release-plan
+    path: bundle/artifacts/release-plan.yaml
+  - id: approval-request
+    path: bundle/artifacts/approval-request.yaml
+actions:
+  - id: release.assess
+    path: bundle/actions/release.assess.yaml
+  - id: release.cut
+    path: bundle/actions/release.cut.yaml
+  - id: hook.run
+    path: bundle/actions/hook.run.yaml
+  - id: approval.request
+    path: bundle/actions/approval.request.yaml
+capabilities:
+  - id: release.assess
+    path: bundle/capabilities/release.assess.yaml
+  - id: release.cut
+    path: bundle/capabilities/release.cut.yaml
+hooks:
+  - id: release-readiness.ready.propose-cut
+    path: bundle/hooks/release-readiness.ready.propose-cut.yaml
+surfaces:
+  - id: release-readiness-cli
+    path: bundle/surfaces/release-readiness-cli.yaml
+schedules: []
+integrations:
+  - id: github-actions
+    path: bundle/integrations/github-actions.yaml
+  - id: npm-registry
+    path: bundle/integrations/npm-registry.yaml
+policies:
+  - id: data-boundary
+    path: bundle/policies/data-boundary.yaml
+  - id: approvals
+    path: bundle/policies/approvals.yaml
+  - id: release-boundary
+    path: bundle/policies/release-boundary.yaml
+deploy:
+  - id: local-dogfood
+    path: bundle/deploy/local-dogfood.yaml
+evals:
+  - id: release-readiness-smoke
+    path: bundle/evals/release-readiness-smoke.yaml
+fixtures: []

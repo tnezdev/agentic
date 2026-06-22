@@ -1,0 +1,13 @@
+id: data-boundary
+kind: policy_declaration
+description: Repo-local release stewardship may inspect public project state but not secrets.
+allowed_data_classes:
+  - project_public_state
+disallowed:
+  - private_credentials
+  - npm_tokens
+  - github_tokens
+rules:
+  - Release-readiness reports may include git metadata, package metadata, command names, and public CI/npm verification steps.
+  - Do not expose credential values, authorization headers, npm tokens, GitHub tokens, or local secret files.
+  - Host-owned release execution must use GitHub Actions OIDC trusted publishing, not model-visible npm credentials.

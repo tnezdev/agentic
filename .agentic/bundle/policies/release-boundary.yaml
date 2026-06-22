@@ -1,0 +1,12 @@
+id: release-boundary
+kind: policy_declaration
+description: Agentic release rules preserved from the legacy dogfood workflow.
+rules:
+  - Do not run local npm publish.
+  - Release publishing is CI-gated through `.github/workflows/publish.yml` and npm Trusted Publishing.
+  - The release PR must merge to main before tagging.
+  - The annotated version tag must point at the merged release commit on main.
+  - Both packages must publish together: `@tnezdev/agentic-runtime-local` first, then `@tnezdev/agentic`.
+  - Verify registry versions and provenance for both packages after publish.
+  - On real release defects, fix forward with a new patch version and tag.
+  - Do not delete and retag unless the tag points at the wrong commit and neither package was published.
